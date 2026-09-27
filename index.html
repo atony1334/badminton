@@ -1,0 +1,1614 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="羽球排場">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#E9EEE6">
+<title>羽球輪轉排場</title>
+<style>
+  :root {
+    --floor: #E9EEE6;
+    --ink: #14261C;
+    --muted: #5B6B61;
+    --court: #2D6A4F;
+    --court-dark: #1B4332;
+    --line: #F7F7F2;
+    --tape: #F2C94C;
+    --danger: #B23A2E;
+    --radius-s: 6px;
+    --radius-l: 14px;
+    color-scheme: light;
+  }
+  * { box-sizing: border-box; }
+  html, body { background: var(--floor) !important; }
+  /* 部分預覽環境（如 Claude app）會強制深色底，改由獨立容器鋪滿背景 */
+  .page { background: var(--floor); min-height: 100vh; color: var(--ink); }
+  body {
+    margin: 0; min-height: 100vh;
+    background: var(--floor); color: var(--ink);
+    font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+    font-size: 16px; line-height: 1.5;
+  }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 20px 16px 80px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: 0.02em; color: var(--ink); }
+  h2 { font-size: 18px; margin: 28px 0 10px; color: var(--ink); }
+  .sub { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
+  .num { font-variant-numeric: tabular-nums; }
+
+  button {
+    font: inherit; border: 0; cursor: pointer;
+    border-radius: var(--radius-s); padding: 8px 14px;
+    background: #fff; color: var(--ink);
+  }
+  button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
+    outline: 3px solid var(--tape); outline-offset: 2px;
+  }
+  .btn-primary { background: var(--court-dark); color: var(--line); font-weight: 600; }
+  .btn-tape { background: var(--tape); color: var(--ink); font-weight: 600; }
+  .btn-ghost { background: transparent; color: inherit; text-decoration: underline; padding: 8px 6px; }
+  .btn-danger { background: var(--danger); color: #fff; }
+  .btn-block { width: 100%; padding: 12px; }
+
+  textarea, input[type="text"], select {
+    width: 100%; font: inherit; padding: 10px 12px; color: var(--ink);
+    border: 2px solid #C9D3C8; border-radius: var(--radius-s); background: #fff;
+  }
+  textarea { min-height: 110px; resize: vertical; }
+  select { width: auto; padding: 6px 10px; }
+
+  .panel { background: #fff; border-radius: var(--radius-l); padding: 16px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .row + .row { margin-top: 12px; }
+  .label { min-width: 72px; color: var(--muted); font-size: 14px; }
+  .section-head { display: flex; justify-content: space-between; align-items: baseline; }
+
+  .banner {
+    background: #FFF6D6; border: 2px solid var(--tape); border-radius: var(--radius-s);
+    padding: 10px 12px; font-size: 14px; margin-bottom: 14px;
+    display: flex; gap: 10px; align-items: center; justify-content: space-between;
+  }
+
+  .seg { display: inline-flex; background: var(--floor); border-radius: var(--radius-s); padding: 3px; }
+  .seg button { background: transparent; padding: 6px 14px; }
+  .seg button[aria-pressed="true"] { background: var(--court-dark); color: var(--line); }
+
+  .stepper { display: inline-flex; align-items: center; gap: 4px; }
+  .stepper button { width: 36px; height: 36px; padding: 0; background: var(--floor); font-size: 18px; }
+  .stepper span { min-width: 28px; text-align: center; font-weight: 700; }
+
+  /* 球場：本工具唯一的視覺主角 */
+  .courts { display: grid; gap: 14px; }
+  .court { background: var(--court); color: var(--line); border-radius: var(--radius-l); padding: 12px; }
+  .court-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
+  .court-name { font-weight: 700; font-size: 17px; }
+  .court-meta { font-size: 13px; opacity: 0.8; }
+  .court-alert {
+    background: var(--tape); color: var(--ink); border-radius: var(--radius-s);
+    padding: 6px 10px; font-size: 14px; font-weight: 600; margin-bottom: 8px;
+  }
+  .court-lines {
+    position: relative; border: 2px solid var(--line); border-radius: 2px;
+    display: grid; grid-template-rows: 1fr 1fr; min-height: 150px;
+  }
+  .court-lines::before {
+    content: ""; position: absolute; left: 50%; top: 0; bottom: 0;
+    border-left: 1px solid rgba(247, 247, 242, 0.45);
+  }
+  .court-lines::after {
+    content: ""; position: absolute; left: -6px; right: -6px; top: 50%;
+    border-top: 3px dashed var(--line); transform: translateY(-50%);
+  }
+  .half {
+    position: relative; z-index: 1;
+    display: flex; justify-content: space-around; align-items: center;
+    padding: 12px 8px; font-size: 18px; font-weight: 600; text-align: center;
+  }
+  .half span { background: var(--court-dark); padding: 4px 10px; border-radius: var(--radius-s); }
+  .court-empty {
+    min-height: 150px; border: 2px dashed rgba(247, 247, 242, 0.5); border-radius: 2px;
+    display: flex; align-items: center; justify-content: center; opacity: 0.85;
+  }
+  .court-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .court-actions button { flex: 1; }
+  .court .btn-ghost { flex: 0 0 auto; color: var(--line); }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip {
+    background: #fff; border: 2px solid var(--tape); border-radius: 999px;
+    padding: 4px 12px; font-size: 15px; color: var(--ink);
+  }
+  .chip small { margin-left: 6px; font-size: 12px; color: var(--muted); }
+  .chip-wait { border-color: #C9D3C8; }
+  button.chip { border-color: #C9D3C8; }
+  button.chip[aria-pressed="true"] { background: var(--court-dark); border-color: var(--court-dark); color: var(--line); }
+  button.chip.removable { border-color: var(--danger); color: var(--danger); }
+
+  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: var(--radius-l); overflow: hidden; }
+  th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--floor); font-size: 15px; }
+  th { font-size: 13px; color: var(--muted); font-weight: 500; }
+  td.actions { text-align: right; white-space: nowrap; }
+  td.actions button { padding: 4px 8px; font-size: 13px; background: var(--floor); }
+  .star { background: transparent; padding: 0 4px; font-size: 16px; color: #B8940F; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font-size: 13px; font-weight: 600; white-space: nowrap;
+  }
+  .badge-court { background: var(--court); color: var(--line); }
+  .badge-wait { background: var(--floor); color: var(--ink); }
+  .badge-rest { background: #6B7280; color: #fff; }
+  tr.resting td { background: #E2E4E7; color: #6B7280; }
+  tr.resting .name { text-decoration: line-through; }
+  td.actions button.btn-return { background: var(--tape); font-weight: 600; }
+  .resting-list { margin-top: 10px; font-size: 14px; color: var(--muted); }
+  .resting-list .badge { margin-right: 6px; }
+
+  .history { list-style: none; margin: 0; padding: 0; background: #fff; border-radius: var(--radius-l); }
+  .history li { padding: 10px 14px; border-bottom: 1px solid var(--floor); }
+  .history-item { position: relative; padding-right: 92px !important; }
+  .history-delete.armed { background: var(--danger); color: #fff; font-weight: 600; }
+  .history-delete {
+    position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+    padding: 4px 10px; font-size: 13px; background: var(--floor);
+  }
+
+  .history li:last-child { border-bottom: 0; }
+  .history .meta { font-size: 13px; color: var(--muted); }
+  .history .teams { font-size: 15px; }
+  .history .vs { color: var(--muted); margin: 0 6px; }
+
+  .modal-bg {
+    position: fixed; inset: 0; background: rgba(20, 38, 28, 0.55);
+    display: flex; align-items: flex-end; justify-content: center; z-index: 10;
+  }
+  .modal {
+    background: #fff; width: 100%; max-width: 560px; max-height: 85vh; overflow-y: auto;
+    border-radius: var(--radius-l) var(--radius-l) 0 0; padding: 18px 16px 24px;
+    overscroll-behavior: contain;   /* 捲到底時不帶動後方頁面 */
+  }
+  body.modal-open { overflow: hidden; }
+  .modal h3 { margin: 0 0 4px; font-size: 18px; }
+  .pick-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--floor); }
+  .pick-row .who small { color: var(--muted); margin-left: 6px; }
+  .side-btns button { width: 44px; margin-left: 6px; background: var(--floor); font-weight: 700; }
+  .side-btns button[aria-pressed="true"] { background: var(--court-dark); color: var(--line); }
+  .modal-foot { display: flex; gap: 8px; margin-top: 14px; }
+  .modal-foot button { flex: 1; padding: 12px; }
+
+  .toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
+    background: var(--ink); color: var(--line); padding: 10px 16px; border-radius: var(--radius-s);
+    font-size: 15px; z-index: 20; max-width: 90vw;
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .modal.modal-enter { animation: rise 0.18s ease-out; }
+    @keyframes rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+  }
+</style>
+</head>
+<body>
+<div class="page"><div class="wrap" id="app">載入中…</div></div>
+<div id="modal-root"></div>
+<div id="toast-root"></div>
+
+<script>
+'use strict';
+
+/* ===================== 常數 ===================== */
+const STORAGE_KEYS = {
+  session: 'badminton-session',
+  regulars: 'badminton-regulars',
+};
+const APP_VERSION = '2.5';   // 每次修改程式時更新，用來確認手機上是否為最新版
+const BACKUP_VERSION = 1;
+const TEAM_SIZE = { doubles: 2, singles: 1 };
+const MODE_LABEL = { doubles: '雙打', singles: '單打' };
+const PARTNER_WEIGHT = 3;    // 重複同隊的懲罰
+const OPPONENT_WEIGHT = 1;   // 重複對戰的懲罰
+const WAIT_WEIGHT = 1;       // 連續等待的加分（取平方）；主要防呆由連等上限負責
+const BENCH_WEIGHT = 6;      // 累計等待的加分（與候選池最低值比較）：平衡的主要依據
+// 公平偏好：累計等待比平均多幾場，就把優先度提前一級（等同少打一場）
+const FAIRNESS_STEP = { played: Infinity, balanced: 2, wait: 1 };
+const FAIRNESS_LABEL = { played: '場數優先', balanced: '平衡', wait: '等待優先' };
+const CANDIDATE_LIMIT = 12;  // 候選人上限，控制組合數量（C(12,4) = 495 組）
+const LEVEL_COST = 20;       // 為了避開重複組合，改排「優先級低一級」的人時，每人每級的成本
+// 近期重複懲罰：越近期出現過的組合扣越多，避免同組合連續出現
+const RECENT_GROUP_WEIGHT = 24;     // 同一批 4 人（不論怎麼分隊）
+const RECENT_PARTNER_WEIGHT = 12;   // 同一對搭檔
+const RECENT_OPPONENT_WEIGHT = 3;   // 同一對對手
+const MAX_COURTS = 8;
+const HISTORY_LIMIT = 300;   // 歷史上限，避免儲存資料無限增長
+const HISTORY_PREVIEW = 10;
+
+/* ===================== 狀態 ===================== */
+function createDefaultState() {
+  return {
+    mode: 'doubles',
+    autoFill: true,
+    fairness: 'balanced',
+    players: [],        // {id, name, played, offset, wait, benched, benchOffset, lastStartSeq, active}
+    courts: [{ match: null }, { match: null }],
+    pairs: {},          // "idA|idB": {partner, opponent}
+    history: [],        // {no, court, mode, isManual, teamA:[name], teamB:[name], startedAt, endedAt}
+    finishedCount: 0,
+    startSeq: 0,        // 開局流水號：比較先後用，避免同一毫秒開多場時時間戳相同
+    nextId: 1,
+  };
+}
+
+let state = createDefaultState();
+let regulars = [];      // 常用球員名字，跨場次保存
+
+const ui = {
+  setupCourts: 2,
+  setupMode: 'doubles',
+  setupSelected: new Set(),
+  setupText: '',
+  setupSaveNew: true,
+  editRegulars: false,
+  addText: '',
+  manual: null,
+  backup: null,
+  historyFilter: '',
+  historyExpanded: false,
+  resetArmed: false,
+  deleteArmedNo: null,
+  clearHistoryArmed: false,
+  storageFailed: false,
+};
+
+/* ===================== 儲存層（localStorage） ===================== */
+let storageEnabled = detectStorage();
+
+// 無痕模式或瀏覽器封鎖時，localStorage 可能存在但寫入會拋錯，需實際測試
+function detectStorage() {
+  try {
+    const testKey = `${STORAGE_KEYS.session}-test`;
+    window.localStorage.setItem(testKey, '1');
+    window.localStorage.removeItem(testKey);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+function storageGet(key) {
+  if (!storageEnabled) return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
+  } catch (err) {
+    console.warn(`讀取失敗，略過 ${key}:`, err);
+    return null;
+  }
+}
+
+function storageSet(key, value) {
+  if (!storageEnabled) return false;
+  try {
+    window.localStorage.setItem(key, JSON.stringify(value));
+    return true;
+  } catch (err) {
+    // 多半是容量已滿（QuotaExceededError）
+    console.warn('儲存失敗:', err);
+    storageEnabled = false;
+    ui.storageFailed = true;
+    render();
+    return false;
+  }
+}
+
+function loadAll() {
+  ui.storageFailed = !storageEnabled;
+  const session = storageGet(STORAGE_KEYS.session);
+  if (session) state = normalizeState(session);
+  const savedRegulars = storageGet(STORAGE_KEYS.regulars);
+  if (Array.isArray(savedRegulars)) regulars = savedRegulars;
+  // 向瀏覽器申請持久儲存，降低資料被自動清除的機率（不支援時略過）
+  if (navigator.storage && navigator.storage.persist) {
+    navigator.storage.persist().catch(() => {});
+  }
+}
+
+const pendingSaves = {};
+let saveTimer = null;
+
+function flushSaves() {
+  clearTimeout(saveTimer);
+  Object.keys(pendingSaves).forEach((key) => {
+    storageSet(key, pendingSaves[key]());
+    delete pendingSaves[key];
+  });
+}
+
+function scheduleSave(key, getter) {
+  pendingSaves[key] = getter;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(flushSaves, 300);
+}
+
+function saveSession() {
+  scheduleSave(STORAGE_KEYS.session, () => state);
+}
+
+function saveRegulars() {
+  scheduleSave(STORAGE_KEYS.regulars, () => regulars);
+}
+
+// 手機切換 app 或關閉頁面時，立即寫入尚未儲存的變更
+window.addEventListener('pagehide', flushSaves);
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushSaves();
+});
+
+// 補齊舊版資料缺少的欄位，確保新舊版本的儲存資料都能直接使用
+function normalizeState(raw) {
+  const next = Object.assign(createDefaultState(), raw);
+  next.players.forEach((p) => {
+    p.benched = p.benched || 0;
+    p.benchOffset = p.benchOffset || 0;
+    p.lastStartSeq = p.lastStartSeq || 0;
+  });
+  next.startSeq = next.startSeq || 0;
+  if (!FAIRNESS_STEP[next.fairness]) next.fairness = 'balanced';
+  return next;
+}
+
+function buildBackup() {
+  return JSON.stringify({ version: BACKUP_VERSION, session: state, regulars });
+}
+
+function restoreBackup(text) {
+  const data = JSON.parse(text);
+  if (!data || data.version !== BACKUP_VERSION || !data.session || !Array.isArray(data.regulars)) {
+    throw new Error('備份格式不正確');
+  }
+  state = normalizeState(data.session);
+  regulars = data.regulars;
+}
+
+/* ===================== 工具函式 ===================== */
+function escapeHtml(text) {
+  return String(text).replace(/[&<>"']/g, (ch) => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
+  }[ch]));
+}
+
+function shuffle(list) {
+  const copy = list.slice();
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+}
+
+function* combinations(items, size, start = 0, prefix = []) {
+  if (prefix.length === size) {
+    yield prefix.slice();
+    return;
+  }
+  for (let i = start; i <= items.length - (size - prefix.length); i += 1) {
+    prefix.push(items[i]);
+    yield* combinations(items, size, i + 1, prefix);
+    prefix.pop();
+  }
+}
+
+function parseNames(text) {
+  const names = text.split(/[\n,，、]+/).map((s) => s.trim()).filter(Boolean);
+  return Array.from(new Set(names));
+}
+
+function formatTime(timestamp) {
+  const d = new Date(timestamp);
+  return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+}
+
+function getPlayer(id) {
+  return state.players.find((p) => p.id === id);
+}
+
+function playerName(id) {
+  const p = getPlayer(id);
+  return p ? p.name : '（已移除）';
+}
+
+/* ===================== 常用球員 ===================== */
+function isRegular(name) {
+  return regulars.includes(name);
+}
+
+function addRegulars(names) {
+  names.forEach((name) => { if (!isRegular(name)) regulars.push(name); });
+  saveRegulars();
+}
+
+function removeRegular(name) {
+  regulars = regulars.filter((n) => n !== name);
+  ui.setupSelected.delete(name);
+  saveRegulars();
+}
+
+function toggleRegular(name) {
+  if (isRegular(name)) removeRegular(name);
+  else addRegulars([name]);
+}
+
+/* ===================== 權重核心 ===================== */
+// 有效場數：實際場數 + 補償值（中途加入或休息回來時使用，避免被連續排場）
+function effectivePlayed(player) {
+  return player.played + player.offset;
+}
+
+// 有效累計等待：實際累計等待 + 補償值（與場數同理，中途加入者以平均值起算）
+function effectiveBenched(player) {
+  return player.benched + player.benchOffset;
+}
+
+function averageOf(getter, excludeId) {
+  const pool = state.players.filter((p) => p.active && p.id !== excludeId);
+  if (!pool.length) return 0;
+  return Math.floor(pool.reduce((sum, p) => sum + getter(p), 0) / pool.length);
+}
+
+function averageEffective(excludeId) {
+  return averageOf(effectivePlayed, excludeId);
+}
+
+function onCourtIds() {
+  const ids = new Set();
+  state.courts.forEach((court) => {
+    if (court.match) court.match.teamA.concat(court.match.teamB).forEach((id) => ids.add(id));
+  });
+  return ids;
+}
+
+function availablePlayers() {
+  const busy = onCourtIds();
+  return state.players.filter((p) => p.active && !busy.has(p.id));
+}
+
+/**
+ * 優先級（越小越優先）= 有效場數 − 累計等待補償
+ * 累計等待每比在場平均多 step 場（依公平偏好），就視同少打一場。
+ * 只補償等得多的人，等得少的人不扣分，避免場數被拉開太多。
+ */
+function priorityLevel(player) {
+  const extraBench = effectiveBenched(player) - averageOf(effectiveBenched, null);
+  const step = FAIRNESS_STEP[state.fairness] || FAIRNESS_STEP.balanced;
+  return effectivePlayed(player) - Math.max(0, Math.floor(extraBench / step));
+}
+
+function comparePriority(a, b) {
+  return priorityLevel(a) - priorityLevel(b)
+    || b.wait - a.wait
+    || effectiveBenched(b) - effectiveBenched(a);
+}
+
+// 排場用：同優先級隨機，避免每次都是同一批人
+function rankPlayers(players) {
+  return shuffle(players).sort(comparePriority);
+}
+
+// 畫面顯示用：同優先級依加入順序，重畫時順序不會跳動
+function rankPlayersStable(players) {
+  return players.slice().sort((a, b) => comparePriority(a, b) || a.id - b.id);
+}
+
+function pairKey(a, b) {
+  return a < b ? `${a}|${b}` : `${b}|${a}`;
+}
+
+function pairStat(a, b) {
+  return state.pairs[pairKey(a, b)] || { partner: 0, opponent: 0 };
+}
+
+function withinPairs(team) {
+  const result = [];
+  for (let i = 0; i < team.length; i += 1) {
+    for (let j = i + 1; j < team.length; j += 1) result.push([team[i], team[j]]);
+  }
+  return result;
+}
+
+function crossPairs(teamA, teamB) {
+  const result = [];
+  teamA.forEach((a) => teamB.forEach((b) => result.push([a, b])));
+  return result;
+}
+
+/**
+ * 近期比賽的重複程度，由歷史紀錄與場上比賽即時推算，
+ * 因此刪除紀錄後會自動更新，不需要另外回退。
+ * 觀察範圍為最近「場地數 × 2」場（約兩輪），越近期權重越高（1 → 接近 0）。
+ */
+let recencyCache = { key: null, value: null };
+
+function groupKey(ids) {
+  return ids.slice().sort((a, b) => a - b).join(',');
+}
+
+function recentMatches() {
+  const onCourt = state.courts
+    .filter((court) => court.match)
+    .map((court) => ({ seq: court.match.seq || 0, teamA: court.match.teamA, teamB: court.match.teamB }));
+  const past = state.history.slice(0, state.courts.length * 2).map((entry) => ({
+    seq: entry.seq || 0,
+    teamA: resolveTeam(entry, 'A'),
+    teamB: resolveTeam(entry, 'B'),
+  }));
+  return onCourt.concat(past).sort((a, b) => b.seq - a.seq);
+}
+
+function getRecency() {
+  const newest = state.history[0];
+  const key = `${state.startSeq}|${state.history.length}|${newest ? newest.no : 0}`;
+  if (recencyCache.key === key) return recencyCache.value;
+
+  const windowSize = state.courts.length * 2;
+  const value = { group: {}, partner: {}, opponent: {} };
+  const keep = (map, k, w) => { map[k] = Math.max(map[k] || 0, w); };
+  recentMatches().slice(0, windowSize).forEach((match, index) => {
+    const weight = (windowSize - index) / windowSize;
+    keep(value.group, groupKey(match.teamA.concat(match.teamB)), weight);
+    withinPairs(match.teamA).concat(withinPairs(match.teamB))
+      .forEach(([a, b]) => keep(value.partner, pairKey(a, b), weight));
+    crossPairs(match.teamA, match.teamB)
+      .forEach(([a, b]) => keep(value.opponent, pairKey(a, b), weight));
+  });
+  recencyCache = { key, value };
+  return value;
+}
+
+function recencyPenalty(teamA, teamB) {
+  const recency = getRecency();
+  let penalty = RECENT_GROUP_WEIGHT * (recency.group[groupKey(teamA.concat(teamB))] || 0);
+  withinPairs(teamA).concat(withinPairs(teamB)).forEach(([a, b]) => {
+    penalty += RECENT_PARTNER_WEIGHT * (recency.partner[pairKey(a, b)] || 0);
+  });
+  crossPairs(teamA, teamB).forEach(([a, b]) => {
+    penalty += RECENT_OPPONENT_WEIGHT * (recency.opponent[pairKey(a, b)] || 0);
+  });
+  return penalty;
+}
+
+function matchPenalty(teamA, teamB) {
+  let penalty = recencyPenalty(teamA, teamB);
+  withinPairs(teamA).concat(withinPairs(teamB)).forEach(([a, b]) => {
+    penalty += PARTNER_WEIGHT * pairStat(a, b).partner;
+  });
+  crossPairs(teamA, teamB).forEach(([a, b]) => {
+    penalty += OPPONENT_WEIGHT * pairStat(a, b).opponent;
+  });
+  return penalty;
+}
+
+function bestSplit(ids) {
+  let options;
+  if (ids.length === 2) {
+    options = [[[ids[0]], [ids[1]]]];
+  } else if (ids.length === 4) {
+    const [a, b, c, d] = ids;
+    options = shuffle([[[a, b], [c, d]], [[a, c], [b, d]], [[a, d], [b, c]]]);
+  } else {
+    throw new Error(`無法分隊：人數 ${ids.length}`);
+  }
+  let best = null;
+  options.forEach(([teamA, teamB]) => {
+    const penalty = matchPenalty(teamA, teamB);
+    if (!best || penalty < best.penalty) best = { teamA, teamB, penalty };
+  });
+  return best;
+}
+
+/**
+ * 連等上限：在「場數最平均」的理想輪轉下，最長會等幾場新比賽。
+ * 場下人數 bench，每場帶走 needTotal 人，約需 ceil(bench / needTotal) 場才輪完，
+ * 再加 1 是因為剛下場的人也會一起進入候選。
+ * 例：2 場雙打 12 人 → 2；18 人 → 4；24 人 → 5。
+ */
+function waitLimit(needTotal) {
+  const activeCount = state.players.filter((p) => p.active).length;
+  const bench = Math.max(0, activeCount - state.courts.length * needTotal);
+  return Math.ceil(bench / needTotal) + 1;
+}
+
+/**
+ * 選人邏輯：
+ * 0. 連等達上限的人強制上場（overdue）：不論場數，避免有人被卡在場下
+ * 1. 候選人 = 優先級不超過「理想名單最後一人 + 1 級」的人
+ *    優先級 = 場數，累計等待偏多者會提前（見 priorityLevel）
+ * 2. 窮舉候選人組合，分數取最低：
+ *      重複配對懲罰（整晚累計 + 近期重複）
+ *    + LEVEL_COST   × 偏離理想名單的級數   （公平性成本：只有能明顯避開重複時才值得）
+ *    − WAIT_WEIGHT  × Σ 連續等待²
+ *    − BENCH_WEIGHT × Σ 相對累計等待
+ *    放寬一級的成本（20）低於「同一批 4 人剛打過」的懲罰（最高 24），
+ *    所以系統會為了避開剛出現過的組合，最多讓公平性讓一小步。
+ */
+function pickMatch(needTotal) {
+  const ranked = rankPlayers(availablePlayers());
+  if (ranked.length < needTotal) return null;
+
+  const limit = waitLimit(needTotal);
+  const overdue = ranked
+    .filter((p) => p.wait >= limit)
+    .sort((a, b) => b.wait - a.wait || comparePriority(a, b))
+    .slice(0, needTotal);
+  const rest = ranked.filter((p) => !overdue.includes(p));
+  const openSlots = needTotal - overdue.length;
+
+  if (openSlots === 0) return bestSplit(overdue.map((p) => p.id));
+
+  const boundary = priorityLevel(rest[openSlots - 1]);
+  const candidates = rest.filter((p) => priorityLevel(p) <= boundary + 1).slice(0, CANDIDATE_LIMIT);
+  const idealLevel = rest.slice(0, openSlots).reduce((sum, p) => sum + priorityLevel(p), 0);
+  const minBenched = Math.min(...candidates.map(effectiveBenched));
+
+  let best = null;
+  for (const combo of combinations(candidates, openSlots)) {
+    const chosen = overdue.concat(combo);
+    const split = bestSplit(chosen.map((p) => p.id));
+    const levelCost = LEVEL_COST * (combo.reduce((sum, p) => sum + priorityLevel(p), 0) - idealLevel);
+    const waitScore = combo.reduce((sum, p) => sum + p.wait * p.wait, 0);
+    const benchScore = combo.reduce((sum, p) => sum + effectiveBenched(p) - minBenched, 0);
+    const score = split.penalty + levelCost - WAIT_WEIGHT * waitScore - BENCH_WEIGHT * benchScore;
+    if (!best || score < best.score) best = Object.assign({ score }, split);
+  }
+  return best;
+}
+
+function updatePairs(teamA, teamB, delta) {
+  const bump = (a, b, field) => {
+    const key = pairKey(a, b);
+    const stat = state.pairs[key] || { partner: 0, opponent: 0 };
+    stat[field] = Math.max(0, stat[field] + delta);
+    state.pairs[key] = stat;
+  };
+  withinPairs(teamA).concat(withinPairs(teamB)).forEach(([a, b]) => bump(a, b, 'partner'));
+  crossPairs(teamA, teamB).forEach(([a, b]) => bump(a, b, 'opponent'));
+}
+
+/* 開場即寫入權重（自動與手動共用），讓其他場地的排場能即時參考 */
+/**
+ * @param {boolean} countWait 是否替場下的人累加等待；開局第一輪為 false，
+ *        因為還沒有人真正「被跳過」，只是還沒輪到。
+ */
+function commitMatch(courtIndex, teamA, teamB, isManual, countWait = true) {
+  const ids = teamA.concat(teamB);
+  const idle = countWait ? availablePlayers().filter((p) => !ids.includes(p.id)) : [];
+  const prevWait = {};
+  const prevLastStart = {};
+  state.startSeq += 1;
+  const seq = state.startSeq;
+
+  ids.forEach((id) => {
+    const p = getPlayer(id);
+    prevWait[id] = p.wait;
+    prevLastStart[id] = p.lastStartSeq;
+    p.played += 1;
+    p.wait = 0;
+    p.lastStartSeq = seq;
+  });
+  idle.forEach((p) => {
+    p.wait += 1;
+    p.benched += 1;
+  });
+  updatePairs(teamA, teamB, 1);
+
+  state.courts[courtIndex].match = {
+    teamA, teamB, isManual, prevWait, prevLastStart, seq,
+    mode: state.mode,
+    idleIds: idle.map((p) => p.id),
+    startedAt: Date.now(),
+  };
+}
+
+/**
+ * 回退一場比賽對等待的影響（取消場地、刪除紀錄共用）。
+ *
+ * 上場者：若這場之後沒再上場（lastStartSeq 仍是這場），代表他其實一路在等，
+ *         連等 = 上場前的連等 + 之後又累積的連等，並還原上一次上場的流水號。
+ * 場下者：累計等待 -1；若這場之後都沒上場過（連等沒被中斷），連等也 -1。
+ * 舊版紀錄沒有流水號與場下名單，無法判斷，只回退能確定的部分。
+ */
+function revertWaits(record, participantIds) {
+  const busy = onCourtIds();
+  const hasSeq = typeof record.seq === 'number';
+
+  participantIds.forEach((id) => {
+    const p = getPlayer(id);
+    if (!p || !hasSeq || p.lastStartSeq !== record.seq) return;
+    if (busy.has(id) && !record.isOnCourt) return;
+    p.wait = (record.prevWait[id] || 0) + (record.isOnCourt ? 0 : p.wait);
+    p.lastStartSeq = record.prevLastStart[id] || 0;
+  });
+
+  (record.idleIds || []).forEach((id) => {
+    const p = getPlayer(id);
+    if (!p) return;
+    p.benched = Math.max(0, p.benched - 1);
+    const streakUnbroken = hasSeq && p.lastStartSeq < record.seq && !busy.has(id);
+    if (streakUnbroken) p.wait = Math.max(0, p.wait - 1);
+  });
+}
+
+function cancelMatch(courtIndex) {
+  const match = state.courts[courtIndex].match;
+  if (!match) return;
+  const ids = match.teamA.concat(match.teamB).filter((id) => getPlayer(id));
+  ids.forEach((id) => {
+    const p = getPlayer(id);
+    p.played = Math.max(0, p.played - 1);
+  });
+  updatePairs(match.teamA, match.teamB, -1);
+  state.courts[courtIndex].match = null;
+  // 比賽剛被取消，上場者此刻的連等就是上場前的值
+  revertWaits(Object.assign({ isOnCourt: true }, match), ids);
+}
+
+function recordHistory(courtIndex, match) {
+  state.finishedCount += 1;
+  state.history.unshift({
+    no: state.finishedCount,
+    court: courtIndex + 1,
+    mode: match.mode || state.mode,
+    isManual: match.isManual,
+    teamA: match.teamA.map(playerName),   // 存名字，球員移除後仍可閱讀
+    teamB: match.teamB.map(playerName),
+    teamAIds: match.teamA.slice(),        // 存 id，刪除紀錄時用來回退權重
+    teamBIds: match.teamB.slice(),
+    seq: match.seq,                       // 以下供刪除紀錄時回退等待使用
+    prevWait: match.prevWait,
+    prevLastStart: match.prevLastStart,
+    idleIds: match.idleIds,
+    startedAt: match.startedAt,
+    endedAt: Date.now(),
+  });
+  if (state.history.length > HISTORY_LIMIT) state.history.length = HISTORY_LIMIT;
+}
+
+/**
+ * 取得紀錄中某一隊的球員 id。
+ * 新紀錄直接存 id；舊紀錄只有名字，同一局內名字唯一，可用名字對回球員。
+ */
+function resolveTeam(entry, side) {
+  const ids = entry[`team${side}Ids`];
+  if (ids) return ids.filter((id) => getPlayer(id));
+  return entry[`team${side}`]
+    .map((name) => state.players.find((p) => p.name === name))
+    .filter(Boolean)
+    .map((p) => p.id);
+}
+
+/**
+ * 刪除一筆已完成的紀錄，並回退它對權重的影響（場數、配對、連等、累計等待）。
+ */
+function deleteHistory(matchNo) {
+  const index = state.history.findIndex((h) => h.no === matchNo);
+  if (index < 0) return false;
+  const entry = state.history[index];
+  const teamA = resolveTeam(entry, 'A');
+  const teamB = resolveTeam(entry, 'B');
+  teamA.concat(teamB).forEach((id) => {
+    const p = getPlayer(id);
+    p.played = Math.max(0, p.played - 1);
+  });
+  updatePairs(teamA, teamB, -1);
+  revertWaits(entry, teamA.concat(teamB));
+  state.history.splice(index, 1);
+  return true;
+}
+
+/**
+ * 刪除全部歷史紀錄，逐筆回退場數、配對與等待。
+ * 必須由新到舊刪除：回退連等時需要還原「上一次上場的流水號」，順序反了會判斷錯誤。
+ * 場上進行中的比賽與球員名單不受影響。
+ */
+function deleteAllHistory() {
+  const count = state.history.length;
+  state.history.map((h) => h.no).forEach((no) => deleteHistory(no));
+  ui.historyFilter = '';
+  ui.historyExpanded = false;
+  return count;
+}
+
+/* 以「歷史紀錄 + 場上進行中的比賽」為唯一依據，推算每人應有的場數 */
+function expectedPlayed() {
+  const counts = {};
+  state.players.forEach((p) => { counts[p.id] = 0; });
+  const add = (id) => { if (id in counts) counts[id] += 1; };
+  state.history.forEach((entry) => {
+    resolveTeam(entry, 'A').concat(resolveTeam(entry, 'B')).forEach(add);
+  });
+  state.courts.forEach((court) => {
+    if (court.match) court.match.teamA.concat(court.match.teamB).forEach(add);
+  });
+  return counts;
+}
+
+function isPlayedConsistent() {
+  const expected = expectedPlayed();
+  return state.players.every((p) => p.played === expected[p.id]);
+}
+
+/* 依歷史紀錄重建場數與配對；補償值（offset）與等待輪數維持不變 */
+function rebuildFromHistory() {
+  const expected = expectedPlayed();
+  state.players.forEach((p) => { p.played = expected[p.id]; });
+  state.pairs = {};
+  state.history.forEach((entry) => {
+    updatePairs(resolveTeam(entry, 'A'), resolveTeam(entry, 'B'), 1);
+  });
+  state.courts.forEach((court) => {
+    if (court.match) updatePairs(court.match.teamA, court.match.teamB, 1);
+  });
+}
+
+function fillCourt(courtIndex, countWait = true) {
+  const needTotal = TEAM_SIZE[state.mode] * 2;
+  const match = pickMatch(needTotal);
+  if (!match) {
+    showToast(`可上場人數不足，${MODE_LABEL[state.mode]}需要 ${needTotal} 人`);
+    return false;
+  }
+  commitMatch(courtIndex, match.teamA, match.teamB, false, countWait);
+  return true;
+}
+
+function fillAllEmpty() {
+  const isOpening = state.startSeq === 0;   // 整局還沒開過任何一場
+  for (let i = 0; i < state.courts.length; i += 1) {
+    if (!state.courts[i].match && !fillCourt(i, !isOpening)) break;
+  }
+}
+
+function endMatch(courtIndex) {
+  const match = state.courts[courtIndex].match;
+  if (!match) return;
+  recordHistory(courtIndex, match);
+  state.courts[courtIndex].match = null;
+  if (state.autoFill) fillCourt(courtIndex);
+}
+
+/* ===================== 球員管理 ===================== */
+function addPlayers(names) {
+  const existing = new Set(state.players.map((p) => p.name));
+  const baseline = averageEffective(null);
+  const benchBaseline = averageOf(effectiveBenched, null);
+  let added = 0;
+  names.forEach((name) => {
+    if (existing.has(name)) return;
+    state.players.push({
+      id: state.nextId++, name, played: 0,
+      offset: state.players.length ? baseline : 0,
+      benched: 0,
+      lastStartSeq: 0,
+      benchOffset: state.players.length ? benchBaseline : 0,
+      wait: 0, active: true,
+    });
+    existing.add(name);
+    added += 1;
+  });
+  return added;
+}
+
+function toggleActive(id) {
+  const p = getPlayer(id);
+  if (!p) return;
+  if (p.active) {
+    p.active = false;
+    return;
+  }
+  const avg = averageEffective(id);
+  p.offset += Math.max(0, avg - effectivePlayed(p));
+  p.benchOffset += Math.max(0, averageOf(effectiveBenched, id) - effectiveBenched(p));
+  p.wait = 0;
+  p.active = true;
+}
+
+function removePlayer(id) {
+  if (onCourtIds().has(id)) {
+    showToast('場上的球員需先結束或取消該場');
+    return;
+  }
+  state.players = state.players.filter((p) => p.id !== id);
+}
+
+function setCourtCount(count) {
+  const target = Math.max(1, Math.min(MAX_COURTS, count));
+  while (state.courts.length < target) state.courts.push({ match: null });
+  if (state.courts.length > target) {
+    if (state.courts.slice(target).some((c) => c.match)) {
+      showToast('要減少的場地還在比賽，請先結束');
+      return;
+    }
+    state.courts = state.courts.slice(0, target);
+  }
+}
+
+/* ===================== 畫面：共用 ===================== */
+function renderStorageBanner() {
+  if (!ui.storageFailed) return '';
+  return `<div class="banner" role="status">
+    <span>瀏覽器無法儲存資料（可能是無痕模式或容量已滿），關閉前請先備份。</span>
+    <button class="btn-tape" data-action="backup-open">備份</button>
+  </div>`;
+}
+
+function renderUpdateFooter() {
+  const action = isEmbedded()
+    ? '<span>（預覽模式，強制更新請在 GitHub 網址使用）</span>'
+    : '<button class="btn-ghost" data-action="force-update">強制更新</button>';
+  return `<div style="margin-top:12px;text-align:center" class="sub num">
+    目前版本 v${APP_VERSION} ${action}
+  </div>`;
+}
+
+function renderModeSeg(current, action) {
+  return `<div class="seg" role="group" aria-label="賽制">
+    ${['doubles', 'singles'].map((m) => `
+      <button data-action="${action}" data-mode="${m}" aria-pressed="${current === m}">${MODE_LABEL[m]}</button>`).join('')}
+  </div>`;
+}
+
+/* ===================== 畫面：開始設定 ===================== */
+function renderRegularPicker() {
+  if (!regulars.length) {
+    return '<p class="sub">還沒有常用球員。下方輸入的新名字可以一併存進常用名單。</p>';
+  }
+  const chips = regulars.map((name) => {
+    if (ui.editRegulars) {
+      return `<button class="chip removable" data-action="regular-delete" data-name="${escapeHtml(name)}"
+        aria-label="從常用名單刪除 ${escapeHtml(name)}">${escapeHtml(name)} ✕</button>`;
+    }
+    return `<button class="chip" data-action="setup-toggle" data-name="${escapeHtml(name)}"
+      aria-pressed="${ui.setupSelected.has(name)}">${escapeHtml(name)}</button>`;
+  }).join('');
+
+  return `
+    <div class="section-head">
+      <span class="label">常用球員（今天有來的點一下）</span>
+      <span>
+        ${ui.editRegulars ? '' : '<button class="btn-ghost" data-action="setup-select-all">全選</button>'}
+        <button class="btn-ghost" data-action="regular-edit">${ui.editRegulars ? '完成' : '編輯'}</button>
+      </span>
+    </div>
+    <div class="chips" style="margin:6px 0 16px">${chips}</div>`;
+}
+
+function renderSetup() {
+  const total = new Set([...ui.setupSelected, ...parseNames(ui.setupText)]).size;
+  return `
+    <h1>羽球輪轉排場</h1>
+    <p class="sub">選出今天來的人，系統會依場數與配對紀錄自動輪轉。</p>
+    ${renderStorageBanner()}
+    <div class="panel">
+      ${renderRegularPicker()}
+      <label for="names" class="label">其他球員（換行或逗號分隔）</label>
+      <textarea id="names" placeholder="小明&#10;阿華">${escapeHtml(ui.setupText)}</textarea>
+      <label class="row" style="margin-top:8px;font-size:14px">
+        <input type="checkbox" id="save-new" ${ui.setupSaveNew ? 'checked' : ''}>
+        新名字存進常用名單
+      </label>
+      <div class="row" style="margin-top:14px">
+        <span class="label">賽制</span>
+        ${renderModeSeg(ui.setupMode, 'setup-mode')}
+      </div>
+      <div class="row">
+        <span class="label">場地數</span>
+        <div class="stepper">
+          <button data-action="setup-court-dec" aria-label="減少場地">−</button>
+          <span class="num">${ui.setupCourts}</span>
+          <button data-action="setup-court-inc" aria-label="增加場地">＋</button>
+        </div>
+      </div>
+      <button class="btn-primary btn-block" style="margin-top:18px" data-action="start">
+        開始排場（<span id="setup-total" class="num">${total}</span> 人）
+      </button>
+    </div>
+    <div style="margin-top:20px;text-align:center">
+      <button class="btn-ghost" data-action="backup-open">備份與還原</button>
+    </div>
+    ${renderUpdateFooter()}`;
+}
+
+/* ===================== 畫面：排場中 ===================== */
+/**
+ * 這場開打後，其他場地已經開了幾場新比賽。
+ * 數量明顯偏多時，多半是這個場地忘了按「結束」。
+ */
+function matchesStartedSince(match) {
+  return typeof match.seq === 'number' ? state.startSeq - match.seq : 0;
+}
+
+function staleThreshold() {
+  return Math.max(3, 3 * (state.courts.length - 1));
+}
+
+function renderCourt(court, index) {
+  const since = court.match ? matchesStartedSince(court.match) : 0;
+  const alert = since >= staleThreshold()
+    ? `<div class="court-alert" role="status">其他場地已開了 ${since} 場，這場是否忘了按結束？</div>`
+    : '';
+  const title = `<div class="court-head">
+      <span class="court-name">第 ${index + 1} 場地</span>
+      <span class="court-meta">${court.match
+        ? `${court.match.isManual ? '手動' : '自動'}・${formatTime(court.match.startedAt)} 開始`
+        : '空場'}</span>
+    </div>${alert}`;
+
+  if (!court.match) {
+    return `<div class="court">${title}
+      <div class="court-empty">等待排場</div>
+      <div class="court-actions">
+        <button class="btn-tape" data-action="fill-court" data-court="${index}">自動排</button>
+        <button data-action="manual-open" data-court="${index}">手動排</button>
+      </div></div>`;
+  }
+
+  const half = (team) => `<div class="half">${team.map((id) => `<span>${escapeHtml(playerName(id))}</span>`).join('')}</div>`;
+  return `<div class="court">${title}
+    <div class="court-lines">${half(court.match.teamA)}${half(court.match.teamB)}</div>
+    <div class="court-actions">
+      <button class="btn-tape" data-action="end-match" data-court="${index}">結束這場</button>
+      <button class="btn-ghost" data-action="cancel-match" data-court="${index}">取消</button>
+    </div></div>`;
+}
+
+function renderRestingList() {
+  const resting = state.players.filter((p) => !p.active);
+  if (!resting.length) return '';
+  return `<p class="resting-list"><span class="badge badge-rest">休息中</span>${resting.map((p) => escapeHtml(p.name)).join('、')}</p>`;
+}
+
+function renderWaiting() {
+  const needTotal = TEAM_SIZE[state.mode] * 2;
+  const ranked = rankPlayersStable(availablePlayers());
+  if (!ranked.length) return `<p class="sub">目前沒有在等待的球員。</p>${renderRestingList()}`;
+  const chips = ranked.map((p, index) => {
+    const cls = index < needTotal ? 'chip chip-next' : 'chip chip-wait';
+    const waitNote = `<small>已等 ${p.benched}</small>`;
+    return `<span class="${cls}">${escapeHtml(p.name)}${waitNote}</span>`;
+  }).join('');
+  return `<p class="sub num" style="margin:-4px 0 8px">共 ${ranked.length} 人，黃框為優先上場（實際組合會再考慮配對）。
+    「已等」為今晚累計等待場數；連續等待達 ${waitLimit(needTotal)} 場會強制排上場。</p>
+    <div class="chips">${chips}</div>
+    ${renderRestingList()}`;
+}
+
+function renderRegularQuickAdd() {
+  const present = new Set(state.players.map((p) => p.name));
+  const absent = regulars.filter((name) => !present.has(name));
+  if (!absent.length) return '';
+  return `<p class="label" style="margin:0 0 6px">常用球員（點一下加入）</p>
+    <div class="chips" style="margin-bottom:12px">
+      ${absent.map((name) => `<button class="chip" data-action="quick-add" data-name="${escapeHtml(name)}">＋ ${escapeHtml(name)}</button>`).join('')}
+    </div>`;
+}
+
+function renderRoster() {
+  const busy = onCourtIds();
+  const rows = state.players.map((p) => {
+    let status = '<span class="badge badge-wait">等待</span>';
+    if (!p.active) status = '<span class="badge badge-rest">休息中</span>';
+    else if (busy.has(p.id)) status = '<span class="badge badge-court">場上</span>';
+    const starred = isRegular(p.name);
+    return `<tr class="${p.active ? '' : 'resting'}">
+      <td>
+        <button class="star" data-action="toggle-regular" data-name="${escapeHtml(p.name)}"
+          aria-pressed="${starred}" aria-label="${starred ? '移出' : '加入'}常用名單">${starred ? '★' : '☆'}</button>
+        <span class="name">${escapeHtml(p.name)}</span>
+      </td>
+      <td class="num">${p.played}</td>
+      <td class="num">${p.benched}</td>
+      <td>${status}</td>
+      <td class="actions">
+        <button class="${p.active ? '' : 'btn-return'}" data-action="toggle-active" data-id="${p.id}">${p.active ? '休息' : '回來'}</button>
+        <button data-action="remove-player" data-id="${p.id}" aria-label="移除 ${escapeHtml(p.name)}">移除</button>
+      </td></tr>`;
+  }).join('');
+  return `<table>
+    <thead><tr><th>球員（★ 常用）</th><th>場數</th><th>累計等</th><th>狀態</th><th></th></tr></thead>
+    <tbody>${rows}</tbody></table>`;
+}
+
+function renderConsistencyBanner() {
+  if (!state.players.length || isPlayedConsistent()) return '';
+  return `<div class="banner" role="status">
+    <span>球員場數和歷史紀錄對不上（可能刪過舊版紀錄）。可依目前的歷史紀錄與場上比賽重新計算。</span>
+    <button class="btn-tape" data-action="rebuild">重新計算</button>
+  </div>`;
+}
+
+function renderHistory() {
+  if (!state.history.length) {
+    return `${renderConsistencyBanner()}<p class="sub">打完第一場後，紀錄會出現在這裡。</p>`;
+  }
+  const filter = ui.historyFilter;
+  const filtered = filter
+    ? state.history.filter((h) => h.teamA.includes(filter) || h.teamB.includes(filter))
+    : state.history;
+  const shown = ui.historyExpanded ? filtered : filtered.slice(0, HISTORY_PREVIEW);
+  const names = Array.from(new Set(state.history.flatMap((h) => h.teamA.concat(h.teamB))));
+
+  const items = shown.map((h) => {
+    const minutes = Math.max(1, Math.round((h.endedAt - h.startedAt) / 60000));
+    return `<li class="history-item">
+      <button class="history-delete ${ui.deleteArmedNo === h.no ? 'armed' : ''}"
+        data-action="history-delete" data-no="${h.no}"
+        aria-label="刪除第 ${h.no} 場紀錄">${ui.deleteArmedNo === h.no ? '確認刪除' : '刪除'}</button>
+      <div class="meta num">#${h.no}・第 ${h.court} 場地・${MODE_LABEL[h.mode]}${h.isManual ? '・手動' : ''}・
+        ${formatTime(h.startedAt)}–${formatTime(h.endedAt)}（${minutes} 分）</div>
+      <div class="teams">${h.teamA.map(escapeHtml).join('、')}<span class="vs">vs</span>${h.teamB.map(escapeHtml).join('、')}</div>
+    </li>`;
+  }).join('');
+
+  const more = filtered.length > HISTORY_PREVIEW
+    ? `<button class="btn-ghost btn-block" data-action="history-toggle">
+        ${ui.historyExpanded ? '收合' : `顯示全部 ${filtered.length} 場`}</button>`
+    : '';
+
+  return `
+    ${renderConsistencyBanner()}
+    <div class="row" style="margin-bottom:10px">
+      <label for="history-filter" class="label">篩選球員</label>
+      <select id="history-filter">
+        <option value="">全部</option>
+        ${names.map((n) => `<option value="${escapeHtml(n)}" ${n === filter ? 'selected' : ''}>${escapeHtml(n)}</option>`).join('')}
+      </select>
+      ${filter ? `<span class="sub num" style="margin:0">共 ${filtered.length} 場</span>` : ''}
+    </div>
+    ${filtered.length ? `<ul class="history">${items}</ul>` : '<p class="sub">這位球員還沒有完成的場次。</p>'}
+    ${more}
+    <div style="margin-top:10px;text-align:right">
+      <button class="${ui.clearHistoryArmed ? 'btn-danger' : 'btn-ghost'}" data-action="history-clear">
+        ${ui.clearHistoryArmed
+          ? `再按一次，刪除全部 ${state.history.length} 場並回退場數與等待`
+          : `全部刪除（${state.history.length} 場）`}
+      </button>
+    </div>`;
+}
+
+function renderMain() {
+  return `
+    <h1>羽球輪轉排場</h1>
+    <p class="sub num">${state.players.filter((p) => p.active).length} 人在場館，已完成 ${state.history.length} 場</p>
+    ${renderStorageBanner()}
+
+    <div class="panel">
+      <div class="row">
+        <span class="label">賽制</span>
+        ${renderModeSeg(state.mode, 'set-mode')}
+      </div>
+      <div class="row">
+        <span class="label">場地數</span>
+        <div class="stepper">
+          <button data-action="court-dec" aria-label="減少場地">−</button>
+          <span class="num">${state.courts.length}</span>
+          <button data-action="court-inc" aria-label="增加場地">＋</button>
+        </div>
+      </div>
+      <div class="row">
+        <span class="label">公平偏好</span>
+        <div class="seg" role="group" aria-label="公平偏好">
+          ${Object.keys(FAIRNESS_LABEL).map((key) => `
+            <button data-action="set-fairness" data-value="${key}" aria-pressed="${state.fairness === key}">${FAIRNESS_LABEL[key]}</button>`).join('')}
+        </div>
+      </div>
+      <div class="row">
+        <span class="label">結束後</span>
+        <div class="seg" role="group" aria-label="結束後動作">
+          <button data-action="set-auto" data-value="1" aria-pressed="${state.autoFill}">自動排下一場</button>
+          <button data-action="set-auto" data-value="0" aria-pressed="${!state.autoFill}">留空</button>
+        </div>
+      </div>
+    </div>
+
+    <h2>場地</h2>
+    <div class="courts">${state.courts.map(renderCourt).join('')}</div>
+    ${state.courts.some((c) => !c.match)
+      ? '<button class="btn-primary btn-block" style="margin-top:12px" data-action="fill-all">填滿所有空場</button>' : ''}
+
+    <h2>場下等待</h2>
+    ${renderWaiting()}
+
+    <h2>球員</h2>
+    ${renderRegularQuickAdd()}
+    <div class="row" style="margin-bottom:10px">
+      <input type="text" id="add-names" placeholder="新增球員，可用逗號分隔" style="flex:1" value="${escapeHtml(ui.addText)}">
+      <button class="btn-primary" data-action="add-players">新增</button>
+    </div>
+    ${renderRoster()}
+
+    <h2>歷史紀錄</h2>
+    ${renderHistory()}
+
+    <div style="margin-top:28px;text-align:center">
+      <button class="btn-ghost" data-action="backup-open">備份與還原</button>
+      <button class="${ui.resetArmed ? 'btn-danger' : 'btn-ghost'}" data-action="reset">
+        ${ui.resetArmed ? '再按一次確認（常用球員會保留）' : '清除排場紀錄，開新球局'}
+      </button>
+    </div>
+    ${renderUpdateFooter()}`;
+}
+
+/* ===================== 畫面：彈出視窗 ===================== */
+function renderManualModal() {
+  const size = TEAM_SIZE[state.mode];
+  const players = rankPlayersStable(availablePlayers());
+  const sides = ui.manual.sides;
+  const countA = Object.values(sides).filter((s) => s === 'A').length;
+  const countB = Object.values(sides).filter((s) => s === 'B').length;
+
+  const rows = players.map((p) => `
+    <div class="pick-row">
+      <span class="who">${escapeHtml(p.name)}<small class="num">${p.played} 場・等 ${p.wait}</small></span>
+      <span class="side-btns">
+        <button data-action="manual-side" data-id="${p.id}" data-side="A" aria-pressed="${sides[p.id] === 'A'}">A</button>
+        <button data-action="manual-side" data-id="${p.id}" data-side="B" aria-pressed="${sides[p.id] === 'B'}">B</button>
+      </span>
+    </div>`).join('');
+
+  return `
+    <h3>第 ${ui.manual.courtIndex + 1} 場地・手動排場</h3>
+    <p class="sub num">${MODE_LABEL[state.mode]}：A 隊 ${countA}/${size}，B 隊 ${countB}/${size}。
+      只選人不分隊也可以，按「依紀錄分隊」。</p>
+    ${rows || '<p class="sub">沒有可上場的球員。</p>'}
+    <div class="modal-foot">
+      <button data-action="manual-auto-split">依紀錄分隊</button>
+      <button class="btn-primary" data-action="manual-confirm">確認上場</button>
+    </div>
+    <button class="btn-ghost btn-block" data-action="modal-close">關閉</button>`;
+}
+
+function renderBackupModal() {
+  return `
+    <h3>備份與還原</h3>
+    <p class="sub">備份包含今天的場次、歷史紀錄與常用球員。複製下方文字存到備忘錄；要還原時貼回來再按「還原」。</p>
+    <textarea id="backup-text" style="min-height:160px;font-size:12px">${escapeHtml(ui.backup.text)}</textarea>
+    <div class="modal-foot">
+      <button data-action="backup-copy">複製</button>
+      <button class="btn-primary" data-action="backup-restore">還原</button>
+    </div>
+    <button class="btn-ghost btn-block" data-action="modal-close">關閉</button>`;
+}
+
+function renderModal() {
+  const root = document.getElementById('modal-root');
+  const previous = root.querySelector('.modal');
+  const scrollTop = previous ? previous.scrollTop : 0;
+
+  let content = '';
+  if (ui.manual) content = renderManualModal();
+  else if (ui.backup) content = renderBackupModal();
+
+  // 只有第一次開啟才播放進場動畫，之後的更新不重播
+  const enterClass = previous ? '' : ' modal-enter';
+  root.innerHTML = content
+    ? `<div class="modal-bg" data-action="modal-close">
+        <div class="modal${enterClass}" role="dialog" aria-modal="true">${content}</div></div>`
+    : '';
+
+  const current = root.querySelector('.modal');
+  if (current && previous) current.scrollTop = scrollTop;
+  document.body.classList.toggle('modal-open', Boolean(content));
+}
+
+function render() {
+  document.getElementById('app').innerHTML = state.players.length ? renderMain() : renderSetup();
+  renderModal();
+}
+
+let toastTimer = null;
+function showToast(message) {
+  const root = document.getElementById('toast-root');
+  root.innerHTML = `<div class="toast" role="status">${escapeHtml(message)}</div>`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { root.innerHTML = ''; }, 2600);
+}
+
+/* ===================== 手動排場 ===================== */
+function manualAutoSplit() {
+  const needTotal = TEAM_SIZE[state.mode] * 2;
+  const ids = Object.keys(ui.manual.sides).map(Number);
+  if (ids.length !== needTotal) {
+    showToast(`請先選 ${needTotal} 人（按 A 或 B 皆可）`);
+    return;
+  }
+  const split = bestSplit(ids);
+  const sides = {};
+  split.teamA.forEach((id) => { sides[id] = 'A'; });
+  split.teamB.forEach((id) => { sides[id] = 'B'; });
+  ui.manual.sides = sides;
+}
+
+function manualConfirm() {
+  const size = TEAM_SIZE[state.mode];
+  const entries = Object.entries(ui.manual.sides);
+  const teamA = entries.filter(([, s]) => s === 'A').map(([id]) => Number(id));
+  const teamB = entries.filter(([, s]) => s === 'B').map(([id]) => Number(id));
+  if (teamA.length !== size || teamB.length !== size) {
+    showToast(`每隊需要 ${size} 人`);
+    return false;
+  }
+  commitMatch(ui.manual.courtIndex, teamA, teamB, true);
+  return true;
+}
+
+/* ===================== 強制更新 ===================== */
+/**
+ * 1. 先寫入尚未儲存的資料（localStorage 以網域為單位，網址加參數不影響資料）
+ * 2. 以 cache: 'reload' 重新下載原網址，順便更新瀏覽器對原網址的快取（主畫面 app 下次開啟用得到）
+ * 3. 以帶時間戳的網址重新載入，繞過瀏覽器與 GitHub CDN 的快取
+ */
+// 在 Claude 等預覽環境中，頁面被包在 iframe 裡，網址帶有預覽專用參數，不能自行導向
+function isEmbedded() {
+  try {
+    return window.self !== window.top;
+  } catch (err) {
+    return true;   // 跨網域無法讀取 top，同樣視為內嵌
+  }
+}
+
+async function forceUpdate() {
+  if (isEmbedded()) {
+    showToast('預覽模式無法更新，請用 GitHub 網址開啟');
+    return;
+  }
+  flushSaves();
+  showToast('正在下載最新版…');
+
+  // 保留原網址的路徑、其他參數與錨點，只替換 v 參數
+  const url = new URL(window.location.href);
+  url.searchParams.delete('v');
+  try {
+    await fetch(url.toString(), { cache: 'reload' });
+  } catch (err) {
+    console.warn('預先下載失敗，直接重新載入:', err);
+  }
+  url.searchParams.set('v', String(Date.now()));
+  window.location.replace(url.toString());
+}
+
+/* ===================== 事件 ===================== */
+function startSession() {
+  const typed = parseNames(ui.setupText);
+  const names = Array.from(new Set([...regulars.filter((n) => ui.setupSelected.has(n)), ...typed]));
+  const needTotal = TEAM_SIZE[ui.setupMode] * 2;
+  if (names.length < needTotal) {
+    showToast(`${MODE_LABEL[ui.setupMode]}至少需要 ${needTotal} 人`);
+    return false;
+  }
+  if (ui.setupSaveNew) addRegulars(typed);
+  state = createDefaultState();
+  state.mode = ui.setupMode;
+  state.courts = Array.from({ length: ui.setupCourts }, () => ({ match: null }));
+  addPlayers(names);
+  fillAllEmpty();
+  ui.setupText = '';
+  ui.setupSelected.clear();
+  return true;
+}
+
+/**
+ * 開新球局：清除場地、場數、配對與歷史，常用球員（regulars）不受影響。
+ * 上一局的名單與設定會帶入開始畫面，方便同一批人再開一局。
+ */
+function startNewDay() {
+  const lastNames = state.players.map((p) => p.name);
+  ui.setupMode = state.mode;
+  ui.setupCourts = state.courts.length;
+  ui.setupSelected = new Set(lastNames.filter(isRegular));
+  ui.setupText = lastNames.filter((n) => !isRegular(n)).join('\n');
+  ui.historyFilter = '';
+  ui.historyExpanded = false;
+  ui.manual = null;
+  state = createDefaultState();
+}
+
+function handleAction(el) {
+  const action = el.dataset.action;
+  const court = Number(el.dataset.court);
+  const id = Number(el.dataset.id);
+  const name = el.dataset.name;
+  let sessionChanged = true;
+  let modalOnly = false;   // 只影響彈窗內容的操作，不重畫整頁，避免畫面跳動
+
+  if (action !== 'reset') ui.resetArmed = false;
+  if (action !== 'history-delete') ui.deleteArmedNo = null;
+  if (action !== 'history-clear') ui.clearHistoryArmed = false;
+
+  switch (action) {
+    /* 開始設定 */
+    case 'setup-mode': ui.setupMode = el.dataset.mode; sessionChanged = false; break;
+    case 'setup-court-inc': ui.setupCourts = Math.min(MAX_COURTS, ui.setupCourts + 1); sessionChanged = false; break;
+    case 'setup-court-dec': ui.setupCourts = Math.max(1, ui.setupCourts - 1); sessionChanged = false; break;
+    case 'setup-toggle':
+      if (ui.setupSelected.has(name)) ui.setupSelected.delete(name);
+      else ui.setupSelected.add(name);
+      sessionChanged = false;
+      break;
+    case 'setup-select-all':
+      if (ui.setupSelected.size === regulars.length) ui.setupSelected.clear();
+      else regulars.forEach((n) => ui.setupSelected.add(n));
+      sessionChanged = false;
+      break;
+    case 'regular-edit': ui.editRegulars = !ui.editRegulars; sessionChanged = false; break;
+    case 'regular-delete': removeRegular(name); sessionChanged = false; break;
+    case 'start': if (!startSession()) return; break;
+
+    /* 排場 */
+    case 'set-mode': state.mode = el.dataset.mode; break;
+    case 'set-auto': state.autoFill = el.dataset.value === '1'; break;
+    case 'set-fairness': state.fairness = el.dataset.value; break;
+    case 'court-inc': setCourtCount(state.courts.length + 1); break;
+    case 'court-dec': setCourtCount(state.courts.length - 1); break;
+    case 'fill-court': fillCourt(court); break;
+    case 'fill-all': fillAllEmpty(); break;
+    case 'end-match': endMatch(court); break;
+    case 'cancel-match': cancelMatch(court); break;
+
+    /* 球員 */
+    case 'toggle-active': toggleActive(id); break;
+    case 'remove-player': removePlayer(id); break;
+    case 'toggle-regular': toggleRegular(name); sessionChanged = false; break;
+    case 'quick-add': addPlayers([name]); showToast(`已加入 ${name}`); break;
+    case 'add-players': {
+      const added = addPlayers(parseNames(ui.addText));
+      showToast(added ? `已新增 ${added} 人` : '沒有新名字（重複的名字會略過）');
+      if (added) ui.addText = '';
+      break;
+    }
+
+    /* 刪除紀錄：沒有復原功能，改為按兩次確認 */
+    case 'history-delete': {
+      const matchNo = Number(el.dataset.no);
+      if (ui.deleteArmedNo !== matchNo) {
+        ui.deleteArmedNo = matchNo;
+        sessionChanged = false;
+        setTimeout(() => {
+          if (ui.deleteArmedNo === matchNo) {
+            ui.deleteArmedNo = null;
+            render();
+          }
+        }, 3000);
+        break;
+      }
+      ui.deleteArmedNo = null;
+      if (deleteHistory(matchNo)) showToast('已刪除紀錄，場數、等待與配對已回退');
+      break;
+    }
+
+    case 'rebuild':
+      rebuildFromHistory();
+      showToast('已依歷史紀錄重新計算場數與配對');
+      break;
+
+    case 'history-clear':
+      if (!ui.clearHistoryArmed) {
+        ui.clearHistoryArmed = true;
+        sessionChanged = false;
+        setTimeout(() => {
+          if (ui.clearHistoryArmed) {
+            ui.clearHistoryArmed = false;
+            render();
+          }
+        }, 3000);
+        break;
+      }
+      ui.clearHistoryArmed = false;
+      showToast(`已刪除 ${deleteAllHistory()} 場紀錄，場數、等待與配對已回退`);
+      break;
+
+    /* 歷史 */
+    case 'history-toggle': ui.historyExpanded = !ui.historyExpanded; sessionChanged = false; break;
+
+    /* 手動排場 */
+    case 'manual-open': ui.manual = { courtIndex: court, sides: {} }; sessionChanged = false; break;
+    case 'manual-side': {
+      const side = el.dataset.side;
+      if (ui.manual.sides[id] === side) delete ui.manual.sides[id];
+      else ui.manual.sides[id] = side;
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    }
+    case 'manual-auto-split':
+      manualAutoSplit();
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    case 'manual-confirm':
+      if (!manualConfirm()) return;
+      ui.manual = null;
+      break;
+
+    /* 備份 */
+    case 'backup-open': ui.backup = { text: buildBackup() }; sessionChanged = false; break;
+    case 'backup-copy': {
+      const area = document.getElementById('backup-text');
+      area.select();
+      const done = () => showToast('已複製');
+      if (navigator.clipboard) navigator.clipboard.writeText(area.value).then(done, () => showToast('請長按文字手動複製'));
+      else showToast('請長按文字手動複製');
+      return;
+    }
+    case 'backup-restore':
+      try {
+        restoreBackup(document.getElementById('backup-text').value);
+        saveRegulars();
+        ui.backup = null;
+        showToast('已還原');
+      } catch (err) {
+        showToast(`還原失敗：${err.message}`);
+        return;
+      }
+      break;
+    case 'force-update':
+      forceUpdate();
+      return;
+    case 'modal-close': ui.manual = null; ui.backup = null; sessionChanged = false; break;
+
+    case 'reset':
+      if (!ui.resetArmed) {
+        ui.resetArmed = true;
+        sessionChanged = false;
+        setTimeout(() => { ui.resetArmed = false; render(); }, 3000);
+      } else {
+        ui.resetArmed = false;
+        startNewDay();
+        showToast('已清除排場紀錄，常用球員已保留');
+      }
+      break;
+    default:
+      return;
+  }
+
+  if (sessionChanged) saveSession();
+  if (modalOnly) renderModal();
+  else render();
+}
+
+document.addEventListener('click', (event) => {
+  const el = event.target.closest('[data-action]');
+  if (!el) return;
+  // 只有直接點到 modal 背景才關閉；modal 內部非按鈕區域的點擊會冒泡到背景，需略過
+  if (el.classList.contains('modal-bg') && event.target !== el) return;
+  handleAction(el);
+});
+
+// 輸入框內容存進 ui，避免重新渲染時被清掉
+document.addEventListener('input', (event) => {
+  const { id, value } = event.target;
+  if (id === 'names') {
+    ui.setupText = value;
+    const total = new Set([...ui.setupSelected, ...parseNames(value)]).size;
+    const counter = document.getElementById('setup-total');
+    if (counter) counter.textContent = total;
+  } else if (id === 'add-names') {
+    ui.addText = value;
+  }
+});
+
+document.addEventListener('change', (event) => {
+  const { id } = event.target;
+  if (id === 'save-new') {
+    ui.setupSaveNew = event.target.checked;
+  } else if (id === 'history-filter') {
+    ui.historyFilter = event.target.value;
+    ui.historyExpanded = false;
+    render();
+  }
+});
+
+loadAll();
+render();
+</script>
+</body>
+</html>
