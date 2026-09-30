@@ -177,6 +177,16 @@
   .side-btns button { width: 44px; margin-left: 6px; background: var(--floor); font-weight: 700; }
   .side-btns button[aria-pressed="true"] { background: var(--court-dark); color: var(--line); }
   .modal-foot { display: flex; gap: 8px; margin-top: 14px; }
+  .modal-foot button:disabled { opacity: 0.4; cursor: default; }
+  .result-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .result-grid button { padding: 16px 8px; font-size: 18px; font-weight: 600; background: var(--floor); }
+  .result-grid button[aria-pressed="true"] { background: var(--court-dark); color: var(--line); }
+  .win-tag { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: var(--radius-s);
+    background: var(--tape); color: var(--ink); font-size: 12px; font-weight: 700; }
+  .swap-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: var(--radius-s);
+    background: var(--floor); color: var(--muted); font-size: 12px; white-space: nowrap; vertical-align: middle; }
+  .history-result { margin-top: 6px; padding: 3px 10px; font-size: 13px; background: var(--floor); }
+  .stats td.rate { font-weight: 700; }
   .modal-foot button { flex: 1; padding: 12px; }
 
   .toast {
@@ -203,11 +213,12 @@ const STORAGE_KEYS = {
   session: 'badminton-session',
   regulars: 'badminton-regulars',
 };
-const APP_VERSION = '2.5';   // 每次修改程式時更新，用來確認手機上是否為最新版
+const APP_VERSION = '2.8';   // 每次修改程式時更新，用來確認手機上是否為最新版
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
-const PARTNER_WEIGHT = 3;    // 重複同隊的懲罰
+const PARTNER_WEIGHT = 4;    // 重複同隊的懲罰（取次數平方：第 2 次 16、第 3 次 36，避免同一對一再搭檔）
+const GROUP_COUNT_WEIGHT = 40; // 同一批 4 人今晚每打過一次的懲罰（不限近期）
 const OPPONENT_WEIGHT = 1;   // 重複對戰的懲罰
 const WAIT_WEIGHT = 1;       // 連續等待的加分（取平方）；主要防呆由連等上限負責
 const BENCH_WEIGHT = 6;      // 累計等待的加分（與候選池最低值比較）：平衡的主要依據
@@ -220,6 +231,7 @@ const LEVEL_COST = 20;       // 為了避開重複組合，改排「優先級低
 const RECENT_GROUP_WEIGHT = 24;     // 同一批 4 人（不論怎麼分隊）
 const RECENT_PARTNER_WEIGHT = 12;   // 同一對搭檔
 const RECENT_OPPONENT_WEIGHT = 3;   // 同一對對手
+const RECENT_TOGETHER_WEIGHT = 30;  // 兩人近期同場過（不論搭檔或對手），每一對的懲罰：避免下一場又有 3 人相同
 const MAX_COURTS = 8;
 const HISTORY_LIMIT = 300;   // 歷史上限，避免儲存資料無限增長
 const HISTORY_PREVIEW = 10;
@@ -252,6 +264,7 @@ const ui = {
   editRegulars: false,
   addText: '',
   manual: null,
+  result: null,        // {kind: 'end' | 'history', courtIndex?, no?, selected: []}
   backup: null,
   historyFilter: '',
   historyExpanded: false,
@@ -551,7 +564,7 @@ function getRecency() {
   if (recencyCache.key === key) return recencyCache.value;
 
   const windowSize = state.courts.length * 2;
-  const value = { group: {}, partner: {}, opponent: {} };
+  const value = { group: {}, partner: {}, opponent: {}, together: {} };
   const keep = (map, k, w) => { map[k] = Math.max(map[k] || 0, w); };
   recentMatches().slice(0, windowSize).forEach((match, index) => {
     const weight = (windowSize - index) / windowSize;
@@ -560,6 +573,8 @@ function getRecency() {
       .forEach(([a, b]) => keep(value.partner, pairKey(a, b), weight));
     crossPairs(match.teamA, match.teamB)
       .forEach(([a, b]) => keep(value.opponent, pairKey(a, b), weight));
+    withinPairs(match.teamA.concat(match.teamB))
+      .forEach(([a, b]) => keep(value.together, pairKey(a, b), weight));
   });
   recencyCache = { key, value };
   return value;
@@ -574,13 +589,34 @@ function recencyPenalty(teamA, teamB) {
   crossPairs(teamA, teamB).forEach(([a, b]) => {
     penalty += RECENT_OPPONENT_WEIGHT * (recency.opponent[pairKey(a, b)] || 0);
   });
+  // 同場重疊：新組合中任兩人近期同場過就扣分。3 人相同 = 3 對、2 人相同 = 1 對
+  withinPairs(teamA.concat(teamB)).forEach(([a, b]) => {
+    penalty += RECENT_TOGETHER_WEIGHT * (recency.together[pairKey(a, b)] || 0);
+  });
   return penalty;
+}
+
+/* 今晚每一批 4 人（或單打 2 人）出現過幾次，由紀錄與場上比賽推算 */
+let groupCountCache = { key: null, value: null };
+
+function groupCounts() {
+  const newest = state.history[0];
+  const key = `${state.startSeq}|${state.history.length}|${newest ? newest.no : 0}`;
+  if (groupCountCache.key === key) return groupCountCache.value;
+  const value = {};
+  const add = (ids) => { const k = groupKey(ids); value[k] = (value[k] || 0) + 1; };
+  state.history.forEach((entry) => add(resolveTeam(entry, 'A').concat(resolveTeam(entry, 'B'))));
+  state.courts.forEach((court) => { if (court.match) add(court.match.teamA.concat(court.match.teamB)); });
+  groupCountCache = { key, value };
+  return value;
 }
 
 function matchPenalty(teamA, teamB) {
   let penalty = recencyPenalty(teamA, teamB);
+  penalty += GROUP_COUNT_WEIGHT * (groupCounts()[groupKey(teamA.concat(teamB))] || 0);
   withinPairs(teamA).concat(withinPairs(teamB)).forEach(([a, b]) => {
-    penalty += PARTNER_WEIGHT * pairStat(a, b).partner;
+    const times = pairStat(a, b).partner;
+    penalty += PARTNER_WEIGHT * times * times;
   });
   crossPairs(teamA, teamB).forEach(([a, b]) => {
     penalty += OPPONENT_WEIGHT * pairStat(a, b).opponent;
@@ -752,7 +788,61 @@ function cancelMatch(courtIndex) {
   revertWaits(Object.assign({ isOnCourt: true }, match), ids);
 }
 
-function recordHistory(courtIndex, match) {
+function sameMembers(a, b) {
+  return a.length === b.length && a.every((id) => b.includes(id));
+}
+
+/**
+ * 寫入或清除一筆紀錄的勝方。
+ * 以「實際勝出的人」為準：若勝方不等於排定的任一隊（中途換過隊友），
+ * 代表實際分隊不同，會一併修正紀錄中的隊伍與配對統計，讓之後避免重複組合時依據正確。
+ * @param {number[]|null} winnerIds 勝方球員 id；null 表示清除勝負
+ */
+function applyResult(entry, winnerIds) {
+  if (!entry.teamAIds || !entry.teamBIds) return false;   // 舊版紀錄沒有 id，無法記錄
+  if (!winnerIds) {
+    delete entry.winnerIds;
+    delete entry.winners;
+    return true;
+  }
+  const nameOf = {};
+  entry.teamAIds.forEach((id, i) => { nameOf[id] = entry.teamA[i]; });
+  entry.teamBIds.forEach((id, i) => { nameOf[id] = entry.teamB[i]; });
+  const all = entry.teamAIds.concat(entry.teamBIds);
+  const winners = winnerIds.filter((id) => all.includes(id));
+  const losers = all.filter((id) => !winners.includes(id));
+  if (winners.length !== losers.length) return false;
+
+  if (!sameMembers(winners, entry.teamAIds) && !sameMembers(winners, entry.teamBIds)) {
+    updatePairs(entry.teamAIds, entry.teamBIds, -1);
+    updatePairs(winners, losers, 1);
+    entry.teamAIds = winners.slice();
+    entry.teamBIds = losers.slice();
+    entry.teamA = winners.map((id) => nameOf[id]);
+    entry.teamB = losers.map((id) => nameOf[id]);
+    entry.swapped = true;
+  }
+  entry.winnerIds = winners.slice();
+  entry.winners = winners.map((id) => nameOf[id]);
+  return true;
+}
+
+/* 今日戰績：只由歷史紀錄推算，刪除紀錄或開新球局會自動更新 */
+function todayStats() {
+  const stats = {};
+  state.history.forEach((entry) => {
+    if (!entry.winners) return;
+    entry.teamA.concat(entry.teamB).forEach((name) => {
+      const row = stats[name] || (stats[name] = { name, wins: 0, games: 0 });
+      row.games += 1;
+      if (entry.winners.includes(name)) row.wins += 1;
+    });
+  });
+  return Object.values(stats).sort((a, b) =>
+    b.wins / b.games - a.wins / a.games || b.wins - a.wins || b.games - a.games);
+}
+
+function recordHistory(courtIndex, match, winnerIds = null) {
   state.finishedCount += 1;
   state.history.unshift({
     no: state.finishedCount,
@@ -770,6 +860,7 @@ function recordHistory(courtIndex, match) {
     startedAt: match.startedAt,
     endedAt: Date.now(),
   });
+  if (winnerIds) applyResult(state.history[0], winnerIds);
   if (state.history.length > HISTORY_LIMIT) state.history.length = HISTORY_LIMIT;
 }
 
@@ -868,10 +959,10 @@ function fillAllEmpty() {
   }
 }
 
-function endMatch(courtIndex) {
+function endMatch(courtIndex, winnerIds = null) {
   const match = state.courts[courtIndex].match;
   if (!match) return;
-  recordHistory(courtIndex, match);
+  recordHistory(courtIndex, match, winnerIds);
   state.courts[courtIndex].match = null;
   if (state.autoFill) fillCourt(courtIndex);
 }
@@ -1126,6 +1217,30 @@ function renderConsistencyBanner() {
   </div>`;
 }
 
+function renderHistoryTeams(h) {
+  const team = (names) => names.map(escapeHtml).join('、');
+  if (!h.winners) return `${team(h.teamA)}<span class="vs">vs</span>${team(h.teamB)}`;
+  const aWon = h.winners.every((n) => h.teamA.includes(n));
+  const winners = aWon ? h.teamA : h.teamB;
+  const losers = aWon ? h.teamB : h.teamA;
+  return `<span class="win-tag">勝</span><strong>${team(winners)}</strong>
+    <span class="vs">vs</span>${team(losers)}${h.swapped ? '<span class="swap-tag">換過隊友</span>' : ''}`;
+}
+
+function renderStats() {
+  const rows = todayStats();
+  if (!rows.length) return '<p class="sub">結束比賽時選出勝方，這裡會顯示今天的戰績。</p>';
+  return `<table class="stats">
+    <thead><tr><th>球員</th><th>勝</th><th>敗</th><th>勝率</th></tr></thead>
+    <tbody>${rows.map((r) => `<tr>
+      <td>${escapeHtml(r.name)}</td>
+      <td class="num">${r.wins}</td>
+      <td class="num">${r.games - r.wins}</td>
+      <td class="num rate">${Math.round((r.wins / r.games) * 100)}%</td>
+    </tr>`).join('')}</tbody></table>
+    <p class="sub" style="margin-top:6px">只計算有記錄勝負的場次；開新球局後重新計算。</p>`;
+}
+
 function renderHistory() {
   if (!state.history.length) {
     return `${renderConsistencyBanner()}<p class="sub">打完第一場後，紀錄會出現在這裡。</p>`;
@@ -1145,7 +1260,9 @@ function renderHistory() {
         aria-label="刪除第 ${h.no} 場紀錄">${ui.deleteArmedNo === h.no ? '確認刪除' : '刪除'}</button>
       <div class="meta num">#${h.no}・第 ${h.court} 場地・${MODE_LABEL[h.mode]}${h.isManual ? '・手動' : ''}・
         ${formatTime(h.startedAt)}–${formatTime(h.endedAt)}（${minutes} 分）</div>
-      <div class="teams">${h.teamA.map(escapeHtml).join('、')}<span class="vs">vs</span>${h.teamB.map(escapeHtml).join('、')}</div>
+      <div class="teams">${renderHistoryTeams(h)}</div>
+      ${h.teamAIds ? `<button class="history-result" data-action="history-result" data-no="${h.no}">
+        ${h.winners ? '修改勝負' : '補記勝負'}</button>` : ''}
     </li>`;
   }).join('');
 
@@ -1226,6 +1343,9 @@ function renderMain() {
     </div>
     ${renderRoster()}
 
+    <h2>今日戰績</h2>
+    ${renderStats()}
+
     <h2>歷史紀錄</h2>
     ${renderHistory()}
 
@@ -1267,6 +1387,62 @@ function renderManualModal() {
     <button class="btn-ghost btn-block" data-action="modal-close">關閉</button>`;
 }
 
+// 取得勝負彈窗要顯示的球員：結束中的比賽或某筆紀錄
+function resultContext() {
+  const r = ui.result;
+  if (r.kind === 'end') {
+    const match = state.courts[r.courtIndex].match;
+    if (!match) return null;
+    return {
+      title: `第 ${r.courtIndex + 1} 場地・選出勝方`,
+      teamA: match.teamA.map((id) => ({ id, name: playerName(id) })),
+      teamB: match.teamB.map((id) => ({ id, name: playerName(id) })),
+    };
+  }
+  const entry = state.history.find((h) => h.no === r.no);
+  if (!entry || !entry.teamAIds) return null;
+  return {
+    title: `#${entry.no}・${entry.winners ? '修改' : '補記'}勝負`,
+    teamA: entry.teamAIds.map((id, i) => ({ id, name: entry.teamA[i] })),
+    teamB: entry.teamBIds.map((id, i) => ({ id, name: entry.teamB[i] })),
+    hasResult: Boolean(entry.winners),
+  };
+}
+
+function renderResultModal() {
+  const ctx = resultContext();
+  if (!ctx) return '<p class="sub">這場比賽已不存在。</p><button class="btn-ghost btn-block" data-action="modal-close">關閉</button>';
+  const need = ctx.teamA.length;
+  const picked = ui.result.selected;
+  const players = ctx.teamA.concat(ctx.teamB);
+  const buttons = players.map((p) => `
+    <button data-action="result-toggle" data-id="${p.id}" aria-pressed="${picked.includes(p.id)}">
+      ${escapeHtml(p.name)}</button>`).join('');
+  const ready = picked.length === need;
+  const original = `${ctx.teamA.map((p) => escapeHtml(p.name)).join('、')}
+    <span class="vs">vs</span>${ctx.teamB.map((p) => escapeHtml(p.name)).join('、')}`;
+
+  const footer = ui.result.kind === 'end'
+    ? `<div class="modal-foot">
+        <button data-action="result-skip">跳過不記錄</button>
+        <button class="btn-primary" data-action="result-confirm" ${ready ? '' : 'disabled'}>確認結束</button>
+      </div>
+      <button class="btn-ghost btn-block" data-action="modal-close">返回（比賽繼續）</button>`
+    : `<div class="modal-foot">
+        ${ctx.hasResult ? '<button data-action="result-clear">清除勝負</button>' : ''}
+        <button class="btn-primary" data-action="result-confirm" ${ready ? '' : 'disabled'}>確認</button>
+      </div>
+      <button class="btn-ghost btn-block" data-action="modal-close">關閉</button>`;
+
+  return `
+    <h3>${ctx.title}</h3>
+    <p class="sub">請點勝出的 <strong class="num">${need}</strong> 人（已選 ${picked.length}）。
+      中途換過隊友也沒關係，以實際勝出的人為準。</p>
+    <p class="sub" style="margin-top:-8px">原排：${original}</p>
+    <div class="result-grid">${buttons}</div>
+    ${footer}`;
+}
+
 function renderBackupModal() {
   return `
     <h3>備份與還原</h3>
@@ -1286,6 +1462,7 @@ function renderModal() {
 
   let content = '';
   if (ui.manual) content = renderManualModal();
+  else if (ui.result) content = renderResultModal();
   else if (ui.backup) content = renderBackupModal();
 
   // 只有第一次開啟才播放進場動畫，之後的更新不重播
@@ -1451,7 +1628,54 @@ function handleAction(el) {
     case 'court-dec': setCourtCount(state.courts.length - 1); break;
     case 'fill-court': fillCourt(court); break;
     case 'fill-all': fillAllEmpty(); break;
-    case 'end-match': endMatch(court); break;
+    case 'end-match':
+      ui.result = { kind: 'end', courtIndex: court, selected: [] };
+      sessionChanged = false;
+      break;
+    case 'history-result': {
+      const entry = state.history.find((h) => h.no === Number(el.dataset.no));
+      ui.result = { kind: 'history', no: Number(el.dataset.no), selected: (entry && entry.winnerIds) ? entry.winnerIds.slice() : [] };
+      sessionChanged = false;
+      break;
+    }
+    case 'result-toggle': {
+      const ctx = resultContext();
+      const picked = ui.result.selected;
+      if (picked.includes(id)) picked.splice(picked.indexOf(id), 1);
+      else {
+        picked.push(id);
+        if (ctx && picked.length > ctx.teamA.length) picked.shift();   // 已選滿時，替換最早選的人
+      }
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    }
+    case 'result-confirm': {
+      const r = ui.result;
+      const ctx = resultContext();
+      if (!ctx || r.selected.length !== ctx.teamA.length) {
+        showToast(`請選出勝出的 ${ctx ? ctx.teamA.length : ''} 人`);
+        return;
+      }
+      if (r.kind === 'end') {
+        endMatch(r.courtIndex, r.selected.slice());
+      } else {
+        const entry = state.history.find((h) => h.no === r.no);
+        if (entry) applyResult(entry, r.selected.slice());
+      }
+      ui.result = null;
+      break;
+    }
+    case 'result-skip':
+      endMatch(ui.result.courtIndex, null);
+      ui.result = null;
+      break;
+    case 'result-clear': {
+      const entry = state.history.find((h) => h.no === ui.result.no);
+      if (entry) applyResult(entry, null);
+      ui.result = null;
+      break;
+    }
     case 'cancel-match': cancelMatch(court); break;
 
     /* 球員 */
@@ -1553,7 +1777,7 @@ function handleAction(el) {
     case 'force-update':
       forceUpdate();
       return;
-    case 'modal-close': ui.manual = null; ui.backup = null; sessionChanged = false; break;
+    case 'modal-close': ui.manual = null; ui.backup = null; ui.result = null; sessionChanged = false; break;
 
     case 'reset':
       if (!ui.resetArmed) {
