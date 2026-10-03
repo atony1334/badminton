@@ -307,6 +307,14 @@
     font-size: 13px; font-weight: 600; white-space: nowrap;
   }
   .badge-court { background: var(--court); color: var(--line); }
+  /* 體力條：名字下方的細長條，數字在右側 */
+  .stamina { display: flex; align-items: center; gap: 6px; margin-top: 4px; }
+  .stamina-track { flex: 0 0 64px; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+  .stamina-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+  .stamina-fill.high { background: #3BAA6B; }
+  .stamina-fill.mid { background: var(--tape); }
+  .stamina-fill.low { background: var(--danger); }
+  .stamina-num { font-size: 11px; color: var(--muted); min-width: 22px; }
   .badge-wait { background: var(--floor); color: var(--ink); }
   .badge-rest { background: #6B7280; color: #fff; }
   tr.resting td { background: var(--row-rest); color: var(--muted); }
@@ -389,7 +397,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '3.20';
+const APP_VERSION = '3.22';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -1483,6 +1491,51 @@ function renderRegularQuickAdd() {
     </div>`;
 }
 
+/**
+ * 體力（只顯示，不影響排場）：由歷史紀錄與場上比賽的時間即時推算。
+ * 每人從 100 開始；在場上每分鐘 −1.5，不在場上（等待或休息）每分鐘 +4，範圍 0～100。
+ * 例：打 20 分鐘 −30；下場休息 8 分鐘 +32。人少、幾乎沒得休息時體力會持續下降。
+ */
+const STAMINA_DRAIN = 1.5;
+const STAMINA_RECOVER = 4;
+
+function staminaOf(player, now = Date.now()) {
+  const intervals = [];
+  state.history.forEach((h) => {
+    const ids = resolveTeam(h, 'A').concat(resolveTeam(h, 'B'));
+    if (ids.includes(player.id) && h.startedAt && h.endedAt) intervals.push([h.startedAt, h.endedAt]);
+  });
+  let onCourt = false;
+  state.courts.forEach((court) => {
+    const m = court.match;
+    if (m && m.teamA.concat(m.teamB).includes(player.id)) {
+      intervals.push([m.startedAt, now]);
+      onCourt = true;
+    }
+  });
+  if (!intervals.length) return 100;
+  intervals.sort((a, b) => a[0] - b[0]);
+  const minutes = (ms) => Math.max(0, ms) / 60000;
+  let value = 100;
+  let t = intervals[0][0];
+  intervals.forEach(([start, end]) => {
+    value = Math.min(100, value + minutes(start - t) * STAMINA_RECOVER);
+    value = Math.max(0, value - minutes(end - start) * STAMINA_DRAIN);
+    t = end;
+  });
+  if (!onCourt) value = Math.min(100, value + minutes(now - t) * STAMINA_RECOVER);
+  return Math.round(value);
+}
+
+function renderStamina(player) {
+  const v = staminaOf(player);
+  const level = v >= 60 ? 'high' : (v >= 30 ? 'mid' : 'low');
+  return `<div class="stamina" aria-label="體力 ${v}">
+    <div class="stamina-track"><div class="stamina-fill ${level}" style="width:${v}%"></div></div>
+    <span class="stamina-num num">${v}</span>
+  </div>`;
+}
+
 function renderRoster() {
   const busy = onCourtIds();
   const rows = state.players.map((p) => {
@@ -1496,6 +1549,7 @@ function renderRoster() {
         <button class="star" data-action="toggle-regular" data-name="${escapeHtml(p.name)}"
           aria-pressed="${starred}" aria-label="${starred ? '移出' : '加入'}常用名單">${starred ? '★' : '☆'}</button>
         <span class="name">${escapeHtml(p.name)}</span>
+        ${renderStamina(p)}
       </td>
       <td class="num">${busy.has(p.id) ? p.played - 1 : p.played}</td>
       <td class="num">${p.benched}</td>
@@ -1508,7 +1562,8 @@ function renderRoster() {
   return `<table>
     <thead><tr><th>球員（★ 常用）</th><th>場數</th><th>累計等</th><th>狀態</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table>
-    <p class="sub" style="margin-top:6px">綠色列為正在場上，場數只計算已完成的場次，與歷史紀錄一致。</p>`;
+    <p class="sub" style="margin-top:6px">綠色列為正在場上，場數只計算已完成的場次，與歷史紀錄一致。<br>
+      體力：上場每分鐘 −1.5、場下每分鐘 +4，綠色充足、黃色偏累、紅色該休息了（只是好玩，不影響排場）。</p>`;
 }
 
 function renderConsistencyBanner() {
@@ -1741,7 +1796,9 @@ function todayTitles() {
       else w2 += 1;
     });
     const [lead, other, lw, ll] = w1 >= w2 ? [p1, p2, w1, w2] : [p2, p1, w2, w1];
-    let detail = `交手 ${rivalBest.value} 次`;
+    // 交手次數包含沒記勝負的場次，標示出來避免「交手 9 次卻只有 3 勝 3 敗」的疑惑
+    const unrecorded = rivalBest.value - (lw + ll);
+    let detail = `交手 ${rivalBest.value} 次${unrecorded > 0 ? `（${unrecorded} 場未記勝負）` : ''}`;
     if (lw + ll > 0) {
       detail += lw === ll
         ? `，${lw} 勝 ${ll} 敗平分秋色`
@@ -2294,6 +2351,9 @@ setInterval(() => {
   document.querySelectorAll('[data-started]').forEach((el) => {
     el.textContent = elapsedMinutes(Number(el.dataset.started));
   });
+  const typing = document.activeElement && document.activeElement.matches('input, textarea, select');
+  const modalOpen = document.querySelector('.modal');
+  if (ui.tab === 'players' && state.players.length && !typing && !modalOpen && !drag.active) render();
 }, 20000);
 
 /* ===================== 分頁切換與滑動 ===================== */
