@@ -34,7 +34,36 @@
     font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
     font-size: 16px; line-height: 1.5;
   }
-  .wrap { max-width: 560px; margin: 0 auto; padding: 20px 16px 80px; }
+  .wrap { max-width: 560px; margin: 0 auto; padding: 20px 16px calc(96px + env(safe-area-inset-bottom)); }
+
+  /* 頂部列 */
+  .top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 12px; }
+  .top h1 { font-size: 22px; }
+  .top .sub { margin: 0; }
+  .top-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .top-actions button { padding: 8px 12px; font-size: 14px; font-weight: 600; border: 2px solid var(--court-dark); }
+  .top-actions .btn-copy { background: var(--tape); border-color: var(--tape); }
+
+  /* 底部分頁 */
+  .tabbar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
+    display: flex; justify-content: center;
+    background: #fff; border-top: 1px solid #D5DDD3;
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .tabbar-inner { display: flex; width: 100%; max-width: 560px; }
+  .tabbar button {
+    flex: 1; background: transparent; border-radius: 0; padding: 12px 4px 14px;
+    font-size: 16px; font-weight: 600; color: var(--muted); border-top: 3px solid transparent;
+  }
+  .tabbar button[aria-selected="true"] { color: var(--court-dark); border-top-color: var(--tape); }
+  .tabbar small { display: block; font-size: 12px; font-weight: 400; }
+
+  .section-title { display: flex; justify-content: space-between; align-items: baseline; }
+  tr.on-court td { background: #DCEFE3; }
+  tr.on-court td:first-child { box-shadow: inset 4px 0 0 var(--court); }
+  td.actions button.btn-remove { background: var(--danger); color: #fff; }
+  .settings-divider { border: 0; border-top: 1px solid var(--floor); margin: 18px 0 8px; }
   h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: 0.02em; color: var(--ink); }
   h2 { font-size: 18px; margin: 28px 0 10px; color: var(--ink); }
   .sub { color: var(--muted); font-size: 14px; margin: 0 0 16px; }
@@ -116,6 +145,7 @@
   .court-actions { display: flex; gap: 8px; margin-top: 10px; }
   .court-actions button { flex: 1; }
   .court .btn-ghost { flex: 0 0 auto; color: var(--line); }
+  .court .btn-court-alt { flex: 0 0 auto; background: var(--court-dark); color: var(--line); }
 
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip {
@@ -213,7 +243,7 @@ const STORAGE_KEYS = {
   session: 'badminton-session',
   regulars: 'badminton-regulars',
 };
-const APP_VERSION = '2.8';   // 每次修改程式時更新，用來確認手機上是否為最新版
+const APP_VERSION = '3.1';   // 每次修改程式時更新，用來確認手機上是否為最新版
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -242,6 +272,7 @@ function createDefaultState() {
     mode: 'doubles',
     autoFill: true,
     fairness: 'balanced',
+    keepAwake: true,    // 螢幕常亮
     players: [],        // {id, name, played, offset, wait, benched, benchOffset, lastStartSeq, active}
     courts: [{ match: null }, { match: null }],
     pairs: {},          // "idA|idB": {partner, opponent}
@@ -262,6 +293,10 @@ const ui = {
   setupText: '',
   setupSaveNew: true,
   editRegulars: false,
+  tab: 'courts',        // 'courts' | 'players' | 'records'
+  settings: false,
+  editRoster: false,
+  copyText: null,       // 剪貼簿無法使用時，改用彈窗讓使用者手動複製
   addText: '',
   manual: null,
   result: null,        // {kind: 'end' | 'history', courtIndex?, no?, selected: []}
@@ -1122,6 +1157,10 @@ function staleThreshold() {
   return Math.max(3, 3 * (state.courts.length - 1));
 }
 
+function elapsedMinutes(startedAt) {
+  return Math.max(0, Math.floor((Date.now() - startedAt) / 60000));
+}
+
 function renderCourt(court, index) {
   const since = court.match ? matchesStartedSince(court.match) : 0;
   const alert = since >= staleThreshold()
@@ -1130,7 +1169,7 @@ function renderCourt(court, index) {
   const title = `<div class="court-head">
       <span class="court-name">第 ${index + 1} 場地</span>
       <span class="court-meta">${court.match
-        ? `${court.match.isManual ? '手動' : '自動'}・${formatTime(court.match.startedAt)} 開始`
+        ? `${court.match.isManual ? '手動' : '自動'}・已打 <span class="num" data-started="${court.match.startedAt}">${elapsedMinutes(court.match.startedAt)}</span> 分`
         : '空場'}</span>
     </div>${alert}`;
 
@@ -1148,6 +1187,7 @@ function renderCourt(court, index) {
     <div class="court-lines">${half(court.match.teamA)}${half(court.match.teamB)}</div>
     <div class="court-actions">
       <button class="btn-tape" data-action="end-match" data-court="${index}">結束這場</button>
+      <button class="btn-court-alt" data-action="manual-replace" data-court="${index}">改為手動</button>
       <button class="btn-ghost" data-action="cancel-match" data-court="${index}">取消</button>
     </div></div>`;
 }
@@ -1190,23 +1230,25 @@ function renderRoster() {
     if (!p.active) status = '<span class="badge badge-rest">休息中</span>';
     else if (busy.has(p.id)) status = '<span class="badge badge-court">場上</span>';
     const starred = isRegular(p.name);
-    return `<tr class="${p.active ? '' : 'resting'}">
+    const rowClass = !p.active ? 'resting' : (busy.has(p.id) ? 'on-court' : '');
+    return `<tr class="${rowClass}">
       <td>
         <button class="star" data-action="toggle-regular" data-name="${escapeHtml(p.name)}"
           aria-pressed="${starred}" aria-label="${starred ? '移出' : '加入'}常用名單">${starred ? '★' : '☆'}</button>
         <span class="name">${escapeHtml(p.name)}</span>
       </td>
-      <td class="num">${p.played}</td>
+      <td class="num">${busy.has(p.id) ? p.played - 1 : p.played}</td>
       <td class="num">${p.benched}</td>
       <td>${status}</td>
-      <td class="actions">
-        <button class="${p.active ? '' : 'btn-return'}" data-action="toggle-active" data-id="${p.id}">${p.active ? '休息' : '回來'}</button>
-        <button data-action="remove-player" data-id="${p.id}" aria-label="移除 ${escapeHtml(p.name)}">移除</button>
+      <td class="actions">${ui.editRoster
+        ? `<button class="btn-remove" data-action="remove-player" data-id="${p.id}" aria-label="移除 ${escapeHtml(p.name)}">移除</button>`
+        : `<button class="${p.active ? '' : 'btn-return'}" data-action="toggle-active" data-id="${p.id}">${p.active ? '休息' : '回來'}</button>`}
       </td></tr>`;
   }).join('');
   return `<table>
     <thead><tr><th>球員（★ 常用）</th><th>場數</th><th>累計等</th><th>狀態</th><th></th></tr></thead>
-    <tbody>${rows}</tbody></table>`;
+    <tbody>${rows}</tbody></table>
+    <p class="sub" style="margin-top:6px">綠色列為正在場上，場數只計算已完成的場次，與歷史紀錄一致。</p>`;
 }
 
 function renderConsistencyBanner() {
@@ -1292,70 +1334,67 @@ function renderHistory() {
     </div>`;
 }
 
-function renderMain() {
+function renderCourtsTab() {
   return `
-    <h1>羽球輪轉排場</h1>
-    <p class="sub num">${state.players.filter((p) => p.active).length} 人在場館，已完成 ${state.history.length} 場</p>
-    ${renderStorageBanner()}
-
-    <div class="panel">
-      <div class="row">
-        <span class="label">賽制</span>
-        ${renderModeSeg(state.mode, 'set-mode')}
-      </div>
-      <div class="row">
-        <span class="label">場地數</span>
-        <div class="stepper">
-          <button data-action="court-dec" aria-label="減少場地">−</button>
-          <span class="num">${state.courts.length}</span>
-          <button data-action="court-inc" aria-label="增加場地">＋</button>
-        </div>
-      </div>
-      <div class="row">
-        <span class="label">公平偏好</span>
-        <div class="seg" role="group" aria-label="公平偏好">
-          ${Object.keys(FAIRNESS_LABEL).map((key) => `
-            <button data-action="set-fairness" data-value="${key}" aria-pressed="${state.fairness === key}">${FAIRNESS_LABEL[key]}</button>`).join('')}
-        </div>
-      </div>
-      <div class="row">
-        <span class="label">結束後</span>
-        <div class="seg" role="group" aria-label="結束後動作">
-          <button data-action="set-auto" data-value="1" aria-pressed="${state.autoFill}">自動排下一場</button>
-          <button data-action="set-auto" data-value="0" aria-pressed="${!state.autoFill}">留空</button>
-        </div>
-      </div>
-    </div>
-
-    <h2>場地</h2>
     <div class="courts">${state.courts.map(renderCourt).join('')}</div>
     ${state.courts.some((c) => !c.match)
       ? '<button class="btn-primary btn-block" style="margin-top:12px" data-action="fill-all">填滿所有空場</button>' : ''}
-
     <h2>場下等待</h2>
-    ${renderWaiting()}
+    ${renderWaiting()}`;
+}
 
-    <h2>球員</h2>
+function renderPlayersTab() {
+  return `
+    <div class="section-title">
+      <h2>球員</h2>
+      <button class="${ui.editRoster ? 'btn-primary' : 'btn-ghost'}" data-action="roster-edit">
+        ${ui.editRoster ? '完成' : '編輯（移除球員）'}</button>
+    </div>
     ${renderRegularQuickAdd()}
     <div class="row" style="margin-bottom:10px">
       <input type="text" id="add-names" placeholder="新增球員，可用逗號分隔" style="flex:1" value="${escapeHtml(ui.addText)}">
       <button class="btn-primary" data-action="add-players">新增</button>
     </div>
-    ${renderRoster()}
+    ${renderRoster()}`;
+}
 
+function renderRecordsTab() {
+  return `
     <h2>今日戰績</h2>
     ${renderStats()}
-
     <h2>歷史紀錄</h2>
-    ${renderHistory()}
+    ${renderHistory()}`;
+}
 
-    <div style="margin-top:28px;text-align:center">
-      <button class="btn-ghost" data-action="backup-open">備份與還原</button>
-      <button class="${ui.resetArmed ? 'btn-danger' : 'btn-ghost'}" data-action="reset">
-        ${ui.resetArmed ? '再按一次確認（常用球員會保留）' : '清除排場紀錄，開新球局'}
-      </button>
-    </div>
-    ${renderUpdateFooter()}`;
+function renderTabBar() {
+  const waiting = availablePlayers().length;
+  const tabs = [
+    { key: 'courts', label: '場地', note: `${waiting} 人等待` },
+    { key: 'players', label: '球員', note: `${state.players.filter((p) => p.active).length} 人` },
+    { key: 'records', label: '紀錄', note: `${state.history.length} 場` },
+  ];
+  return `<nav class="tabbar" aria-label="分頁"><div class="tabbar-inner" role="tablist">
+    ${tabs.map((t) => `<button role="tab" data-action="tab" data-tab="${t.key}" aria-selected="${ui.tab === t.key}">
+      ${t.label}<small class="num">${t.note}</small></button>`).join('')}
+  </div></nav>`;
+}
+
+function renderMain() {
+  const body = { courts: renderCourtsTab, players: renderPlayersTab, records: renderRecordsTab }[ui.tab]();
+  return `
+    <header class="top">
+      <div>
+        <h1>羽球輪轉排場</h1>
+        <p class="sub num">${state.players.filter((p) => p.active).length} 人在場館，已完成 ${state.history.length} 場</p>
+      </div>
+      <div class="top-actions">
+        <button class="btn-copy" data-action="copy-lineup">複製排場</button>
+        <button data-action="settings-open">設定</button>
+      </div>
+    </header>
+    ${renderStorageBanner()}
+    ${body}
+    ${renderTabBar()}`;
 }
 
 /* ===================== 畫面：彈出視窗 ===================== */
@@ -1376,7 +1415,8 @@ function renderManualModal() {
     </div>`).join('');
 
   return `
-    <h3>第 ${ui.manual.courtIndex + 1} 場地・手動排場</h3>
+    <h3>第 ${ui.manual.courtIndex + 1} 場地・${ui.manual.restore ? '改為手動' : '手動排場'}</h3>
+    ${ui.manual.restore ? '<p class="sub">已先帶入原本的名單，調整後按「確認上場」。關閉則維持原本的排場。</p>' : ''}
     <p class="sub num">${MODE_LABEL[state.mode]}：A 隊 ${countA}/${size}，B 隊 ${countB}/${size}。
       只選人不分隊也可以，按「依紀錄分隊」。</p>
     ${rows || '<p class="sub">沒有可上場的球員。</p>'}
@@ -1455,6 +1495,67 @@ function renderBackupModal() {
     <button class="btn-ghost btn-block" data-action="modal-close">關閉</button>`;
 }
 
+function wakeLockSupported() {
+  return 'wakeLock' in navigator;
+}
+
+function renderSettingsModal() {
+  return `
+    <h3>設定</h3>
+    <div class="row" style="margin-top:12px">
+      <span class="label">賽制</span>
+      ${renderModeSeg(state.mode, 'set-mode')}
+    </div>
+    <div class="row">
+      <span class="label">場地數</span>
+      <div class="stepper">
+        <button data-action="court-dec" aria-label="減少場地">−</button>
+        <span class="num">${state.courts.length}</span>
+        <button data-action="court-inc" aria-label="增加場地">＋</button>
+      </div>
+    </div>
+    <div class="row">
+      <span class="label">公平偏好</span>
+      <div class="seg" role="group" aria-label="公平偏好">
+        ${Object.keys(FAIRNESS_LABEL).map((key) => `
+          <button data-action="set-fairness" data-value="${key}" aria-pressed="${state.fairness === key}">${FAIRNESS_LABEL[key]}</button>`).join('')}
+      </div>
+    </div>
+    <div class="row">
+      <span class="label">結束後</span>
+      <div class="seg" role="group" aria-label="結束後動作">
+        <button data-action="set-auto" data-value="1" aria-pressed="${state.autoFill}">自動排下一場</button>
+        <button data-action="set-auto" data-value="0" aria-pressed="${!state.autoFill}">留空</button>
+      </div>
+    </div>
+    <div class="row">
+      <span class="label">螢幕常亮</span>
+      ${wakeLockSupported()
+        ? `<div class="seg" role="group" aria-label="螢幕常亮">
+            <button data-action="set-awake" data-value="1" aria-pressed="${state.keepAwake !== false}">開</button>
+            <button data-action="set-awake" data-value="0" aria-pressed="${state.keepAwake === false}">關</button>
+          </div>`
+        : '<span class="sub" style="margin:0">此裝置或瀏覽器不支援</span>'}
+    </div>
+    <hr class="settings-divider">
+    <div style="text-align:center">
+      <button class="btn-ghost" data-action="backup-open">備份與還原</button>
+      <button class="${ui.resetArmed ? 'btn-danger' : 'btn-ghost'}" data-action="reset">
+        ${ui.resetArmed ? '再按一次確認（常用球員會保留）' : '清除排場紀錄，開新球局'}
+      </button>
+    </div>
+    ${renderUpdateFooter()}
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">完成</button>`;
+}
+
+function renderCopyModal() {
+  return `
+    <h3>複製排場</h3>
+    <p class="sub">無法自動複製，請長按下方文字全選後複製，再貼到 LINE。</p>
+    <textarea id="copy-text" style="min-height:180px">${escapeHtml(ui.copyText)}</textarea>
+    <button class="btn-primary btn-block" style="margin-top:12px" data-action="modal-close">完成</button>`;
+}
+
 function renderModal() {
   const root = document.getElementById('modal-root');
   const previous = root.querySelector('.modal');
@@ -1464,6 +1565,8 @@ function renderModal() {
   if (ui.manual) content = renderManualModal();
   else if (ui.result) content = renderResultModal();
   else if (ui.backup) content = renderBackupModal();
+  else if (ui.copyText) content = renderCopyModal();
+  else if (ui.settings) content = renderSettingsModal();
 
   // 只有第一次開啟才播放進場動畫，之後的更新不重播
   const enterClass = previous ? '' : ' modal-enter';
@@ -1517,6 +1620,77 @@ function manualConfirm() {
   commitMatch(ui.manual.courtIndex, teamA, teamB, true);
   return true;
 }
+
+/* ===================== 複製排場 ===================== */
+function buildLineupText() {
+  const lines = [`🏸 羽球排場 ${formatTime(Date.now())}`];
+  state.courts.forEach((court, i) => {
+    if (!court.match) {
+      lines.push(`第${i + 1}場地：空場`);
+      return;
+    }
+    const team = (ids) => ids.map(playerName).join('、');
+    lines.push(`第${i + 1}場地：${team(court.match.teamA)} vs ${team(court.match.teamB)}（已打 ${elapsedMinutes(court.match.startedAt)} 分）`);
+  });
+  const needTotal = TEAM_SIZE[state.mode] * 2;
+  const waiting = rankPlayersStable(availablePlayers()).map((p) => p.name);
+  if (waiting.length) {
+    lines.push(`⏭ 下一場（預計）：${waiting.slice(0, needTotal).join('、')}`);
+    if (waiting.length > needTotal) lines.push(`⏳ 等待中：${waiting.slice(needTotal).join('、')}`);
+  }
+  const resting = state.players.filter((p) => !p.active).map((p) => p.name);
+  if (resting.length) lines.push(`😴 休息：${resting.join('、')}`);
+  return lines.join('\n');
+}
+
+function copyLineup() {
+  const text = buildLineupText();
+  const fallback = () => {
+    ui.copyText = text;
+    renderModal();
+  };
+  if (!navigator.clipboard || !navigator.clipboard.writeText) {
+    fallback();
+    return;
+  }
+  // 必須在點擊當下直接呼叫，iOS 才允許寫入剪貼簿
+  navigator.clipboard.writeText(text).then(
+    () => showToast('已複製排場，可以貼到 LINE'),
+    fallback,
+  );
+}
+
+/* ===================== 螢幕常亮 ===================== */
+let wakeLock = null;
+
+async function syncWakeLock() {
+  if (!wakeLockSupported()) return;
+  const want = state.keepAwake !== false && state.players.length > 0
+    && document.visibilityState === 'visible';
+  try {
+    if (want && !wakeLock) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      wakeLock.addEventListener('release', () => { wakeLock = null; });
+    } else if (!want && wakeLock) {
+      await wakeLock.release();
+      wakeLock = null;
+    }
+  } catch (err) {
+    // 部分瀏覽器需要使用者操作才能啟用，或系統省電模式下拒絕；下次點擊時會再嘗試
+    wakeLock = null;
+  }
+}
+
+// 切回 app 時系統會自動釋放常亮，需要重新申請
+document.addEventListener('visibilitychange', () => { syncWakeLock(); });
+
+/* ===================== 比賽計時 ===================== */
+// 只更新計時數字，不重畫整頁，避免影響正在操作的畫面
+setInterval(() => {
+  document.querySelectorAll('[data-started]').forEach((el) => {
+    el.textContent = elapsedMinutes(Number(el.dataset.started));
+  });
+}, 20000);
 
 /* ===================== 強制更新 ===================== */
 /**
@@ -1618,7 +1792,10 @@ function handleAction(el) {
       break;
     case 'regular-edit': ui.editRegulars = !ui.editRegulars; sessionChanged = false; break;
     case 'regular-delete': removeRegular(name); sessionChanged = false; break;
-    case 'start': if (!startSession()) return; break;
+    case 'start':
+      if (!startSession()) return;
+      ui.tab = 'courts';
+      break;
 
     /* 排場 */
     case 'set-mode': state.mode = el.dataset.mode; break;
@@ -1735,6 +1912,22 @@ function handleAction(el) {
 
     /* 手動排場 */
     case 'manual-open': ui.manual = { courtIndex: court, sides: {} }; sessionChanged = false; break;
+    case 'manual-replace': {
+      /**
+       * 已排好的場地改為手動：先取消原本那場（回退場數、等待、配對），
+       * 再以原名單開啟手動排場。確認後才算數；關閉則還原，資料也不會先寫入儲存。
+       */
+      const match = state.courts[court].match;
+      if (!match) break;
+      const restore = JSON.stringify(state);
+      const sides = {};
+      match.teamA.forEach((pid) => { sides[pid] = 'A'; });
+      match.teamB.forEach((pid) => { sides[pid] = 'B'; });
+      cancelMatch(court);
+      ui.manual = { courtIndex: court, sides, restore };
+      sessionChanged = false;
+      break;
+    }
     case 'manual-side': {
       const side = el.dataset.side;
       if (ui.manual.sides[id] === side) delete ui.manual.sides[id];
@@ -1754,7 +1947,7 @@ function handleAction(el) {
       break;
 
     /* 備份 */
-    case 'backup-open': ui.backup = { text: buildBackup() }; sessionChanged = false; break;
+    case 'backup-open': ui.backup = { text: buildBackup() }; ui.settings = false; sessionChanged = false; break;
     case 'backup-copy': {
       const area = document.getElementById('backup-text');
       area.select();
@@ -1774,10 +1967,30 @@ function handleAction(el) {
         return;
       }
       break;
+    case 'tab':
+      ui.tab = el.dataset.tab;
+      ui.editRoster = false;
+      sessionChanged = false;
+      window.scrollTo(0, 0);
+      break;
+    case 'roster-edit': ui.editRoster = !ui.editRoster; sessionChanged = false; break;
+    case 'settings-open': ui.settings = true; sessionChanged = false; break;
+    case 'set-awake': state.keepAwake = el.dataset.value === '1'; break;
+    case 'copy-lineup':
+      copyLineup();
+      return;
     case 'force-update':
       forceUpdate();
       return;
-    case 'modal-close': ui.manual = null; ui.backup = null; ui.result = null; sessionChanged = false; break;
+    case 'modal-close':
+      if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
+      ui.manual = null;
+      ui.backup = null;
+      ui.result = null;
+      ui.settings = false;
+      ui.copyText = null;
+      sessionChanged = false;
+      break;
 
     case 'reset':
       if (!ui.resetArmed) {
@@ -1787,6 +2000,8 @@ function handleAction(el) {
       } else {
         ui.resetArmed = false;
         startNewDay();
+        ui.settings = false;
+        ui.tab = 'courts';
         showToast('已清除排場紀錄，常用球員已保留');
       }
       break;
@@ -1797,6 +2012,7 @@ function handleAction(el) {
   if (sessionChanged) saveSession();
   if (modalOnly) renderModal();
   else render();
+  syncWakeLock();   // 在使用者點擊當下申請，iOS 才會允許
 }
 
 document.addEventListener('click', (event) => {
