@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-<meta name="color-scheme" content="light">
+<meta name="color-scheme" content="light dark">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="羽球排場">
@@ -20,9 +20,28 @@
     --line: #F7F7F2;
     --tape: #F2C94C;
     --danger: #B23A2E;
+    --surface: #FFFFFF;
+    --border: #C9D3C8;
+    --row-court: #DCEFE3;
+    --row-rest: #E2E4E7;
+    --soft-yellow: #FFF6D6;
+    --on-tape: #14261C;      /* 黃色底上的文字，兩種模式都用深色 */
     --radius-s: 6px;
     --radius-l: 14px;
     color-scheme: light;
+  }
+  /* 夜間模式：只換頁面與面板的配色，場地卡片沿用場地配色主題 */
+  :root[data-appearance="dark"] {
+    color-scheme: dark;
+    --floor: #111713;
+    --surface: #1B231E;
+    --ink: #E4ECE6;
+    --muted: #97A89D;
+    --border: #34423A;
+    --court-dark: #3F8F68;
+    --row-court: #1E3A2B;
+    --row-rest: #262B28;
+    --soft-yellow: #3A3320;
   }
   * { box-sizing: border-box; }
   html, body { background: var(--floor) !important; }
@@ -50,7 +69,7 @@
   .tabbar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
     display: flex; justify-content: center;
-    background: #fff; border-top: 1px solid #D5DDD3;
+    background: var(--surface); border-top: 1px solid var(--border);
     padding-bottom: env(safe-area-inset-bottom);
   }
   .tabbar-inner { display: flex; width: 100%; max-width: 560px; }
@@ -75,7 +94,7 @@
     @keyframes tab-from-left { from { transform: translateX(-40px); opacity: 0.3; } to { transform: none; opacity: 1; } }
   }
   .section-title { display: flex; justify-content: space-between; align-items: baseline; }
-  tr.on-court td { background: #DCEFE3; }
+  tr.on-court td { background: var(--row-court); }
   tr.on-court td:first-child { box-shadow: inset 4px 0 0 var(--court); }
   td.actions button.btn-remove { background: var(--danger); color: #fff; }
   .settings-divider { border: 0; border-top: 1px solid var(--floor); margin: 18px 0 8px; }
@@ -87,32 +106,32 @@
   button {
     font: inherit; border: 0; cursor: pointer;
     border-radius: var(--radius-s); padding: 8px 14px;
-    background: #fff; color: var(--ink);
+    background: var(--surface); color: var(--ink);
   }
   button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-visible {
     outline: 3px solid var(--tape); outline-offset: 2px;
   }
   .btn-primary { background: var(--court-dark); color: var(--line); font-weight: 600; }
-  .btn-tape { background: var(--tape); color: var(--ink); font-weight: 600; }
+  .btn-tape { background: var(--tape); color: var(--on-tape); font-weight: 600; }
   .btn-ghost { background: transparent; color: inherit; text-decoration: underline; padding: 8px 6px; }
   .btn-danger { background: var(--danger); color: #fff; }
   .btn-block { width: 100%; padding: 12px; }
 
   textarea, input[type="text"], select {
     width: 100%; font: inherit; padding: 10px 12px; color: var(--ink);
-    border: 2px solid #C9D3C8; border-radius: var(--radius-s); background: #fff;
+    border: 2px solid var(--border); border-radius: var(--radius-s); background: var(--surface);
   }
   textarea { min-height: 110px; resize: vertical; }
   select { width: auto; padding: 6px 10px; }
 
-  .panel { background: #fff; border-radius: var(--radius-l); padding: 16px; }
+  .panel { background: var(--surface); border-radius: var(--radius-l); padding: 16px; }
   .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .row + .row { margin-top: 12px; }
   .label { min-width: 72px; color: var(--muted); font-size: 14px; }
   .section-head { display: flex; justify-content: space-between; align-items: baseline; }
 
   .banner {
-    background: #FFF6D6; border: 2px solid var(--tape); border-radius: var(--radius-s);
+    background: var(--soft-yellow); border: 2px solid var(--tape); border-radius: var(--radius-s);
     padding: 10px 12px; font-size: 14px; margin-bottom: 14px;
     display: flex; gap: 10px; align-items: center; justify-content: space-between;
   }
@@ -149,7 +168,7 @@
   .court-name { font-weight: 700; font-size: 17px; }
   .court-meta { font-size: 13px; opacity: 0.8; }
   .court-alert {
-    background: var(--tape); color: var(--ink); border-radius: var(--radius-s);
+    background: var(--tape); color: var(--on-tape); border-radius: var(--radius-s);
     padding: 6px 10px; font-size: 14px; font-weight: 600; margin-bottom: 8px;
   }
   .court-lines {
@@ -175,11 +194,11 @@
     transition: background 0.15s ease, opacity 0.15s ease;
   }
   button.half.picked { background: rgba(242, 201, 76, 0.38); }
-  button.half.picked .name-chip { background: var(--tape); color: var(--ink); }
+  button.half.picked .name-chip { background: var(--tape); color: var(--on-tape); }
   button.half.dimmed { opacity: 0.45; }
   .win-flag {
     position: absolute; top: 6px; left: 8px; padding: 1px 6px !important; font-size: 12px;
-    background: var(--ink) !important; color: var(--tape) !important;
+    background: var(--on-tape) !important; color: var(--tape) !important;
   }
   /* 拖曳交換：長按名字後可拖到另一個名字上 */
   /* 每位球員佔滿所在半場的一格，整格都能長按拖曳、也都能當放置目標 */
@@ -229,7 +248,7 @@
   .drag-chip.drop-target .name-chip { outline: 3px solid var(--tape); outline-offset: 2px; }
   .drag-ghost {
     position: fixed; z-index: 30; pointer-events: none; transform: translate(-50%, -60%) scale(1.12);
-    background: var(--tape); color: var(--ink); padding: 6px 14px; border-radius: var(--radius-s);
+    background: var(--tape); color: var(--on-tape); padding: 6px 14px; border-radius: var(--radius-s);
     font-size: 18px; font-weight: 700; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3); white-space: nowrap;
   }
   .court-hint { font-size: 12px; opacity: 0.75; margin-top: 6px; text-align: center; }
@@ -247,15 +266,15 @@
     background: var(--floor); border: 2px solid transparent; font-size: 14px;
   }
   .theme-swatches button[aria-pressed="true"] { border-color: var(--court-dark); font-weight: 700; }
-  .swatch { width: 18px; height: 18px; border-radius: 4px; border: 2px solid #fff; box-shadow: 0 0 0 1px #C9D3C8; }
+  .swatch { width: 18px; height: 18px; border-radius: 4px; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--border); }
 
   /* 今日稱號 */
   .titles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .title-card {
     display: block; width: 100%; text-align: left; font: inherit; color: var(--ink);
-    background: #fff; border-radius: var(--radius-l); padding: 12px; border-left: 5px solid var(--tape);
+    background: var(--surface); border-radius: var(--radius-l); padding: 12px; border-left: 5px solid var(--tape);
   }
-  .title-card:active { background: #FFF6D6; }
+  .title-card:active { background: var(--soft-yellow); }
   .title-card .t-more { font-size: 12px; color: var(--muted); margin-top: 4px; }
   .title-modal .t-big { font-size: 44px; line-height: 1; }
   .title-modal .t-who { font-size: 22px; font-weight: 700; margin: 8px 0 4px; overflow-wrap: anywhere; }
@@ -268,16 +287,16 @@
 
   .chips { display: flex; flex-wrap: wrap; gap: 8px; }
   .chip {
-    background: #fff; border: 2px solid var(--tape); border-radius: 999px;
+    background: var(--surface); border: 2px solid var(--tape); border-radius: 999px;
     padding: 4px 12px; font-size: 15px; color: var(--ink);
   }
   .chip small { margin-left: 6px; font-size: 12px; color: var(--muted); }
-  .chip-wait { border-color: #C9D3C8; }
-  button.chip { border-color: #C9D3C8; }
+  .chip-wait { border-color: var(--border); }
+  button.chip { border-color: var(--border); }
   button.chip[aria-pressed="true"] { background: var(--court-dark); border-color: var(--court-dark); color: var(--line); }
   button.chip.removable { border-color: var(--danger); color: var(--danger); }
 
-  table { width: 100%; border-collapse: collapse; background: #fff; border-radius: var(--radius-l); overflow: hidden; }
+  table { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: var(--radius-l); overflow: hidden; }
   th, td { padding: 10px 8px; text-align: left; border-bottom: 1px solid var(--floor); font-size: 15px; }
   th { font-size: 13px; color: var(--muted); font-weight: 500; }
   td.actions { text-align: right; white-space: nowrap; }
@@ -290,13 +309,13 @@
   .badge-court { background: var(--court); color: var(--line); }
   .badge-wait { background: var(--floor); color: var(--ink); }
   .badge-rest { background: #6B7280; color: #fff; }
-  tr.resting td { background: #E2E4E7; color: #6B7280; }
+  tr.resting td { background: var(--row-rest); color: var(--muted); }
   tr.resting .name { text-decoration: line-through; }
   td.actions button.btn-return { background: var(--tape); font-weight: 600; }
   .resting-list { margin-top: 10px; font-size: 14px; color: var(--muted); }
   .resting-list .badge { margin-right: 6px; }
 
-  .history { list-style: none; margin: 0; padding: 0; background: #fff; border-radius: var(--radius-l); }
+  .history { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--radius-l); }
   .history li { padding: 10px 14px; border-bottom: 1px solid var(--floor); }
   .history-item { position: relative; padding-right: 92px !important; }
   .history-delete.armed { background: var(--danger); color: #fff; font-weight: 600; }
@@ -315,7 +334,7 @@
     display: flex; align-items: flex-end; justify-content: center; z-index: 10;
   }
   .modal {
-    background: #fff; width: 100%; max-width: 560px; max-height: 85vh; overflow-y: auto;
+    background: var(--surface); width: 100%; max-width: 560px; max-height: 85vh; overflow-y: auto;
     border-radius: var(--radius-l) var(--radius-l) 0 0; padding: 18px 16px 24px;
     overscroll-behavior: contain;   /* 捲到底時不帶動後方頁面 */
   }
@@ -331,7 +350,7 @@
   .result-grid button { padding: 16px 8px; font-size: 18px; font-weight: 600; background: var(--floor); }
   .result-grid button[aria-pressed="true"] { background: var(--court-dark); color: var(--line); }
   .win-tag { display: inline-block; margin-right: 6px; padding: 0 6px; border-radius: var(--radius-s);
-    background: var(--tape); color: var(--ink); font-size: 12px; font-weight: 700; }
+    background: var(--tape); color: var(--on-tape); font-size: 12px; font-weight: 700; }
   .swap-tag { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: var(--radius-s);
     background: var(--floor); color: var(--muted); font-size: 12px; white-space: nowrap; vertical-align: middle; }
   .history-result { margin-top: 6px; padding: 3px 10px; font-size: 13px; background: var(--floor); }
@@ -340,7 +359,7 @@
 
   .toast {
     position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%);
-    background: var(--ink); color: var(--line); padding: 10px 16px; border-radius: var(--radius-s);
+    background: #0E1511; color: #F7F7F2; padding: 10px 16px; box-shadow: 0 4px 14px rgba(0,0,0,0.25); border-radius: var(--radius-s);
     font-size: 15px; z-index: 20; max-width: 90vw;
   }
   @media (prefers-reduced-motion: no-preference) {
@@ -370,7 +389,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '3.19';
+const APP_VERSION = '3.20';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -400,7 +419,7 @@ function createDefaultState() {
   return {
     mode: 'doubles',
     autoFill: true,
-    fairness: 'balanced',
+    fairness: 'played',
     keepAwake: true,    // 螢幕常亮
     players: [],        // {id, name, played, offset, wait, benched, benchOffset, lastStartSeq, active}
     courts: [{ match: null }, { match: null }],
@@ -414,7 +433,8 @@ function createDefaultState() {
 
 let state = createDefaultState();
 let regulars = [];      // 常用球員名字，跨場次保存
-let prefs = { courtTheme: 'green' };
+let prefs = { courtTheme: 'green', appearance: 'light' };   // appearance: 'light' | 'dark' | 'auto'
+const APPEARANCE_LABEL = { light: '淺色', dark: '夜間', auto: '跟隨系統' };
 
 const ui = {
   setupCourts: 2,
@@ -491,6 +511,7 @@ function loadAll() {
   const savedPrefs = storageGet(STORAGE_KEYS.prefs);
   if (savedPrefs && typeof savedPrefs === 'object') prefs = Object.assign(prefs, savedPrefs);
   applyCourtTheme();
+  applyAppearance();
   // 向瀏覽器申請持久儲存，降低資料被自動清除的機率（不支援時略過）
   if (navigator.storage && navigator.storage.persist) {
     navigator.storage.persist().catch(() => {});
@@ -522,6 +543,21 @@ function savePrefs() {
   scheduleSave(STORAGE_KEYS.prefs, () => prefs);
 }
 
+const darkQuery = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+
+function applyAppearance() {
+  const mode = APPEARANCE_LABEL[prefs.appearance] ? prefs.appearance : 'light';
+  const dark = mode === 'dark' || (mode === 'auto' && darkQuery && darkQuery.matches);
+  document.documentElement.setAttribute('data-appearance', dark ? 'dark' : 'light');
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.setAttribute('content', dark ? '#111713' : '#E9EEE6');
+}
+
+// 「跟隨系統」時，手機切換深淺色會即時套用
+if (darkQuery && darkQuery.addEventListener) {
+  darkQuery.addEventListener('change', () => { if (prefs.appearance === 'auto') applyAppearance(); });
+}
+
 function applyCourtTheme() {
   const theme = COURT_THEMES[prefs.courtTheme] ? prefs.courtTheme : 'green';
   document.documentElement.setAttribute('data-court-theme', theme);
@@ -546,7 +582,7 @@ function normalizeState(raw) {
     p.lastStartSeq = p.lastStartSeq || 0;
   });
   next.startSeq = next.startSeq || 0;
-  if (!FAIRNESS_STEP[next.fairness]) next.fairness = 'balanced';
+  if (!FAIRNESS_STEP[next.fairness]) next.fairness = 'played';
   return next;
 }
 
@@ -2080,6 +2116,13 @@ function renderSettingsModal() {
       </div>
     </div>
     <div class="row">
+      <span class="label">外觀</span>
+      <div class="seg" role="group" aria-label="外觀">
+        ${Object.keys(APPEARANCE_LABEL).map((key) => `
+          <button data-action="set-appearance" data-value="${key}" aria-pressed="${prefs.appearance === key}">${APPEARANCE_LABEL[key]}</button>`).join('')}
+      </div>
+    </div>
+    <div class="row">
       <span class="label">場地配色</span>
       <div class="theme-swatches" role="group" aria-label="場地配色">
         ${Object.entries(COURT_THEMES).map(([key, t]) => `
@@ -2745,6 +2788,12 @@ function handleAction(el) {
     case 'roster-edit': ui.editRoster = !ui.editRoster; sessionChanged = false; break;
     case 'title-open': ui.titleIndex = Number(el.dataset.index); sessionChanged = false; break;
     case 'settings-open': ui.settings = true; sessionChanged = false; break;
+    case 'set-appearance':
+      prefs.appearance = el.dataset.value;
+      applyAppearance();
+      savePrefs();
+      sessionChanged = false;
+      break;
     case 'set-theme':
       prefs.courtTheme = el.dataset.value;
       applyCourtTheme();
