@@ -361,7 +361,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '3.16';
+const APP_VERSION = '3.17';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -1627,15 +1627,13 @@ function todayTitles() {
       bestLose[n] = Math.max(bestLose[n] || 0, loseRun[n]);
     });
   });
-  // 🏆 勝場王：贏最多場（看勝場數，不看勝率）
+  // 勝敗計數（不敗金身、勝率王使用）
   const winCount = {};
   const lossCount = {};
   recorded.forEach((h) => h.teamA.concat(h.teamB).forEach((n) => {
     if (h.winners.includes(n)) winCount[n] = (winCount[n] || 0) + 1;
     else lossCount[n] = (lossCount[n] || 0) + 1;
   }));
-  const mostWins = topBy(winCount, 3);
-  if (mostWins) add('🏆', '勝場王', joinNames(mostWins.names), `贏了 ${mostWins.value} 場`);
 
   const streak = topBy(bestWin, 3);
   if (streak) add('🔥', '連勝王', joinNames(streak.names), `最長連勝 ${streak.value} 場`);
@@ -1683,7 +1681,27 @@ function todayTitles() {
     rival[key] = (rival[key] || 0) + 1;
   })));
   const rivalBest = topBy(rival, 3);
-  if (rivalBest) add('⚔️', '宿敵', rivalBest.names[0], `交手 ${rivalBest.value} 次`);
+  if (rivalBest) {
+    // 兩人在對面時的勝負（只計有記勝負的場次），贏比較多的人放前面
+    const [p1, p2] = rivalBest.names[0].split(' vs ');
+    let w1 = 0;
+    let w2 = 0;
+    recorded.forEach((h) => {
+      const aSide = h.teamA.includes(p1) ? 'A' : (h.teamB.includes(p1) ? 'B' : null);
+      const bSide = h.teamA.includes(p2) ? 'A' : (h.teamB.includes(p2) ? 'B' : null);
+      if (!aSide || !bSide || aSide === bSide) return;
+      if (h.winners.includes(p1)) w1 += 1;
+      else w2 += 1;
+    });
+    const [lead, other, lw, ll] = w1 >= w2 ? [p1, p2, w1, w2] : [p2, p1, w2, w1];
+    let detail = `交手 ${rivalBest.value} 次`;
+    if (lw + ll > 0) {
+      detail += lw === ll
+        ? `，${lw} 勝 ${ll} 敗平分秋色`
+        : `，${escapeHtml(lead)} 勝率 ${Math.round((lw / (lw + ll)) * 100)}%（${lw} 勝 ${ll} 敗）`;
+    }
+    add('⚔️', '宿敵', `${lead} vs ${other}`, detail);
+  }
 
   // 💞 相愛相殺：同一對人當過搭檔、也當過對手，各至少 2 次
   const partnerTimes = {};
@@ -1798,7 +1816,13 @@ function todayTitles() {
   const rates = Object.values(rate);
   const spread = rates.length ? Math.max(...rates) - Math.min(...rates) : 0;
   const rateBest = topBy(rate, 1);
-  if (rateBest) add('👑', '勝率王', joinNames(rateBest.names), `勝率 ${rateBest.value}%`);
+  if (rateBest) {
+    // 同勝率時以勝場多者為準，把原本勝場王的資訊合併進來
+    const maxWins = Math.max(...rateBest.names.map((n) => winCount[n] || 0));
+    const kings = rateBest.names.filter((n) => (winCount[n] || 0) === maxWins);
+    const losses = lossCount[kings[0]] || 0;
+    add('👑', '勝率王', joinNames(kings), `勝率 ${rateBest.value}%（${maxWins} 勝 ${losses} 敗）`);
+  }
 
   // 🌍 非洲酋長：最長連敗
   const losing = topBy(bestLose, 3);
