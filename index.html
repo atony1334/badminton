@@ -243,7 +243,7 @@ const STORAGE_KEYS = {
   session: 'badminton-session',
   regulars: 'badminton-regulars',
 };
-const APP_VERSION = '3.1';   // 每次修改程式時更新，用來確認手機上是否為最新版
+const APP_VERSION = '3.2';   // 每次修改程式時更新，用來確認手機上是否為最新版
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -256,7 +256,9 @@ const BENCH_WEIGHT = 6;      // 累計等待的加分（與候選池最低值比
 const FAIRNESS_STEP = { played: Infinity, balanced: 2, wait: 1 };
 const FAIRNESS_LABEL = { played: '場數優先', balanced: '平衡', wait: '等待優先' };
 const CANDIDATE_LIMIT = 12;  // 候選人上限，控制組合數量（C(12,4) = 495 組）
-const LEVEL_COST = 20;       // 為了避開重複組合，改排「優先級低一級」的人時，每人每級的成本
+// 為了避開重複組合，改排「優先級低一級」的人時，每人每級的成本。
+// 場數優先模式提高成本：場數差距最多 2 場，代價是 3 人重疊的機率較高
+const LEVEL_COST_BY_FAIRNESS = { played: 60, balanced: 20, wait: 20 };
 // 近期重複懲罰：越近期出現過的組合扣越多，避免同組合連續出現
 const RECENT_GROUP_WEIGHT = 24;     // 同一批 4 人（不論怎麼分隊）
 const RECENT_PARTNER_WEIGHT = 12;   // 同一對搭檔
@@ -696,7 +698,7 @@ function waitLimit(needTotal) {
  *    優先級 = 場數，累計等待偏多者會提前（見 priorityLevel）
  * 2. 窮舉候選人組合，分數取最低：
  *      重複配對懲罰（整晚累計 + 近期重複）
- *    + LEVEL_COST   × 偏離理想名單的級數   （公平性成本：只有能明顯避開重複時才值得）
+ *    + 放寬成本     × 偏離理想名單的級數   （公平性成本：只有能明顯避開重複時才值得）
  *    − WAIT_WEIGHT  × Σ 連續等待²
  *    − BENCH_WEIGHT × Σ 相對累計等待
  *    放寬一級的成本（20）低於「同一批 4 人剛打過」的懲罰（最高 24），
@@ -725,7 +727,7 @@ function pickMatch(needTotal) {
   for (const combo of combinations(candidates, openSlots)) {
     const chosen = overdue.concat(combo);
     const split = bestSplit(chosen.map((p) => p.id));
-    const levelCost = LEVEL_COST * (combo.reduce((sum, p) => sum + priorityLevel(p), 0) - idealLevel);
+    const levelCost = (LEVEL_COST_BY_FAIRNESS[state.fairness] || 20) * (combo.reduce((sum, p) => sum + priorityLevel(p), 0) - idealLevel);
     const waitScore = combo.reduce((sum, p) => sum + p.wait * p.wait, 0);
     const benchScore = combo.reduce((sum, p) => sum + effectiveBenched(p) - minBenched, 0);
     const score = split.penalty + levelCost - WAIT_WEIGHT * waitScore - BENCH_WEIGHT * benchScore;
