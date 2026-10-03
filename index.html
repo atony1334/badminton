@@ -370,7 +370,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '3.18';
+const APP_VERSION = '3.19';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -1597,13 +1597,14 @@ function todayTitles() {
   const chrono = state.history.slice().reverse();   // 由舊到新
   const recorded = chrono.filter((h) => h.winners);
   const titles = [];
-  const joinNames = (names) => (names.length > 3 ? `${names.slice(0, 3).join('、')} 等 ${names.length} 人` : names.join('、'));
+  // 同分並列的多位得主以陣列保存：卡片只列第一位，點開再顯示全部
+  const joinNames = (names) => names.slice();
   const add = (icon, title, who, detail) => titles.push({ icon, title, who, detail });
 
   // 🌟 開門紅：贏下今天第一場有記勝負的比賽
   if (recorded.length) {
     const first = recorded[0];
-    add('🌟', '開門紅', joinNames(first.winners), `贏下今天第一場（#${displayNo(first)}）`);
+    add('🌟', '開門紅', first.winners.join('、'), `贏下今天第一場（#${displayNo(first)}）`);
   }
 
   // 🔥 連勝王 / 🌍 非洲酋長 / 🧯 連勝終結者：沒記勝負的場次不中斷連勝或連敗
@@ -1873,8 +1874,18 @@ function renderTitles() {
     <div class="titles">${titles.map((t, i) => `
     <button class="title-card" data-action="title-open" data-index="${i}">
       <div class="t-head"><span class="t-icon">${t.icon}</span>${t.title}</div>
-      <div class="t-name">${escapeHtml(t.who)}</div>
+      <div class="t-name">${escapeHtml(cardWho(t.who))}</div>
     </button>`).join('')}</div>`;
+}
+
+// 卡片：多人並列時只列第一位；彈窗：列出全部
+function cardWho(who) {
+  if (!Array.isArray(who)) return who;
+  return who.length > 1 ? `${who[0]} 等 ${who.length} 人` : who[0];
+}
+
+function fullWho(who) {
+  return Array.isArray(who) ? who.join('、') : who;
 }
 
 function renderTitleModal() {
@@ -1883,7 +1894,8 @@ function renderTitleModal() {
   return `<div class="title-modal">
     <div class="t-big">${t.icon}</div>
     <h3 style="margin-top:8px">${t.title}</h3>
-    <div class="t-who">${escapeHtml(t.who)}</div>
+    <div class="t-who">${escapeHtml(fullWho(t.who))}</div>
+    ${Array.isArray(t.who) && t.who.length > 1 ? `<p class="sub" style="margin:0 0 6px">${t.who.length} 人並列</p>` : ''}
     <p class="t-fact">${t.detail}</p>
     <div class="t-rule">${TITLE_RULES[t.title] || ''}</div>
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>
