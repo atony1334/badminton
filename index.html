@@ -251,7 +251,16 @@
 
   /* 今日稱號 */
   .titles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-  .title-card { background: #fff; border-radius: var(--radius-l); padding: 12px; border-left: 5px solid var(--tape); }
+  .title-card {
+    display: block; width: 100%; text-align: left; font: inherit; color: var(--ink);
+    background: #fff; border-radius: var(--radius-l); padding: 12px; border-left: 5px solid var(--tape);
+  }
+  .title-card:active { background: #FFF6D6; }
+  .title-card .t-more { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .title-modal .t-big { font-size: 44px; line-height: 1; }
+  .title-modal .t-who { font-size: 22px; font-weight: 700; margin: 8px 0 4px; overflow-wrap: anywhere; }
+  .title-modal .t-fact { font-size: 16px; margin: 0 0 14px; }
+  .title-modal .t-rule { background: var(--floor); border-radius: var(--radius-s); padding: 10px 12px; font-size: 14px; color: var(--muted); }
   .title-card .t-head { font-size: 13px; color: var(--muted); }
   .title-card .t-icon { font-size: 20px; margin-right: 4px; }
   .title-card .t-name { font-size: 17px; font-weight: 700; margin: 4px 0 2px; overflow-wrap: anywhere; }
@@ -361,7 +370,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '3.17';
+const APP_VERSION = '3.18';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -415,6 +424,7 @@ const ui = {
   setupSaveNew: true,
   editRegulars: false,
   tab: 'courts',        // 'courts' | 'players' | 'records'
+  titleIndex: null,     // 正在查看的稱號
   pendingWin: null,     // 在場地上點選的勝隊 {court, team}，確認後才結束
   settings: false,
   editRoster: false,
@@ -1836,15 +1846,48 @@ function todayTitles() {
   return titles;
 }
 
+// 稱號說明：點開卡片時顯示
+const TITLE_RULES = {
+  開門紅: '贏下今天第一場有記勝負的比賽。',
+  連勝王: '今天最長連勝的人，至少連勝 3 場。沒記勝負的場次不會中斷連勝。',
+  不敗金身: '至少記錄 3 場勝負，而且一場都沒輸過。一輸就會失去這個稱號。',
+  帶飛王: '和最多不同搭檔一起贏過的人，至少 3 位搭檔。',
+  最佳拍檔: '同隊至少 2 場、勝率最高的搭檔組合；同勝率時比勝場。',
+  宿敵: '今天在對面交手最多次的兩人，至少 3 次。勝率只計算有記勝負的場次。',
+  相愛相殺: '兩人當過搭檔、也當過對手，兩種各至少 2 次。',
+  剋星: '對同一位對手至少 3 戰全勝，對方一場都沒贏過。',
+  苦主: '輸給同一位對手最多次，至少 3 次。',
+  復仇者: '輸給某人之後，又在對面贏回來最多次。',
+  連勝終結者: '打斷別人 3 連勝以上的人。',
+  逆轉人生: '連敗至少 2 場後，緊接著連勝至少 2 場；取反彈最大的那一段。',
+  慢熱型: '前兩場都輸，之後贏最多場，至少贏 2 場。',
+  勝率王: '勝率最高的人，至少記錄 3 場勝負；同勝率時比勝場。',
+  非洲酋長: '今天最長的連敗，至少 3 場。沒記勝負的場次不會中斷連敗。',
+  我就爛: '勝率最低的人，至少記錄 3 場勝負。大家勝率都一樣時不頒發。',
+};
+
 function renderTitles() {
   const titles = todayTitles();
   if (!titles.length) return '<p class="sub">多打幾場、記錄勝負後，就會出現今天的稱號。</p>';
-  return `<div class="titles">${titles.map((t) => `
-    <div class="title-card">
+  return `<p class="sub" style="margin:-4px 0 10px">點卡片可以看詳細戰績與說明。</p>
+    <div class="titles">${titles.map((t, i) => `
+    <button class="title-card" data-action="title-open" data-index="${i}">
       <div class="t-head"><span class="t-icon">${t.icon}</span>${t.title}</div>
       <div class="t-name">${escapeHtml(t.who)}</div>
-      <div class="t-detail">${t.detail}</div>
-    </div>`).join('')}</div>`;
+    </button>`).join('')}</div>`;
+}
+
+function renderTitleModal() {
+  const t = todayTitles()[ui.titleIndex];
+  if (!t) return '<p class="sub">這個稱號已經不存在了。</p><button class="btn-primary btn-block" data-action="modal-close">關閉</button>';
+  return `<div class="title-modal">
+    <div class="t-big">${t.icon}</div>
+    <h3 style="margin-top:8px">${t.title}</h3>
+    <div class="t-who">${escapeHtml(t.who)}</div>
+    <p class="t-fact">${t.detail}</p>
+    <div class="t-rule">${TITLE_RULES[t.title] || ''}</div>
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>
+  </div>`;
 }
 
 function renderRecordsTab() {
@@ -2070,6 +2113,7 @@ function renderModal() {
   else if (ui.result) content = renderResultModal();
   else if (ui.backup) content = renderBackupModal();
   else if (ui.copyText) content = renderCopyModal();
+  else if (ui.titleIndex !== null && ui.titleIndex !== undefined) content = renderTitleModal();
   else if (ui.settings) content = renderSettingsModal();
 
   // 只有第一次開啟才播放進場動畫，之後的更新不重播
@@ -2228,7 +2272,7 @@ const swipe = { active: false, decided: false, horizontal: false, x: 0, y: 0, dx
 
 function swipeBlocked(target) {
   return !state.players.length
-    || ui.manual || ui.result || ui.backup || ui.settings || ui.copyText
+    || ui.manual || ui.result || ui.backup || ui.settings || ui.copyText || ui.titleIndex !== null
     || target.closest('input, textarea, select, .tabbar, .modal-bg');
 }
 
@@ -2687,6 +2731,7 @@ function handleAction(el) {
       switchTab(el.dataset.tab);
       return;
     case 'roster-edit': ui.editRoster = !ui.editRoster; sessionChanged = false; break;
+    case 'title-open': ui.titleIndex = Number(el.dataset.index); sessionChanged = false; break;
     case 'settings-open': ui.settings = true; sessionChanged = false; break;
     case 'set-theme':
       prefs.courtTheme = el.dataset.value;
@@ -2708,6 +2753,7 @@ function handleAction(el) {
       ui.result = null;
       ui.settings = false;
       ui.copyText = null;
+      ui.titleIndex = null;
       sessionChanged = false;
       break;
 
