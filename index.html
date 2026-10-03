@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <meta name="color-scheme" content="light">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
@@ -26,6 +26,8 @@
   }
   * { box-sizing: border-box; }
   html, body { background: var(--floor) !important; }
+  /* 鎖定縮放：取消雙擊放大（捲動與點擊不受影響） */
+  html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   /* 部分預覽環境（如 Claude app）會強制深色底，改由獨立容器鋪滿背景 */
   .page { background: var(--floor); min-height: 100vh; color: var(--ink); }
   body {
@@ -316,7 +318,7 @@ const STORAGE_KEYS = {
   session: 'badminton-session',
   regulars: 'badminton-regulars',
 };
-const APP_VERSION = '3.8';   // 每次修改程式時更新，用來確認手機上是否為最新版
+const APP_VERSION = '3.9';   // 每次修改程式時更新，用來確認手機上是否為最新版
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -1647,7 +1649,7 @@ function renderBackupModal() {
   return `
     <h3>備份與還原</h3>
     <p class="sub">備份包含今天的場次、歷史紀錄與常用球員。複製下方文字存到備忘錄；要還原時貼回來再按「還原」。</p>
-    <textarea id="backup-text" style="min-height:160px;font-size:12px">${escapeHtml(ui.backup.text)}</textarea>
+    <textarea id="backup-text" style="min-height:160px;font-size:16px">${escapeHtml(ui.backup.text)}</textarea>
     <div class="modal-foot">
       <button data-action="backup-copy">複製</button>
       <button class="btn-primary" data-action="backup-restore">還原</button>
@@ -2021,6 +2023,20 @@ document.addEventListener('mousemove', (e) => { if (drag.source) dragPointerMove
 document.addEventListener('mouseup', dragEnd);
 // 長按名字時不要跳出系統選單
 document.addEventListener('contextmenu', (e) => { if (e.target.closest('.drag-chip')) e.preventDefault(); });
+
+/* ===================== 鎖定縮放 ===================== */
+/**
+ * iOS Safari 會忽略 viewport 的 user-scalable=no（無障礙考量），
+ * 因此另外攔截雙指縮放手勢：
+ * - gesturestart / gesturechange：iOS 專用的縮放手勢事件
+ * - 兩指以上的 touchmove：其他瀏覽器的雙指縮放
+ */
+['gesturestart', 'gesturechange', 'gestureend'].forEach((type) => {
+  document.addEventListener(type, (e) => e.preventDefault(), { passive: false });
+});
+document.addEventListener('touchmove', (e) => {
+  if (e.touches.length > 1) e.preventDefault();
+}, { passive: false });
 
 /* ===================== 強制更新 ===================== */
 /**
