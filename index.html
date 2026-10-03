@@ -318,7 +318,8 @@ const STORAGE_KEYS = {
   session: 'badminton-session',
   regulars: 'badminton-regulars',
 };
-const APP_VERSION = '3.9';   // 每次修改程式時更新，用來確認手機上是否為最新版
+// 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
+const APP_VERSION = '3.10';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -1361,11 +1362,12 @@ function renderWaiting() {
   if (!ranked.length) return `<p class="sub">目前沒有在等待的球員。</p>${renderRestingList()}`;
   const chips = ranked.map((p, index) => {
     const cls = index < needTotal ? 'chip chip-next' : 'chip chip-wait';
-    const waitNote = `<small>已等 ${p.benched}</small>`;
+    // 顯示這次下場後已等了幾局；剛下場還沒等過顯示「剛下場」
+    const waitNote = `<small>${p.wait ? `本次等 ${p.wait} 局` : '剛下場'}</small>`;
     return `<span class="${cls}">${escapeHtml(p.name)}${waitNote}</span>`;
   }).join('');
   return `<p class="sub num" style="margin:-4px 0 8px">共 ${ranked.length} 人，黃框為優先上場（實際組合會再考慮配對）。
-    「已等」為今晚累計等待場數；連續等待達 ${waitLimit(needTotal)} 場會強制排上場。</p>
+    「本次等」為這次下場後等了幾局，達 ${waitLimit(needTotal)} 局會強制排上場；整晚累計請看球員分頁。</p>
     <div class="chips">${chips}</div>
     ${renderRestingList()}`;
 }
