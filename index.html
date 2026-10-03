@@ -59,6 +59,19 @@
   .tabbar button[aria-selected="true"] { color: var(--court-dark); border-top-color: var(--tape); }
   .tabbar small { display: block; font-size: 12px; font-weight: 400; }
 
+  .tabbar-inner { position: relative; }
+  .tab-indicator {
+    position: absolute; top: 0; left: 0; height: 3px; background: var(--tape);
+    width: calc(100% / 3); transition: transform 0.25s ease;
+  }
+  .tabbar button[aria-selected="true"] { border-top-color: transparent; }
+  .tab-body { touch-action: pan-y; will-change: transform; }
+  @media (prefers-reduced-motion: no-preference) {
+    .tab-body.from-right { animation: tab-from-right 0.22s ease-out; }
+    .tab-body.from-left { animation: tab-from-left 0.22s ease-out; }
+    @keyframes tab-from-right { from { transform: translateX(40px); opacity: 0.3; } to { transform: none; opacity: 1; } }
+    @keyframes tab-from-left { from { transform: translateX(-40px); opacity: 0.3; } to { transform: none; opacity: 1; } }
+  }
   .section-title { display: flex; justify-content: space-between; align-items: baseline; }
   tr.on-court td { background: #DCEFE3; }
   tr.on-court td:first-child { box-shadow: inset 4px 0 0 var(--court); }
@@ -137,7 +150,67 @@
     display: flex; justify-content: space-around; align-items: center;
     padding: 12px 8px; font-size: 18px; font-weight: 600; text-align: center;
   }
-  .half span { background: var(--court-dark); padding: 4px 10px; border-radius: var(--radius-s); }
+  .half .name-chip { background: var(--court-dark); padding: 4px 10px; border-radius: var(--radius-s); }
+  button.half {
+    width: 100%; background: transparent; color: var(--line); border-radius: 0;
+    transition: background 0.15s ease, opacity 0.15s ease;
+  }
+  button.half.picked { background: rgba(242, 201, 76, 0.38); }
+  button.half.picked .name-chip { background: var(--tape); color: var(--ink); }
+  button.half.dimmed { opacity: 0.45; }
+  .win-flag {
+    position: absolute; top: 6px; left: 8px; padding: 1px 6px !important; font-size: 12px;
+    background: var(--ink) !important; color: var(--tape) !important;
+  }
+  /* 拖曳交換：長按名字後可拖到另一個名字上 */
+  /* 每位球員佔滿所在半場的一格，整格都能長按拖曳、也都能當放置目標 */
+  button.half { padding: 0; align-items: stretch; min-height: 75px; }
+
+  /* 真實球場：雙打場地 13.4m × 6.1m，球網在中間，左半場 A 隊、右半場 B 隊 */
+  .court-map { position: relative; aspect-ratio: 13.4 / 6.1; width: 100%; background: #2F7353; border-radius: 3px; }
+  .court-map svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+  .court-map line, .court-map rect { stroke: var(--line); vector-effect: non-scaling-stroke; fill: none; }
+  .court-map .net { stroke: #fff; }
+  .court-map button.half {
+    position: absolute; top: 0; bottom: 0; width: 50%; min-height: 0;
+    flex-direction: column;   /* 雙打兩人分別在上下發球區 */
+  }
+  .court-map button.half.side-A { left: 0; }
+  .court-map button.half.side-B { right: 0; }
+  /* 名字置中在發球區內：
+     橫向介於雙打後發球線(0.76m)與前發球線(4.72m) → 中心 2.74m，佔半場 6.7m 的 40.9%
+     縱向：上發球區介於單打邊線(0.46m)與中線(3.05m) → 佔上半格的 57.5%；下發球區對稱為 42.5% */
+  .court-map .drag-chip { position: relative; padding: 0; display: block; }
+  .court-map .name-chip {
+    position: absolute; transform: translate(-50%, -50%);
+    background: rgba(27, 67, 50, 0.92); font-size: 17px; font-weight: 600;
+    max-width: 80%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .court-map .side-A .name-chip { left: 40.9%; }
+  .court-map .side-B .name-chip { left: 59.1%; }
+  .court-map .slot-top .name-chip { top: 57.5%; }
+  .court-map .slot-bottom .name-chip { top: 42.5%; }
+  .court-map .slot-only .name-chip { top: 50%; }
+  .court-map.empty { display: flex; align-items: center; justify-content: center; }
+  .court-map.empty svg { opacity: 0.45; }
+  .court-map .empty-label {
+    position: relative; font-weight: 600; background: rgba(27, 67, 50, 0.9);
+    padding: 4px 12px; border-radius: var(--radius-s);
+  }
+  .drag-chip {
+    flex: 1; display: flex; align-items: center; justify-content: center; padding: 12px 4px;
+    -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    border-radius: var(--radius-s); transition: background 0.12s ease;
+  }
+  .drag-chip.drag-source { opacity: 0.35; }
+  .drag-chip.drop-target { background: rgba(242, 201, 76, 0.45); }
+  .drag-chip.drop-target .name-chip { outline: 3px solid var(--tape); outline-offset: 2px; }
+  .drag-ghost {
+    position: fixed; z-index: 30; pointer-events: none; transform: translate(-50%, -60%) scale(1.12);
+    background: var(--tape); color: var(--ink); padding: 6px 14px; border-radius: var(--radius-s);
+    font-size: 18px; font-weight: 700; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.3); white-space: nowrap;
+  }
+  .court-hint { font-size: 12px; opacity: 0.75; margin-top: 6px; text-align: center; }
   .court-empty {
     min-height: 150px; border: 2px dashed rgba(247, 247, 242, 0.5); border-radius: 2px;
     display: flex; align-items: center; justify-content: center; opacity: 0.85;
@@ -243,7 +316,7 @@ const STORAGE_KEYS = {
   session: 'badminton-session',
   regulars: 'badminton-regulars',
 };
-const APP_VERSION = '3.2';   // 每次修改程式時更新，用來確認手機上是否為最新版
+const APP_VERSION = '3.8';   // 每次修改程式時更新，用來確認手機上是否為最新版
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -296,6 +369,7 @@ const ui = {
   setupSaveNew: true,
   editRegulars: false,
   tab: 'courts',        // 'courts' | 'players' | 'records'
+  pendingWin: null,     // 在場地上點選的勝隊 {court, team}，確認後才結束
   settings: false,
   editRoster: false,
   copyText: null,       // 剪貼簿無法使用時，改用彈窗讓使用者手動複製
@@ -864,6 +938,14 @@ function applyResult(entry, winnerIds) {
   return true;
 }
 
+/**
+ * 顯示用的場次編號：依目前剩下的紀錄由舊到新重新編號（1、2、3…）。
+ * h.no 是內部識別碼，刪除後不重複使用，只用來對應按鈕與紀錄，不顯示給使用者。
+ */
+function displayNo(entry) {
+  return state.history.length - state.history.indexOf(entry);
+}
+
 /* 今日戰績：只由歷史紀錄推算，刪除紀錄或開新球局會自動更新 */
 function todayStats() {
   const stats = {};
@@ -877,6 +959,32 @@ function todayStats() {
   });
   return Object.values(stats).sort((a, b) =>
     b.wins / b.games - a.wins / a.games || b.wins - a.wins || b.games - a.games);
+}
+
+/**
+ * 場上交換兩位球員的位置（中途換隊友）。
+ * 兩人不同隊時，隊伍組成改變：先扣回舊分隊的配對統計，再加上新分隊，
+ * 之後結束比賽、避免重複組合都會以實際分隊為準。同隊交換只改顯示順序。
+ */
+function swapOnCourt(courtIndex, idA, idB) {
+  const match = state.courts[courtIndex] && state.courts[courtIndex].match;
+  if (!match || idA === idB) return false;
+  const locate = (id) => (match.teamA.includes(id) ? match.teamA : match.teamB.includes(id) ? match.teamB : null);
+  const teamOfA = locate(idA);
+  const teamOfB = locate(idB);
+  if (!teamOfA || !teamOfB) return false;
+
+  if (teamOfA === teamOfB) {
+    const i = teamOfA.indexOf(idA);
+    const j = teamOfA.indexOf(idB);
+    [teamOfA[i], teamOfA[j]] = [teamOfA[j], teamOfA[i]];
+    return true;
+  }
+  updatePairs(match.teamA, match.teamB, -1);
+  teamOfA[teamOfA.indexOf(idA)] = idB;
+  teamOfB[teamOfB.indexOf(idB)] = idA;
+  updatePairs(match.teamA, match.teamB, 1);
+  return true;
 }
 
 function recordHistory(courtIndex, match, winnerIds = null) {
@@ -1163,6 +1271,28 @@ function elapsedMinutes(startedAt) {
   return Math.max(0, Math.floor((Date.now() - startedAt) / 60000));
 }
 
+/**
+ * 依國際規格畫出雙打球場（單位：公尺）。
+ * 長 13.4、寬 6.1；單打邊線內縮 0.46；前發球線距網 1.98；雙打後發球線距底線 0.76。
+ */
+function courtLinesSvg() {
+  const L = 13.4;
+  const W = 6.1;
+  const net = L / 2;
+  const shortA = net - 1.98;
+  const shortB = net + 1.98;
+  const line = (x1, y1, x2, y2, extra = '') =>
+    `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke-width="1.5" ${extra}/>`;
+  return `<svg viewBox="0 0 ${L} ${W}" preserveAspectRatio="none" aria-hidden="true">
+    <rect x="0" y="0" width="${L}" height="${W}" stroke-width="2"/>
+    ${line(0, 0.46, L, 0.46)}${line(0, W - 0.46, L, W - 0.46)}
+    ${line(shortA, 0, shortA, W)}${line(shortB, 0, shortB, W)}
+    ${line(0.76, 0, 0.76, W)}${line(L - 0.76, 0, L - 0.76, W)}
+    ${line(0, W / 2, shortA, W / 2)}${line(shortB, W / 2, L, W / 2)}
+    ${line(net, -0.35, net, W + 0.35, 'class="net" stroke-width="3.5"')}
+  </svg>`;
+}
+
 function renderCourt(court, index) {
   const since = court.match ? matchesStartedSince(court.match) : 0;
   const alert = since >= staleThreshold()
@@ -1177,16 +1307,39 @@ function renderCourt(court, index) {
 
   if (!court.match) {
     return `<div class="court">${title}
-      <div class="court-empty">等待排場</div>
+      <div class="court-map empty">${courtLinesSvg()}<span class="empty-label">等待排場</span></div>
       <div class="court-actions">
         <button class="btn-tape" data-action="fill-court" data-court="${index}">自動排</button>
         <button data-action="manual-open" data-court="${index}">手動排</button>
       </div></div>`;
   }
 
-  const half = (team) => `<div class="half">${team.map((id) => `<span>${escapeHtml(playerName(id))}</span>`).join('')}</div>`;
-  return `<div class="court">${title}
-    <div class="court-lines">${half(court.match.teamA)}${half(court.match.teamB)}</div>
+  const picked = ui.pendingWin && ui.pendingWin.court === index ? ui.pendingWin.team : null;
+  const half = (team, side) => {
+    const cls = picked === side ? 'picked' : (picked ? 'dimmed' : '');
+    const names = team.map(playerName);
+    return `<button class="half side-${side} ${cls}" data-action="win-select" data-court="${index}" data-team="${side}"
+        aria-pressed="${picked === side}" aria-label="${escapeHtml(names.join('、'))}，點選設為勝方">
+      ${picked === side ? '<span class="win-flag">勝</span>' : ''}
+      ${team.map((id, i) => {
+        const slot = team.length === 1 ? 'slot-only' : (i === 0 ? 'slot-top' : 'slot-bottom');
+        return `<span class="drag-chip ${slot}" data-pid="${id}" data-court="${index}"><span class="name-chip">${escapeHtml(playerName(id))}</span></span>`;
+      }).join('')}
+    </button>`;
+  };
+  const lines = `<div class="court-map">${courtLinesSvg()}${half(court.match.teamA, 'A')}${half(court.match.teamB, 'B')}</div>`;
+  // 提示文字在選擇勝方前後都保留，避免版面高度改變而跳動
+  const hint = '<p class="court-hint">長按名字拖曳換位｜點勝隊半場記勝負｜按結束則不記</p>';
+
+  if (picked) {
+    const winners = (picked === 'A' ? court.match.teamA : court.match.teamB).map(playerName).join('、');
+    return `<div class="court">${title}${lines}${hint}
+      <div class="court-actions">
+        <button class="btn-tape" data-action="win-confirm">確認：${escapeHtml(winners)} 勝，結束這場</button>
+        <button class="btn-ghost" data-action="win-clear">取消</button>
+      </div></div>`;
+  }
+  return `<div class="court">${title}${lines}${hint}
     <div class="court-actions">
       <button class="btn-tape" data-action="end-match" data-court="${index}">結束這場</button>
       <button class="btn-court-alt" data-action="manual-replace" data-court="${index}">改為手動</button>
@@ -1301,8 +1454,8 @@ function renderHistory() {
     return `<li class="history-item">
       <button class="history-delete ${ui.deleteArmedNo === h.no ? 'armed' : ''}"
         data-action="history-delete" data-no="${h.no}"
-        aria-label="刪除第 ${h.no} 場紀錄">${ui.deleteArmedNo === h.no ? '確認刪除' : '刪除'}</button>
-      <div class="meta num">#${h.no}・第 ${h.court} 場地・${MODE_LABEL[h.mode]}${h.isManual ? '・手動' : ''}・
+        aria-label="刪除第 ${displayNo(h)} 場紀錄">${ui.deleteArmedNo === h.no ? '確認刪除' : '刪除'}</button>
+      <div class="meta num">#${displayNo(h)}・第 ${h.court} 場地・${MODE_LABEL[h.mode]}${h.isManual ? '・手動' : ''}・
         ${formatTime(h.startedAt)}–${formatTime(h.endedAt)}（${minutes} 分）</div>
       <div class="teams">${renderHistoryTeams(h)}</div>
       ${h.teamAIds ? `<button class="history-result" data-action="history-result" data-no="${h.no}">
@@ -1368,6 +1521,8 @@ function renderRecordsTab() {
     ${renderHistory()}`;
 }
 
+const TAB_ORDER = ['courts', 'players', 'records'];
+
 function renderTabBar() {
   const waiting = availablePlayers().length;
   const tabs = [
@@ -1375,7 +1530,10 @@ function renderTabBar() {
     { key: 'players', label: '球員', note: `${state.players.filter((p) => p.active).length} 人` },
     { key: 'records', label: '紀錄', note: `${state.history.length} 場` },
   ];
+  // 指示條先停在上一個分頁的位置，畫面更新後再滑到目前分頁（見 animateTabIndicator）
+  const from = TAB_ORDER.indexOf(ui.prevTab || ui.tab);
   return `<nav class="tabbar" aria-label="分頁"><div class="tabbar-inner" role="tablist">
+    <div class="tab-indicator" style="transform: translateX(${from * 100}%)"></div>
     ${tabs.map((t) => `<button role="tab" data-action="tab" data-tab="${t.key}" aria-selected="${ui.tab === t.key}">
       ${t.label}<small class="num">${t.note}</small></button>`).join('')}
   </div></nav>`;
@@ -1395,7 +1553,7 @@ function renderMain() {
       </div>
     </header>
     ${renderStorageBanner()}
-    ${body}
+    <div class="tab-body ${ui.tabAnim || ''}" id="tab-body">${body}</div>
     ${renderTabBar()}`;
 }
 
@@ -1444,7 +1602,7 @@ function resultContext() {
   const entry = state.history.find((h) => h.no === r.no);
   if (!entry || !entry.teamAIds) return null;
   return {
-    title: `#${entry.no}・${entry.winners ? '修改' : '補記'}勝負`,
+    title: `#${displayNo(entry)}・${entry.winners ? '修改' : '補記'}勝負`,
     teamA: entry.teamAIds.map((id, i) => ({ id, name: entry.teamA[i] })),
     teamB: entry.teamBIds.map((id, i) => ({ id, name: entry.teamB[i] })),
     hasResult: Boolean(entry.winners),
@@ -1585,6 +1743,7 @@ function renderModal() {
 function render() {
   document.getElementById('app').innerHTML = state.players.length ? renderMain() : renderSetup();
   renderModal();
+  animateTabIndicator();
 }
 
 let toastTimer = null;
@@ -1694,6 +1853,175 @@ setInterval(() => {
   });
 }, 20000);
 
+/* ===================== 分頁切換與滑動 ===================== */
+function animateTabIndicator() {
+  const bar = document.querySelector('.tab-indicator');
+  if (!bar) return;
+  const to = TAB_ORDER.indexOf(ui.tab);
+  requestAnimationFrame(() => { bar.style.transform = `translateX(${to * 100}%)`; });
+}
+
+function switchTab(nextTab) {
+  if (!TAB_ORDER.includes(nextTab) || nextTab === ui.tab) return;
+  const forward = TAB_ORDER.indexOf(nextTab) > TAB_ORDER.indexOf(ui.tab);
+  ui.prevTab = ui.tab;
+  ui.tab = nextTab;
+  ui.tabAnim = forward ? 'from-right' : 'from-left';
+  ui.editRoster = false;
+  render();
+  // 動畫只套用在這次切換，之後的重畫不重播
+  ui.tabAnim = null;
+  ui.prevTab = null;
+  window.scrollTo(0, 0);
+}
+
+/**
+ * 左右滑動切換分頁：內容會跟著手指移動，放開時超過門檻就切換，否則彈回。
+ * 只在判定為水平滑動時攔截，垂直捲動不受影響。
+ */
+const SWIPE_THRESHOLD = 70;
+const swipe = { active: false, decided: false, horizontal: false, x: 0, y: 0, dx: 0 };
+
+function swipeBlocked(target) {
+  return !state.players.length
+    || ui.manual || ui.result || ui.backup || ui.settings || ui.copyText
+    || target.closest('input, textarea, select, .tabbar, .modal-bg');
+}
+
+document.addEventListener('touchstart', (event) => {
+  if (event.touches.length !== 1 || swipeBlocked(event.target)) return;
+  const t = event.touches[0];
+  Object.assign(swipe, { active: true, decided: false, horizontal: false, x: t.clientX, y: t.clientY, dx: 0 });
+}, { passive: true });
+
+document.addEventListener('touchmove', (event) => {
+  if (!swipe.active) return;
+  const t = event.touches[0];
+  const dx = t.clientX - swipe.x;
+  const dy = t.clientY - swipe.y;
+  if (!swipe.decided) {
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+    swipe.decided = true;
+    swipe.horizontal = Math.abs(dx) > Math.abs(dy) * 1.2;
+    if (!swipe.horizontal) {
+      swipe.active = false;
+      return;
+    }
+  }
+  event.preventDefault();   // 水平滑動時阻止頁面左右晃動
+  swipe.dx = dx;
+  const index = TAB_ORDER.indexOf(ui.tab);
+  const atEdge = (dx > 0 && index === 0) || (dx < 0 && index === TAB_ORDER.length - 1);
+  const body = document.getElementById('tab-body');
+  if (body) {
+    body.style.transition = 'none';
+    body.style.transform = `translateX(${dx * (atEdge ? 0.15 : 0.5)}px)`;   // 邊界加阻力
+  }
+}, { passive: false });
+
+document.addEventListener('touchend', () => {
+  if (!swipe.active) return;
+  swipe.active = false;
+  if (!swipe.horizontal) return;
+  const index = TAB_ORDER.indexOf(ui.tab);
+  const target = swipe.dx < 0 ? index + 1 : index - 1;
+  if (Math.abs(swipe.dx) >= SWIPE_THRESHOLD && target >= 0 && target < TAB_ORDER.length) {
+    switchTab(TAB_ORDER[target]);
+    return;
+  }
+  const body = document.getElementById('tab-body');
+  if (body) {
+    body.style.transition = 'transform 0.2s ease';
+    body.style.transform = 'translateX(0)';
+  }
+});
+
+/* ===================== 場上拖曳交換 ===================== */
+/**
+ * 長按 0.3 秒啟動拖曳，避免和捲動、左右滑動切換分頁衝突：
+ * 長按前手指移動超過 8px 視為捲動或滑動，取消拖曳。
+ * 放到同一場地的另一個名字上即交換。
+ */
+const LONG_PRESS_MS = 300;
+const drag = { timer: null, active: false, source: null, ghost: null, target: null, x: 0, y: 0, suppressClick: false };
+
+function dragStart() {
+  drag.active = true;
+  swipe.active = false;   // 停止分頁滑動判定
+  drag.source.classList.add('drag-source');
+  const ghost = document.createElement('div');
+  ghost.className = 'drag-ghost';
+  ghost.textContent = drag.source.textContent.trim();
+  document.body.appendChild(ghost);
+  drag.ghost = ghost;
+  dragMove(drag.x, drag.y);
+  if (navigator.vibrate) navigator.vibrate(15);
+}
+
+function dragMove(x, y) {
+  drag.ghost.style.left = `${x}px`;
+  drag.ghost.style.top = `${y}px`;
+  const under = document.elementFromPoint(x, y);
+  const chip = under && under.closest('.drag-chip');
+  const valid = chip && chip !== drag.source && chip.dataset.court === drag.source.dataset.court ? chip : null;
+  if (drag.target && drag.target !== valid) drag.target.classList.remove('drop-target');
+  if (valid) valid.classList.add('drop-target');
+  drag.target = valid;
+}
+
+function dragEnd() {
+  clearTimeout(drag.timer);
+  drag.timer = null;
+  if (!drag.active) {
+    drag.source = null;
+    return;
+  }
+  const { source, target } = drag;
+  drag.ghost.remove();
+  Object.assign(drag, { active: false, source: null, ghost: null, target: null, suppressClick: true });
+  setTimeout(() => { drag.suppressClick = false; }, 400);
+  if (target && swapOnCourt(Number(source.dataset.court), Number(source.dataset.pid), Number(target.dataset.pid))) {
+    saveSession();
+    showToast('已交換位置');
+  }
+  render();
+}
+
+function dragPointerDown(target, x, y) {
+  const chip = target.closest('.drag-chip');
+  if (!chip || ui.manual || ui.result || ui.settings) return;
+  drag.source = chip;
+  drag.x = x;
+  drag.y = y;
+  drag.timer = setTimeout(dragStart, LONG_PRESS_MS);
+}
+
+function dragPointerMove(event, x, y) {
+  if (drag.active) {
+    event.preventDefault();
+    dragMove(x, y);
+  } else if (drag.timer && Math.hypot(x - drag.x, y - drag.y) > 8) {
+    clearTimeout(drag.timer);   // 長按前就移動：交給捲動或分頁滑動
+    drag.timer = null;
+    drag.source = null;
+  }
+}
+
+document.addEventListener('touchstart', (e) => {
+  if (e.touches.length === 1) dragPointerDown(e.target, e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  if (drag.source) dragPointerMove(e, e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: false });
+document.addEventListener('touchend', dragEnd);
+document.addEventListener('touchcancel', dragEnd);
+// 電腦版滑鼠也能拖曳
+document.addEventListener('mousedown', (e) => dragPointerDown(e.target, e.clientX, e.clientY));
+document.addEventListener('mousemove', (e) => { if (drag.source) dragPointerMove(e, e.clientX, e.clientY); });
+document.addEventListener('mouseup', dragEnd);
+// 長按名字時不要跳出系統選單
+document.addEventListener('contextmenu', (e) => { if (e.target.closest('.drag-chip')) e.preventDefault(); });
+
 /* ===================== 強制更新 ===================== */
 /**
  * 1. 先寫入尚未儲存的資料（localStorage 以網域為單位，網址加參數不影響資料）
@@ -1774,6 +2102,9 @@ function handleAction(el) {
   let modalOnly = false;   // 只影響彈窗內容的操作，不重畫整頁，避免畫面跳動
 
   if (action !== 'reset') ui.resetArmed = false;
+  // 點勝隊的選擇只在同一張卡片上連續操作時保留
+  const pendingWin = ui.pendingWin;
+  if (action !== 'win-select') ui.pendingWin = null;
   if (action !== 'history-delete') ui.deleteArmedNo = null;
   if (action !== 'history-clear') ui.clearHistoryArmed = false;
 
@@ -1807,9 +2138,34 @@ function handleAction(el) {
     case 'court-dec': setCourtCount(state.courts.length - 1); break;
     case 'fill-court': fillCourt(court); break;
     case 'fill-all': fillAllEmpty(); break;
-    case 'end-match':
-      ui.result = { kind: 'end', courtIndex: court, selected: [] };
+    case 'win-select': {
+      if (drag.suppressClick) {   // 剛結束拖曳，忽略隨後觸發的點擊
+        drag.suppressClick = false;
+        ui.pendingWin = pendingWin;
+        return;
+      }
+      const team = el.dataset.team;
+      const same = pendingWin && pendingWin.court === court && pendingWin.team === team;
+      ui.pendingWin = same ? null : { court, team };   // 再點一次同一邊 = 取消選擇
       sessionChanged = false;
+      break;
+    }
+    case 'win-clear': sessionChanged = false; break;
+    case 'win-confirm': {
+      const match = pendingWin && state.courts[pendingWin.court].match;
+      if (!match) return;
+      const winners = pendingWin.team === 'A' ? match.teamA.slice() : match.teamB.slice();
+      const names = winners.map(playerName).join('、');
+      endMatch(pendingWin.court, winners);
+      showToast(`已記錄 ${names} 勝`);
+      break;
+    }
+    case 'end-match':
+      // 直接結束（不記勝負）；要記勝負時改點勝隊那一半
+      endMatch(court, null);
+      showToast(state.autoFill && state.courts[court].match
+        ? `第 ${court + 1} 場地已結束，新組合已排上`
+        : `第 ${court + 1} 場地已結束`);
       break;
     case 'history-result': {
       const entry = state.history.find((h) => h.no === Number(el.dataset.no));
@@ -1970,11 +2326,8 @@ function handleAction(el) {
       }
       break;
     case 'tab':
-      ui.tab = el.dataset.tab;
-      ui.editRoster = false;
-      sessionChanged = false;
-      window.scrollTo(0, 0);
-      break;
+      switchTab(el.dataset.tab);
+      return;
     case 'roster-edit': ui.editRoster = !ui.editRoster; sessionChanged = false; break;
     case 'settings-open': ui.settings = true; sessionChanged = false; break;
     case 'set-awake': state.keepAwake = el.dataset.value === '1'; break;
