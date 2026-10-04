@@ -397,7 +397,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '3.22';
+const APP_VERSION = '3.24';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -1493,11 +1493,11 @@ function renderRegularQuickAdd() {
 
 /**
  * 體力（只顯示，不影響排場）：由歷史紀錄與場上比賽的時間即時推算。
- * 每人從 100 開始；在場上每分鐘 −1.5，不在場上（等待或休息）每分鐘 +4，範圍 0～100。
- * 例：打 20 分鐘 −30；下場休息 8 分鐘 +32。人少、幾乎沒得休息時體力會持續下降。
+ * 每人從 100 開始；在場上每分鐘 −1.5，不在場上（等待或休息）每分鐘 +0.5，範圍 0～100。
+ * 例：打 20 分鐘 −30；下場休息 10 分鐘 +5。整晚會逐漸下降，反映累積的疲勞。
  */
 const STAMINA_DRAIN = 1.5;
-const STAMINA_RECOVER = 4;
+const STAMINA_RECOVER = 0.5;
 
 function staminaOf(player, now = Date.now()) {
   const intervals = [];
@@ -1563,7 +1563,7 @@ function renderRoster() {
     <thead><tr><th>球員（★ 常用）</th><th>場數</th><th>累計等</th><th>狀態</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table>
     <p class="sub" style="margin-top:6px">綠色列為正在場上，場數只計算已完成的場次，與歷史紀錄一致。<br>
-      體力：上場每分鐘 −1.5、場下每分鐘 +4，綠色充足、黃色偏累、紅色該休息了（只是好玩，不影響排場）。</p>`;
+      體力：上場每分鐘 −1.5、場下每分鐘 +0.5，綠色充足、黃色偏累、紅色該休息了（只是好玩，不影響排場）。</p>`;
 }
 
 function renderConsistencyBanner() {
