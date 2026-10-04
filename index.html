@@ -380,6 +380,15 @@
     .modal.modal-enter { animation: rise 0.18s ease-out; }
     @keyframes rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
   }
+  /* 結束今日打球 */
+  .end-day { display: flex; gap: 10px; align-items: center; justify-content: space-between;
+    background: var(--surface); border-radius: var(--radius-l); padding: 12px 14px; margin-bottom: 4px; }
+  .end-day .sub { margin: 0; }
+  .day-ended { background: var(--soft-yellow); border: 2px solid var(--tape); border-radius: var(--radius-l);
+    padding: 12px 14px; margin-bottom: 14px; }
+  .day-ended .row { margin-top: 8px; }
+  .report-img { width: 100%; border-radius: var(--radius-s); border: 1px solid var(--border); display: block; }
+
   /* ===== 響應式排版 ===== */
   /* 平板直式、手機橫式：版面加寬 */
   @media (min-width: 700px) {
@@ -434,7 +443,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '3.27';
+const APP_VERSION = '3.28';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -466,6 +475,7 @@ function createDefaultState() {
     autoFill: true,
     fairness: 'played',
     keepAwake: true,    // 螢幕常亮
+    dayEnded: false,    // 已按「結束今日打球」；再開任何一場就自動解除
     players: [],        // {id, name, played, offset, wait, benched, benchOffset, lastStartSeq, active}
     courts: [{ match: null }, { match: null }],
     pairs: {},          // "idA|idB": {partner, opponent}
@@ -490,6 +500,8 @@ const ui = {
   editRegulars: false,
   tab: 'courts',        // 'courts' | 'players' | 'records'
   titleIndex: null,     // 正在查看的稱號
+  endDayArmed: false,
+  report: null,         // 戰報圖片 {url, blob, fileName}
   pendingWin: null,     // 在場地上點選的勝隊 {court, team}，確認後才結束
   settings: false,
   editRoster: false,
@@ -628,6 +640,7 @@ function normalizeState(raw) {
   });
   next.startSeq = next.startSeq || 0;
   if (!FAIRNESS_STEP[next.fairness]) next.fairness = 'played';
+  next.dayEnded = Boolean(next.dayEnded);
   return next;
 }
 
@@ -976,6 +989,7 @@ function updatePairs(teamA, teamB, delta) {
  *        因為還沒有人真正「被跳過」，只是還沒輪到。
  */
 function commitMatch(courtIndex, teamA, teamB, isManual, countWait = true) {
+  state.dayEnded = false;
   const ids = teamA.concat(teamB);
   const idle = countWait ? availablePlayers().filter((p) => !ids.includes(p.id)) : [];
   const prevWait = {};
@@ -1697,8 +1711,19 @@ function renderHistory() {
     </div>`;
 }
 
+function renderDayEndedBanner() {
+  if (!state.dayEnded) return '';
+  return `<div class="day-ended">
+    <strong>🏁 今日打球已結束</strong>
+    <p class="sub" style="margin:4px 0 0">資料都還保留著。要繼續打可以直接排場；要開始新的一天請到「設定」開新球局。</p>
+    <div class="row">
+      <button class="btn-tape" data-action="report-open">查看戰報</button>
+    </div>
+  </div>`;
+}
+
 function renderCourtsTab() {
-  return `<div class="courts-layout">
+  return `${renderDayEndedBanner()}<div class="courts-layout">
     <div class="courts-main">
       <div class="courts">${state.courts.map(renderCourt).join('')}</div>
       ${state.courts.some((c) => !c.match)
@@ -2117,8 +2142,24 @@ function renderTitleModal() {
   </div>`;
 }
 
+function renderEndDay() {
+  const live = state.courts.filter((c) => c.match).length;
+  if (state.dayEnded) {
+    return `<div class="end-day">
+      <p class="sub">今日已結束，共完成 ${state.history.length} 場。</p>
+      <button class="btn-tape" data-action="report-open">查看戰報</button>
+    </div>`;
+  }
+  return `<div class="end-day">
+    <p class="sub">${ui.endDayArmed && live ? `場上 ${live} 場會直接取消、不列入紀錄` : '打完了嗎？結束後可以分享今日戰報圖片'}</p>
+    <button class="${ui.endDayArmed ? 'btn-danger' : 'btn-tape'}" data-action="end-day">
+      ${ui.endDayArmed ? '再按一次確認' : '🏁 結束今日打球'}</button>
+  </div>`;
+}
+
 function renderRecordsTab() {
   return `
+    ${renderEndDay()}
     <h2>今日稱號</h2>
     ${renderTitles()}
     <h2>今日戰績</h2>
@@ -2320,6 +2361,9 @@ function renderSettingsModal() {
     </div>
     <hr class="settings-divider">
     <div style="text-align:center">
+      <button class="btn-ghost" data-action="settings-end-day">結束今日打球、產生戰報</button>
+    </div>
+    <div style="text-align:center">
       <button class="btn-ghost" data-action="backup-open">備份與還原</button>
       <button class="${ui.resetArmed ? 'btn-danger' : 'btn-ghost'}" data-action="reset">
         ${ui.resetArmed ? '再按一次確認（常用球員會保留）' : '清除排場紀錄，開新球局'}
@@ -2348,6 +2392,7 @@ function renderModal() {
   else if (ui.backup) content = renderBackupModal();
   else if (ui.copyText) content = renderCopyModal();
   else if (ui.titleIndex !== null && ui.titleIndex !== undefined) content = renderTitleModal();
+  else if (ui.report) content = renderReportModal();
   else if (ui.settings) content = renderSettingsModal();
 
   // 只有第一次開啟才播放進場動畫，之後的更新不重播
@@ -2402,6 +2447,268 @@ function manualConfirm() {
   }
   commitMatch(ui.manual.courtIndex, teamA, teamB, true);
   return true;
+}
+
+/* ===================== 今日戰報圖片 ===================== */
+const REPORT_W = 1080;
+const REPORT_PAD = 60;
+const REPORT_FONT = '"PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif';
+const REPORT_COLORS = {
+  bg: '#E9EEE6', card: '#FFFFFF', ink: '#14261C', muted: '#5B6B61',
+  court: '#2D6A4F', courtDark: '#1B4332', line: '#F7F7F2', tape: '#F2C94C', stripe: '#F3F6F1',
+};
+
+// 逐字斷行：中文沒有空格，以字元為單位，寬度超過就換行
+function wrapText(ctx, text, maxWidth) {
+  const lines = [];
+  let line = '';
+  Array.from(text).forEach((ch) => {
+    if (ctx.measureText(line + ch).width > maxWidth && line) {
+      lines.push(line);
+      line = ch;
+    } else {
+      line += ch;
+    }
+  });
+  if (line) lines.push(line);
+  return lines;
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+function reportData() {
+  const chrono = state.history.slice().reverse();
+  const starts = chrono.map((h) => h.startedAt).filter(Boolean);
+  const ends = chrono.map((h) => h.endedAt).filter(Boolean);
+  const first = starts.length ? Math.min(...starts) : Date.now();
+  const last = ends.length ? Math.max(...ends) : Date.now();
+  const minutes = Math.max(0, Math.round((last - first) / 60000));
+
+  // 每人戰績：完成場數來自全部紀錄，勝敗只計有記勝負的場次
+  const rows = {};
+  chrono.forEach((h) => h.teamA.concat(h.teamB).forEach((n) => {
+    const r = rows[n] || (rows[n] = { name: n, games: 0, wins: 0, losses: 0 });
+    r.games += 1;
+    if (h.winners) {
+      if (h.winners.includes(n)) r.wins += 1;
+      else r.losses += 1;
+    }
+  }));
+  const list = Object.values(rows).sort((a, b) => {
+    const ra = a.wins + a.losses ? a.wins / (a.wins + a.losses) : -1;
+    const rb = b.wins + b.losses ? b.wins / (b.wins + b.losses) : -1;
+    return rb - ra || b.wins - a.wins || b.games - a.games;
+  });
+
+  const d = new Date(first);
+  const week = '日一二三四五六'[d.getDay()];
+  return {
+    date: `${d.getFullYear()}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getDate()).padStart(2, '0')}（${week}）`,
+    span: `${formatTime(first)}–${formatTime(last)}`,
+    duration: minutes >= 60 ? `${Math.floor(minutes / 60)} 小時 ${minutes % 60} 分` : `${minutes} 分`,
+    players: list.length,
+    matches: chrono.length,
+    titles: todayTitles(),
+    rows: list,
+  };
+}
+
+/**
+ * 以 Canvas 繪製戰報圖：先用暫存畫布量測各區塊高度，再建立正式畫布繪製。
+ * 寬 1080px，高度依稱號與人數自動延伸。
+ */
+function buildReportCanvas() {
+  const data = reportData();
+  const C = REPORT_COLORS;
+  const innerW = REPORT_W - REPORT_PAD * 2;
+  const gap = 24;
+  const cardW = (innerW - gap) / 2;
+  const font = (size, weight = 400) => `${weight} ${size}px ${REPORT_FONT}`;
+  const plain = (t) => String(t).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+
+  // ---------- 量測 ----------
+  const measure = document.createElement('canvas').getContext('2d');
+  const cards = data.titles.map((t) => {
+    measure.font = font(38, 700);
+    const nameLines = wrapText(measure, Array.isArray(t.who) ? t.who.join('、') : t.who, cardW - 48);
+    measure.font = font(28);
+    const detailLines = wrapText(measure, plain(t.detail), cardW - 48);
+    const h = 24 + 40 + 12 + nameLines.length * 50 + 6 + detailLines.length * 38 + 24;
+    return { t, nameLines, detailLines, h };
+  });
+  const cardRows = [];
+  for (let i = 0; i < cards.length; i += 2) cardRows.push(Math.max(cards[i].h, cards[i + 1] ? cards[i + 1].h : 0));
+  const headerH = 250;
+  const titlesH = cards.length ? 80 + cardRows.reduce((a, b) => a + b, 0) + gap * (cardRows.length - 1) : 0;
+  const rowH = 64;
+  const tableH = 80 + 70 + data.rows.length * rowH;
+  const footerH = 110;
+  const height = REPORT_PAD + headerH + 40 + titlesH + (cards.length ? 50 : 0) + tableH + footerH;
+
+  // ---------- 繪製 ----------
+  const canvas = document.createElement('canvas');
+  canvas.width = REPORT_W;
+  canvas.height = height;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, REPORT_W, height);
+  ctx.textBaseline = 'top';
+  let y = REPORT_PAD;
+
+  // 標題區：球場綠底＋白色場線裝飾
+  roundRect(ctx, REPORT_PAD, y, innerW, headerH, 28);
+  ctx.fillStyle = C.court;
+  ctx.fill();
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(247,247,242,0.18)';
+  ctx.lineWidth = 4;
+  [0.62, 0.8].forEach((r) => { ctx.beginPath(); ctx.moveTo(REPORT_PAD + innerW * r, y); ctx.lineTo(REPORT_PAD + innerW * r, y + headerH); ctx.stroke(); });
+  ctx.beginPath(); ctx.moveTo(REPORT_PAD + innerW * 0.62, y + headerH / 2); ctx.lineTo(REPORT_PAD + innerW, y + headerH / 2); ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle = C.line;
+  ctx.font = font(64, 800);
+  ctx.fillText('🏸 今日羽球戰報', REPORT_PAD + 40, y + 40);
+  ctx.font = font(34, 500);
+  ctx.fillText(`${data.date}  ${data.span}`, REPORT_PAD + 40, y + 128);
+  ctx.fillStyle = C.tape;
+  ctx.font = font(34, 700);
+  ctx.fillText(`${data.players} 人參加・共 ${data.matches} 場・打了 ${data.duration}`, REPORT_PAD + 40, y + 180);
+  y += headerH + 40;
+
+  // 今日稱號
+  if (cards.length) {
+    ctx.fillStyle = C.ink;
+    ctx.font = font(44, 800);
+    ctx.fillText('今日稱號', REPORT_PAD, y);
+    y += 80;
+    cards.forEach((c, i) => {
+      const col = i % 2;
+      const rowIndex = Math.floor(i / 2);
+      if (col === 0 && rowIndex > 0) y += cardRows[rowIndex - 1] + gap;
+      const x = REPORT_PAD + col * (cardW + gap);
+      roundRect(ctx, x, y, cardW, cardRows[rowIndex], 22);
+      ctx.fillStyle = C.card;
+      ctx.fill();
+      ctx.fillStyle = C.tape;
+      ctx.fillRect(x, y + 16, 8, cardRows[rowIndex] - 32);
+      let cy = y + 24;
+      ctx.fillStyle = C.muted;
+      ctx.font = font(30, 500);
+      ctx.fillText(`${c.t.icon} ${c.t.title}`, x + 28, cy);
+      cy += 52;
+      ctx.fillStyle = C.ink;
+      ctx.font = font(38, 700);
+      c.nameLines.forEach((l) => { ctx.fillText(l, x + 28, cy); cy += 50; });
+      cy += 6;
+      ctx.fillStyle = C.muted;
+      ctx.font = font(28);
+      c.detailLines.forEach((l) => { ctx.fillText(l, x + 28, cy); cy += 38; });
+    });
+    y += cardRows[cardRows.length - 1] + 50;
+  }
+
+  // 今日戰績表
+  ctx.fillStyle = C.ink;
+  ctx.font = font(44, 800);
+  ctx.fillText('今日戰績', REPORT_PAD, y);
+  y += 80;
+  const cols = [
+    { label: '#', w: 80, align: 'left' },
+    { label: '球員', w: 330, align: 'left' },
+    { label: '場數', w: 140, align: 'right' },
+    { label: '勝', w: 120, align: 'right' },
+    { label: '敗', w: 120, align: 'right' },
+    { label: '勝率', w: innerW - 80 - 330 - 140 - 120 - 120 - 40, align: 'right' },
+  ];
+  roundRect(ctx, REPORT_PAD, y, innerW, 70 + data.rows.length * rowH, 22);
+  ctx.fillStyle = C.card;
+  ctx.fill();
+  const drawRow = (cells, rowY, opts = {}) => {
+    let x = REPORT_PAD + 20;
+    cells.forEach((text, k) => {
+      const col = cols[k];
+      ctx.textAlign = col.align;
+      ctx.fillStyle = opts.color || C.ink;
+      ctx.font = opts.font || font(32, k === 1 ? 600 : 400);
+      ctx.fillText(text, col.align === 'right' ? x + col.w : x, rowY);
+      x += col.w;
+    });
+    ctx.textAlign = 'left';
+  };
+  drawRow(cols.map((c) => c.label), y + 20, { color: C.muted, font: font(28, 600) });
+  y += 70;
+  data.rows.forEach((r, i) => {
+    if (i % 2 === 0) {
+      ctx.fillStyle = C.stripe;
+      ctx.fillRect(REPORT_PAD, y, innerW, rowH);
+    }
+    const decided = r.wins + r.losses;
+    const rate = decided ? `${Math.round((r.wins / decided) * 100)}%` : '—';
+    drawRow([String(i + 1), r.name, String(r.games), decided ? String(r.wins) : '—', decided ? String(r.losses) : '—', rate], y + 14);
+    y += rowH;
+  });
+  y += 40;
+
+  ctx.fillStyle = C.muted;
+  ctx.font = font(26);
+  ctx.fillText(`勝負只計算有記錄的場次・羽球輪轉排場 v${APP_VERSION}`, REPORT_PAD, y + 10);
+  return canvas;
+}
+
+function openReport() {
+  if (!state.history.length) {
+    showToast('今天還沒有完成的比賽');
+    return;
+  }
+  const canvas = buildReportCanvas();
+  const d = new Date();
+  const fileName = `羽球戰報-${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, '0')}${String(d.getDate()).padStart(2, '0')}.png`;
+  ui.report = { url: canvas.toDataURL('image/png'), fileName, blob: null };
+  canvas.toBlob((blob) => { if (ui.report) ui.report.blob = blob; }, 'image/png');
+  renderModal();
+}
+
+function renderReportModal() {
+  const canShare = Boolean(navigator.share && navigator.canShare);
+  return `
+    <h3>今日戰報</h3>
+    <p class="sub">${canShare ? '按「分享」可以直接傳到 LINE，或存到相簿。' : '長按圖片即可儲存或分享。'}</p>
+    <img class="report-img" src="${ui.report.url}" alt="今日戰報">
+    <div class="modal-foot">
+      ${canShare ? '<button class="btn-tape" data-action="report-share">分享圖片</button>' : ''}
+      <button class="btn-primary" data-action="modal-close">關閉</button>
+    </div>`;
+}
+
+async function shareReport() {
+  const r = ui.report;
+  if (!r) return;
+  try {
+    const blob = r.blob || await (await fetch(r.url)).blob();
+    const file = new File([blob], r.fileName, { type: 'image/png' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({ files: [file], title: '今日羽球戰報' });
+    } else {
+      showToast('這個瀏覽器不支援直接分享，請長按圖片儲存');
+    }
+  } catch (err) {
+    if (err && err.name !== 'AbortError') showToast('分享失敗，請長按圖片儲存');   // 使用者取消分享不提示
+  }
+}
+
+/* 結束今日打球：取消場上未完成的比賽（不列入紀錄），保留所有資料並產生戰報 */
+function endDay() {
+  state.courts.forEach((court, i) => { if (court.match) cancelMatch(i); });
+  state.dayEnded = true;
 }
 
 /* ===================== 複製排場 ===================== */
@@ -2509,7 +2816,7 @@ const swipe = { active: false, decided: false, horizontal: false, x: 0, y: 0, dx
 
 function swipeBlocked(target) {
   return !state.players.length
-    || ui.manual || ui.result || ui.backup || ui.settings || ui.copyText || ui.titleIndex !== null
+    || ui.manual || ui.result || ui.backup || ui.settings || ui.copyText || ui.titleIndex !== null || ui.report
     || target.closest('input, textarea, select, .tabbar, .modal-bg');
 }
 
@@ -2746,6 +3053,7 @@ function handleAction(el) {
   if (action !== 'win-select') ui.pendingWin = null;
   if (action !== 'history-delete') ui.deleteArmedNo = null;
   if (action !== 'history-clear') ui.clearHistoryArmed = false;
+  if (action !== 'end-day' && action !== 'settings-end-day') ui.endDayArmed = false;
 
   switch (action) {
     /* 開始設定 */
@@ -2968,6 +3276,27 @@ function handleAction(el) {
       switchTab(el.dataset.tab);
       return;
     case 'roster-edit': ui.editRoster = !ui.editRoster; sessionChanged = false; break;
+    case 'end-day':
+      if (!ui.endDayArmed) {
+        ui.endDayArmed = true;
+        sessionChanged = false;
+        setTimeout(() => { if (ui.endDayArmed) { ui.endDayArmed = false; render(); } }, 4000);
+        break;
+      }
+      ui.endDayArmed = false;
+      endDay();
+      saveSession();
+      render();
+      openReport();
+      return;
+    case 'settings-end-day':
+      ui.settings = false;
+      ui.tab = 'records';
+      ui.endDayArmed = !state.dayEnded;
+      sessionChanged = false;
+      break;
+    case 'report-open': openReport(); return;
+    case 'report-share': shareReport(); return;
     case 'title-open': ui.titleIndex = Number(el.dataset.index); sessionChanged = false; break;
     case 'settings-open': ui.settings = true; sessionChanged = false; break;
     case 'set-appearance':
@@ -2997,6 +3326,7 @@ function handleAction(el) {
       ui.settings = false;
       ui.copyText = null;
       ui.titleIndex = null;
+      ui.report = null;
       sessionChanged = false;
       break;
 
