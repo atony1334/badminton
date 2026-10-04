@@ -443,7 +443,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '3.28';
+const APP_VERSION = '3.30';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -1544,11 +1544,12 @@ function renderRegularQuickAdd() {
 
 /**
  * 體力（只顯示，不影響排場）：由歷史紀錄與場上比賽的時間即時推算。
- * 每人從 100 開始；在場上每分鐘 −1.5，不在場上（等待或休息）每分鐘 +0.5，範圍 0～100。
- * 例：打 20 分鐘 −30；下場休息 10 分鐘 +5。整晚會逐漸下降，反映累積的疲勞。
+ * 每人從 100 開始；在場上每分鐘 −1.5，不在場上（等待或休息）每分鐘 +1，範圍 0～100。
+ * 輸球的一方在比賽結束時再扣 5。例：打 20 分鐘輸球 −35；下場休息 10 分鐘 +10。
  */
 const STAMINA_DRAIN = 1.5;
-const STAMINA_RECOVER = 0.5;
+const STAMINA_RECOVER = 1;
+const STAMINA_LOSS_PENALTY = 5;   // 輸球的一方下場時額外扣血（只計有記勝負的場次）
 
 /**
  * 推算某位球員在 until 這個時間點的體力，以及第一次歸零的時間。
@@ -1560,11 +1561,13 @@ function staminaTrack(player, until = Date.now()) {
   const intervals = [];
   state.history.forEach((h) => {
     const ids = resolveTeam(h, 'A').concat(resolveTeam(h, 'B'));
-    if (ids.includes(player.id) && h.startedAt && h.endedAt) intervals.push([h.startedAt, h.endedAt]);
+    if (!ids.includes(player.id) || !h.startedAt || !h.endedAt) return;
+    const lost = Boolean(h.winners) && !h.winners.includes(player.name);
+    intervals.push([h.startedAt, h.endedAt, lost]);
   });
   state.courts.forEach((court) => {
     const m = court.match;
-    if (m && m.teamA.concat(m.teamB).includes(player.id)) intervals.push([m.startedAt, Infinity]);
+    if (m && m.teamA.concat(m.teamB).includes(player.id)) intervals.push([m.startedAt, Infinity, false]);
   });
   intervals.sort((a, b) => a[0] - b[0]);
 
@@ -1572,13 +1575,18 @@ function staminaTrack(player, until = Date.now()) {
   let value = 100;
   let t = null;
   let zeroAt = null;
-  for (const [start, rawEnd] of intervals) {
+  for (const [start, rawEnd, lost] of intervals) {
     if (start >= until) break;
     const end = Math.min(rawEnd, until);
     if (t !== null) value = Math.min(100, value + minutes(start - t) * STAMINA_RECOVER);
     const drain = minutes(end - start) * STAMINA_DRAIN;
     if (zeroAt === null && value - drain <= 0) zeroAt = start + (value / STAMINA_DRAIN) * 60000;
     value = Math.max(0, value - drain);
+    // 輸球：比賽結束當下再扣一次（比賽還沒結束則不扣）
+    if (lost && rawEnd <= until) {
+      if (zeroAt === null && value - STAMINA_LOSS_PENALTY <= 0) zeroAt = rawEnd;
+      value = Math.max(0, value - STAMINA_LOSS_PENALTY);
+    }
     t = end;
   }
   if (t !== null && t < until) value = Math.min(100, value + minutes(until - t) * STAMINA_RECOVER);
@@ -1625,7 +1633,7 @@ function renderRoster() {
     <thead><tr><th>球員（★ 常用）</th><th>場數</th><th>累計等</th><th>狀態</th><th></th></tr></thead>
     <tbody>${rows}</tbody></table>
     <p class="sub" style="margin-top:6px">綠色列為正在場上，場數只計算已完成的場次，與歷史紀錄一致。<br>
-      體力：上場每分鐘 −1.5、場下每分鐘 +0.5，綠色充足、黃色偏累、紅色該休息了（只是好玩，不影響排場）。</p>`;
+      體力：上場每分鐘 −1.5、輸球再 −5、場下每分鐘 +1，綠色充足、黃色偏累、紅色該休息了（只是好玩，不影響排場）。</p>`;
 }
 
 function renderConsistencyBanner() {
