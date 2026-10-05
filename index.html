@@ -172,7 +172,21 @@
   .court { background: var(--c-card); color: var(--line); border-radius: var(--radius-l); padding: 12px; }
   .court-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; }
   .court-name { font-weight: 700; font-size: 17px; }
-  .court-meta { font-size: 13px; opacity: 0.8; }
+  .court-meta { font-size: 13px; opacity: 0.85; display: inline-flex; align-items: center; gap: 6px; }
+  .pause-btn {
+    background: rgba(255, 255, 255, 0.16); color: var(--line); padding: 2px 9px; font-size: 13px;
+    border-radius: 999px; line-height: 1.4;
+  }
+  .paused-tag {
+    background: var(--tape); color: var(--on-tape); font-weight: 700; padding: 2px 10px; border-radius: 999px;
+    font-size: 13px; line-height: 1.4;
+  }
+  .court-map.is-paused::after {
+    content: "暫停中"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(0, 0, 0, 0.35); color: #fff; font-size: 20px; font-weight: 700; letter-spacing: 0.1em;
+    text-shadow: 0 0 6px rgba(0, 0, 0, 0.8), 0 0 2px rgba(0, 0, 0, 0.9);
+    pointer-events: none; border-radius: 3px;
+  }
   .court-alert {
     background: var(--tape); color: var(--on-tape); border-radius: var(--radius-s);
     padding: 6px 10px; font-size: 14px; font-weight: 600; margin-bottom: 8px;
@@ -218,6 +232,12 @@
   .court-map svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
   .court-map line, .court-map rect { stroke: var(--c-line); vector-effect: non-scaling-stroke; fill: none; }
   .court-map .net { stroke: var(--c-net); }
+  .court-map .half.locked {
+    position: absolute; top: 0; bottom: 0; width: 50%; display: flex; flex-direction: column;
+    align-items: stretch; color: var(--line); cursor: default;
+  }
+  .court-map .half.locked.side-A { left: 0; }
+  .court-map .half.locked.side-B { right: 0; }
   .court-map button.half {
     position: absolute; top: 0; bottom: 0; width: 50%; min-height: 0;
     flex-direction: column;   /* 雙打兩人分別在上下發球區 */
@@ -443,7 +463,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '3.30';
+const APP_VERSION = '3.34';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -1166,6 +1186,8 @@ function recordHistory(courtIndex, match, winnerIds = null) {
     prevLastStart: match.prevLastStart,
     idleIds: match.idleIds,
     startedAt: match.startedAt,
+    openedAt: openedAtOf(match),
+    pauses: (match.pauses || []).map(([ps, pe]) => [ps, pe === null ? Date.now() : pe]),
     endedAt: Date.now(),
   });
   if (winnerIds) applyResult(state.history[0], winnerIds);
@@ -1422,12 +1444,65 @@ function renderSetup() {
  * 這場開打後，其他場地已經開了幾場新比賽。
  * 數量明顯偏多時，多半是這個場地忘了按「結束」。
  */
+/**
+ * 這場之後，又有幾場「新開的局」（紀錄 + 場上，不含自己）。
+ * 以 openedAt（開局時間）比較：
+ * - 「改為手動」只是換人，沿用原本的開局時間，不算新開一局
+ * - 「取消」的比賽不在紀錄裡，也不會被算進去
+ */
+function openedAtOf(m) {
+  return m.openedAt || m.startedAt || 0;
+}
+
 function matchesStartedSince(match) {
-  return typeof match.seq === 'number' ? state.startSeq - match.seq : 0;
+  const since = openedAtOf(match);
+  const ranges = pauseRanges(match);
+  const counts = (t) => t > since && !ranges.some(([s, e]) => t >= s && t <= e);
+  let count = state.history.filter((h) => counts(openedAtOf(h))).length;
+  state.courts.forEach((court) => {
+    if (court.match && court.match !== match && counts(openedAtOf(court.match))) count += 1;
+  });
+  return count;
 }
 
 function staleThreshold() {
   return Math.max(3, 3 * (state.courts.length - 1));
+}
+
+/* ===== 單一場地暫停 =====
+ * match.pauses = [[開始, 結束 | null], ...]；最後一筆結束為 null 表示暫停中。
+ * 暫停期間：不計入「已打 N 分」、場上球員視同休息（回血）、
+ * 其他場地在這段時間開的局，也不算進「忘了按結束」的提醒。 */
+function isPaused(match) {
+  const last = match && match.pauses && match.pauses[match.pauses.length - 1];
+  return Boolean(last && last[1] === null);
+}
+
+function pauseRanges(match, until = Date.now()) {
+  return (match.pauses || []).map(([s, e]) => [s, e === null ? until : e]);
+}
+
+function pausedMs(match, until = Date.now()) {
+  return pauseRanges(match, until).reduce((sum, [s, e]) => sum + Math.max(0, Math.min(e, until) - s), 0);
+}
+
+// 實際比賽時間（扣除暫停），單位分鐘
+function playedMinutes(match, until = Date.now()) {
+  const end = match.endedAt || until;
+  return Math.max(0, Math.floor((end - match.startedAt - pausedMs(match, end)) / 60000));
+}
+
+// 把一場比賽切成「實際在打」的時段，扣掉暫停區間
+function activeSegments(start, end, pauses) {
+  const segments = [];
+  let cursor = start;
+  pauses.slice().sort((a, b) => a[0] - b[0]).forEach(([ps, pe]) => {
+    if (pe <= cursor || ps >= end) return;
+    if (ps > cursor) segments.push([cursor, Math.min(ps, end)]);
+    cursor = Math.max(cursor, pe);
+  });
+  if (cursor < end) segments.push([cursor, end]);
+  return segments;
 }
 
 function elapsedMinutes(startedAt) {
@@ -1461,12 +1536,17 @@ function renderCourt(court, index) {
   const alert = since >= staleThreshold()
     ? `<div class="court-alert" role="status">其他場地已開了 ${since} 場，這場是否忘了按結束？</div>`
     : '';
+  const paused = isPaused(court.match);
+  const meta = !court.match
+    ? '空場'
+    : paused
+      ? `<button class="paused-tag" data-action="resume-court" data-court="${index}" aria-label="繼續第 ${index + 1} 場地的比賽">暫停中</button>`
+      : `${court.match.isManual ? '手動' : '自動'}・已打 <span class="num" data-elapsed-court="${index}">${playedMinutes(court.match)}</span> 分
+         <button class="pause-btn" data-action="pause-court" data-court="${index}" aria-label="暫停第 ${index + 1} 場地">暫停</button>`;
   const title = `<div class="court-head">
       <span class="court-name">第 ${index + 1} 場地</span>
-      <span class="court-meta">${court.match
-        ? `${court.match.isManual ? '手動' : '自動'}・已打 <span class="num" data-started="${court.match.startedAt}">${elapsedMinutes(court.match.startedAt)}</span> 分`
-        : '空場'}</span>
-    </div>${alert}`;
+      <span class="court-meta">${meta}</span>
+    </div>${paused ? '' : alert}`;
 
   if (!court.match) {
     return `<div class="court">${title}
@@ -1481,6 +1561,15 @@ function renderCourt(court, index) {
   const half = (team, side) => {
     const cls = picked === side ? 'picked' : (picked ? 'dimmed' : '');
     const names = team.map(playerName);
+    // 暫停中：不能選勝方，也不能拖曳換位
+    if (paused) {
+      return `<div class="half side-${side} locked" aria-label="${escapeHtml(names.join('、'))}">
+        ${team.map((id, i) => {
+          const slot = team.length === 1 ? 'slot-only' : (i === 0 ? 'slot-top' : 'slot-bottom');
+          return `<span class="drag-chip ${slot} no-drag"><span class="name-chip">${escapeHtml(playerName(id))}</span></span>`;
+        }).join('')}
+      </div>`;
+    }
     return `<button class="half side-${side} ${cls}" data-action="win-select" data-court="${index}" data-team="${side}"
         aria-pressed="${picked === side}" aria-label="${escapeHtml(names.join('、'))}，點選設為勝方">
       ${picked === side ? '<span class="win-flag">勝</span>' : ''}
@@ -1490,9 +1579,11 @@ function renderCourt(court, index) {
       }).join('')}
     </button>`;
   };
-  const lines = `<div class="court-map">${courtLinesSvg()}${half(court.match.teamA, 'A')}${half(court.match.teamB, 'B')}</div>`;
+  const lines = `<div class="court-map ${paused ? 'is-paused' : ''}">${courtLinesSvg()}${half(court.match.teamA, 'A')}${half(court.match.teamB, 'B')}</div>`;
   // 提示文字在選擇勝方前後都保留，避免版面高度改變而跳動
-  const hint = '<p class="court-hint">長按名字拖曳換位｜點勝隊半場記勝負｜按結束則不記</p>';
+  const hint = paused
+    ? '<p class="court-hint">暫停中無法記勝負或換位，繼續比賽後即可操作</p>'
+    : '<p class="court-hint">長按名字拖曳換位｜點勝隊半場記勝負｜按結束則不記</p>';
 
   if (picked) {
     const winners = (picked === 'A' ? court.match.teamA : court.match.teamB).map(playerName).join('、');
@@ -1500,6 +1591,14 @@ function renderCourt(court, index) {
       <div class="court-actions">
         <button class="btn-tape" data-action="win-confirm">確認：${escapeHtml(winners)} 勝，結束這場</button>
         <button class="btn-ghost" data-action="win-clear">取消</button>
+      </div></div>`;
+  }
+  if (paused) {
+    return `<div class="court">${title}${lines}${hint}
+      <div class="court-actions">
+        <button class="btn-tape" data-action="resume-court" data-court="${index}">▶ 繼續比賽</button>
+        <button class="btn-court-alt" data-action="end-match" data-court="${index}">結束這場</button>
+        <button class="btn-ghost" data-action="cancel-match" data-court="${index}">取消</button>
       </div></div>`;
   }
   return `<div class="court">${title}${lines}${hint}
@@ -1558,36 +1657,44 @@ const STAMINA_LOSS_PENALTY = 5;   // 輸球的一方下場時額外扣血（只�
  * @returns {{value: number, zeroAt: number|null}}
  */
 function staminaTrack(player, until = Date.now()) {
-  const intervals = [];
+  // 每場比賽：實際在打的時段（扣除暫停）＋是否輸球＋結束時間
+  const matches = [];
   state.history.forEach((h) => {
     const ids = resolveTeam(h, 'A').concat(resolveTeam(h, 'B'));
     if (!ids.includes(player.id) || !h.startedAt || !h.endedAt) return;
     const lost = Boolean(h.winners) && !h.winners.includes(player.name);
-    intervals.push([h.startedAt, h.endedAt, lost]);
+    matches.push({ start: h.startedAt, end: h.endedAt, pauses: pauseRanges(h, h.endedAt), lost });
   });
   state.courts.forEach((court) => {
     const m = court.match;
-    if (m && m.teamA.concat(m.teamB).includes(player.id)) intervals.push([m.startedAt, Infinity, false]);
+    if (m && m.teamA.concat(m.teamB).includes(player.id)) {
+      matches.push({ start: m.startedAt, end: Infinity, pauses: pauseRanges(m, until), lost: false });
+    }
   });
-  intervals.sort((a, b) => a[0] - b[0]);
+  matches.sort((a, b) => a.start - b.start);
 
   const minutes = (ms) => Math.max(0, ms) / 60000;
   let value = 100;
   let t = null;
   let zeroAt = null;
-  for (const [start, rawEnd, lost] of intervals) {
-    if (start >= until) break;
-    const end = Math.min(rawEnd, until);
-    if (t !== null) value = Math.min(100, value + minutes(start - t) * STAMINA_RECOVER);
-    const drain = minutes(end - start) * STAMINA_DRAIN;
-    if (zeroAt === null && value - drain <= 0) zeroAt = start + (value / STAMINA_DRAIN) * 60000;
-    value = Math.max(0, value - drain);
-    // 輸球：比賽結束當下再扣一次（比賽還沒結束則不扣）
-    if (lost && rawEnd <= until) {
-      if (zeroAt === null && value - STAMINA_LOSS_PENALTY <= 0) zeroAt = rawEnd;
+  for (const m of matches) {
+    if (m.start >= until) break;
+    const segments = activeSegments(m.start, Math.min(m.end, until), m.pauses);
+    for (const [start, end] of segments) {
+      if (t !== null) value = Math.min(100, value + minutes(start - t) * STAMINA_RECOVER);
+      const drain = minutes(end - start) * STAMINA_DRAIN;
+      if (zeroAt === null && value - drain <= 0) zeroAt = start + (value / STAMINA_DRAIN) * 60000;
+      value = Math.max(0, value - drain);
+      t = end;
+    }
+    if (t === null) t = m.start;   // 開打即暫停的極端情況
+    // 輸球：比賽結束當下再扣（比賽還沒結束則不扣）
+    if (m.lost && m.end <= until) {
+      value = Math.min(100, value + minutes(m.end - t) * STAMINA_RECOVER);   // 最後一段暫停視同休息
+      t = m.end;
+      if (zeroAt === null && value - STAMINA_LOSS_PENALTY <= 0) zeroAt = m.end;
       value = Math.max(0, value - STAMINA_LOSS_PENALTY);
     }
-    t = end;
   }
   if (t !== null && t < until) value = Math.min(100, value + minutes(until - t) * STAMINA_RECOVER);
   return { value: Math.round(value), zeroAt };
@@ -1680,7 +1787,7 @@ function renderHistory() {
   const names = Array.from(new Set(state.history.flatMap((h) => h.teamA.concat(h.teamB))));
 
   const items = shown.map((h) => {
-    const minutes = Math.max(1, Math.round((h.endedAt - h.startedAt) / 60000));
+    const minutes = Math.max(1, Math.round((h.endedAt - h.startedAt - pausedMs(h, h.endedAt)) / 60000));
     return `<li class="history-item">
       <button class="history-delete ${ui.deleteArmedNo === h.no ? 'armed' : ''}"
         data-action="history-delete" data-no="${h.no}"
@@ -2454,6 +2561,8 @@ function manualConfirm() {
     return false;
   }
   commitMatch(ui.manual.courtIndex, teamA, teamB, true);
+  // 改為手動：只是換人，沿用原本的開局時間，不視為新開一局
+  if (ui.manual.openedAt) state.courts[ui.manual.courtIndex].match.openedAt = ui.manual.openedAt;
   return true;
 }
 
@@ -2728,7 +2837,8 @@ function buildLineupText() {
       return;
     }
     const team = (ids) => ids.map(playerName).join('、');
-    lines.push(`第${i + 1}場地：${team(court.match.teamA)} vs ${team(court.match.teamB)}（已打 ${elapsedMinutes(court.match.startedAt)} 分）`);
+    const status = isPaused(court.match) ? '暫停中' : `已打 ${playedMinutes(court.match)} 分`;
+    lines.push(`第${i + 1}場地：${team(court.match.teamA)} vs ${team(court.match.teamB)}（${status}）`);
   });
   const needTotal = TEAM_SIZE[state.mode] * 2;
   const waiting = rankPlayersStable(availablePlayers()).map((p) => p.name);
@@ -2785,8 +2895,9 @@ document.addEventListener('visibilitychange', () => { syncWakeLock(); });
 /* ===================== 比賽計時 ===================== */
 // 只更新計時數字，不重畫整頁，避免影響正在操作的畫面
 setInterval(() => {
-  document.querySelectorAll('[data-started]').forEach((el) => {
-    el.textContent = elapsedMinutes(Number(el.dataset.started));
+  document.querySelectorAll('[data-elapsed-court]').forEach((el) => {
+    const match = state.courts[Number(el.dataset.elapsedCourt)] && state.courts[Number(el.dataset.elapsedCourt)].match;
+    if (match) el.textContent = playedMinutes(match);
   });
   const typing = document.activeElement && document.activeElement.matches('input, textarea, select');
   const modalOpen = document.querySelector('.modal');
@@ -2929,7 +3040,7 @@ function dragEnd() {
 
 function dragPointerDown(target, x, y) {
   const chip = target.closest('.drag-chip');
-  if (!chip || ui.manual || ui.result || ui.settings) return;
+  if (!chip || chip.classList.contains('no-drag') || ui.manual || ui.result || ui.settings) return;
   drag.source = chip;
   drag.x = x;
   drag.y = y;
@@ -3093,12 +3204,29 @@ function handleAction(el) {
     case 'court-dec': setCourtCount(state.courts.length - 1); break;
     case 'fill-court': fillCourt(court); break;
     case 'fill-all': fillAllEmpty(); break;
+    case 'pause-court': {
+      const match = state.courts[court].match;
+      if (!match || isPaused(match)) return;
+      match.pauses = match.pauses || [];
+      match.pauses.push([Date.now(), null]);
+      ui.pendingWin = null;
+      showToast(`第 ${court + 1} 場地已暫停`);
+      break;
+    }
+    case 'resume-court': {
+      const match = state.courts[court].match;
+      if (!isPaused(match)) return;
+      match.pauses[match.pauses.length - 1][1] = Date.now();
+      showToast(`第 ${court + 1} 場地繼續比賽`);
+      break;
+    }
     case 'win-select': {
       if (drag.suppressClick) {   // 剛結束拖曳，忽略隨後觸發的點擊
         drag.suppressClick = false;
         ui.pendingWin = pendingWin;
         return;
       }
+      if (isPaused(state.courts[court].match)) return;   // 暫停中不能選勝方
       const team = el.dataset.team;
       const same = pendingWin && pendingWin.court === court && pendingWin.team === team;
       ui.pendingWin = same ? null : { court, team };   // 再點一次同一邊 = 取消選擇
@@ -3237,7 +3365,7 @@ function handleAction(el) {
       match.teamA.forEach((pid) => { sides[pid] = 'A'; });
       match.teamB.forEach((pid) => { sides[pid] = 'B'; });
       cancelMatch(court);
-      ui.manual = { courtIndex: court, sides, restore };
+      ui.manual = { courtIndex: court, sides, restore, openedAt: openedAtOf(match) };
       sessionChanged = false;
       break;
     }
