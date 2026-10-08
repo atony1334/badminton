@@ -271,6 +271,9 @@
     border-radius: var(--radius-s); transition: background 0.12s ease;
   }
   .drag-chip.drag-source { opacity: 0.35; }
+  .bench-chip { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
+  .bench-chip.drag-source { opacity: 0.35; }
+  .bench-chip.drop-target { background: var(--tape); color: var(--on-tape); }
   .drag-chip.drop-target { background: rgba(242, 201, 76, 0.45); }
   .drag-chip.drop-target .name-chip { outline: 3px solid var(--tape); outline-offset: 2px; }
   .drag-ghost {
@@ -302,6 +305,17 @@
     background: var(--surface); border-radius: var(--radius-l); padding: 12px; border-left: 5px solid var(--tape);
   }
   .title-card:active { background: var(--soft-yellow); }
+  .rare-head { margin: 0 0 8px; font-weight: 700; color: #B8860B; }
+  .title-card.rare {
+    border-left-color: #D4A017;
+    background: linear-gradient(135deg, #FFF8DC 0%, #FFE9A8 100%);
+    box-shadow: 0 0 0 2px #E6C35C, 0 4px 14px rgba(212, 160, 23, 0.35);
+    color: #3A2A00;
+  }
+  .title-card.rare .t-head { color: #8A6A00; }
+  :root[data-appearance="dark"] .title-card.rare { background: linear-gradient(135deg, #3A3010 0%, #5A4410 100%); color: #FFE9A8; }
+  :root[data-appearance="dark"] .title-card.rare .t-head { color: #E6C35C; }
+  :root[data-appearance="dark"] .rare-head { color: #E6C35C; }
   .title-card .t-more { font-size: 12px; color: var(--muted); margin-top: 4px; }
   .title-modal .t-big { font-size: 44px; line-height: 1; }
   .title-modal .t-who { font-size: 22px; font-weight: 700; margin: 8px 0 4px; overflow-wrap: anywhere; }
@@ -373,6 +387,11 @@
     border-radius: var(--radius-l) var(--radius-l) 0 0; padding: 18px 16px 24px;
     overscroll-behavior: contain;   /* 捲到底時不帶動後方頁面 */
   }
+  /* 下拉關閉：頂端的小橫條提示可以往下推 */
+  .sheet-handle { width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: -8px auto 12px; }
+  .modal.dragging { transition: none; }
+  .modal.sheet-release { transition: transform 0.2s ease; }
+  .modal-bg.sheet-fade { transition: background 0.2s ease; }
   body.modal-open { overflow: hidden; }
   .modal h3 { margin: 0 0 4px; font-size: 18px; }
   .pick-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--floor); }
@@ -411,7 +430,7 @@
   .report-img { width: 100%; border-radius: var(--radius-s); border: 1px solid var(--border); display: block; }
 
   /* 勝率預測 */
-  .predict { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 0 0 6px; color: var(--line); }
+  .predict { display: flex; align-items: center; gap: 8px; font-size: 12px; margin: 0 0 14px; color: var(--line); }
   .predict.muted { opacity: 0.7; }
   .predict-bar { flex: 1; height: 6px; border-radius: 3px; background: rgba(255,255,255,0.25); overflow: hidden; }
   .predict-bar div { height: 100%; background: var(--tape); }
@@ -439,6 +458,10 @@
   .network { background: var(--surface); border-radius: var(--radius-l); padding: 8px; }
   .network svg { width: 100%; height: auto; display: block; }
   .network .edge { stroke: var(--court); stroke-linecap: round; }
+  .network.rival .edge { stroke: #B4533F; }
+  .network.focus .edge.on.lead { stroke: #3BAA6B; }
+  .network.focus .edge.on.trail { stroke: var(--danger); }
+  .network.focus .edge.on.even { stroke: var(--tape); }
   .network .node circle { fill: var(--surface); stroke: var(--court-dark); stroke-width: 2; }
   .network .node circle.hit { fill: transparent; stroke: none; }
   .network .node text { fill: var(--ink); font-size: 12px; font-weight: 600; }
@@ -502,7 +525,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '3.37';
+const APP_VERSION = '3.43';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -560,7 +583,8 @@ const ui = {
   tab: 'courts',        // 'courts' | 'players' | 'records'
   titleIndex: null,     // 正在查看的稱號
   profileName: null,    // 正在查看的球員個人頁
-  networkFocus: null,   // 搭檔關係圖中被點選的球員
+  networkFocus: null,   // 關係圖中被點選的球員
+  networkMode: 'partner',   // 'partner' 搭檔 | 'rival' 對戰
   endDayArmed: false,
   report: null,         // 戰報圖片 {url, blob, fileName}
   pendingWin: null,     // 在場地上點選的勝隊 {court, team}，確認後才結束
@@ -1257,6 +1281,34 @@ function swapOnCourt(courtIndex, idA, idB) {
   return true;
 }
 
+/**
+ * 場下球員換上場：outId 下場、inId 上場，接手相同位置。
+ * 視為「改為手動」的換人：沿用原本的開局時間與計時，不算新開一局。
+ * 場數、等待、配對以取消原組合後重新開場的方式結算，和手動換人一致。
+ */
+function substituteOnCourt(courtIndex, outId, inId) {
+  const match = state.courts[courtIndex] && state.courts[courtIndex].match;
+  if (!match || isPaused(match) || outId === inId) return false;
+  if (!availablePlayers().some((p) => p.id === inId)) return false;
+  const swapIn = (team) => team.map((pid) => (pid === outId ? inId : pid));
+  const teamA = swapIn(match.teamA);
+  const teamB = swapIn(match.teamB);
+  if (teamA.join() === match.teamA.join() && teamB.join() === match.teamB.join()) return false;
+
+  const now = Date.now();
+  const keep = {
+    openedAt: openedAtOf(match),
+    clockStart: match.clockStart || match.startedAt,
+    carriedPausedMs: (match.carriedPausedMs || 0) + pausedMs(match, now),
+    isManual: true,
+  };
+  cancelMatch(courtIndex);
+  commitMatch(courtIndex, teamA, teamB, true);
+  Object.assign(state.courts[courtIndex].match, keep);
+  ui.pendingWin = null;
+  return true;
+}
+
 function recordHistory(courtIndex, match, winnerIds = null) {
   state.finishedCount += 1;
   state.history.unshift({
@@ -1679,7 +1731,7 @@ function renderCourt(court, index) {
       ${picked === side ? '<span class="win-flag">勝</span>' : ''}
       ${team.map((id, i) => {
         const slot = team.length === 1 ? 'slot-only' : (i === 0 ? 'slot-top' : 'slot-bottom');
-        return `<span class="drag-chip ${slot}" data-pid="${id}" data-court="${index}"><span class="name-chip">${escapeHtml(playerName(id))}</span></span>`;
+        return `<span class="drag-chip ${slot}" data-pid="${id}" data-court="${index}" data-name="${escapeHtml(playerName(id))}"><span class="name-chip">${escapeHtml(playerName(id))}</span></span>`;
       }).join('')}
     </button>`;
   };
@@ -1709,7 +1761,6 @@ function renderCourt(court, index) {
   return `<div class="court">${title}${lines}${hint}
     <div class="court-actions">
       <button class="btn-tape" data-action="end-match" data-court="${index}">結束這場</button>
-      <button class="btn-court-alt" data-action="manual-replace" data-court="${index}">改為手動</button>
       <button class="btn-ghost" data-action="cancel-match" data-court="${index}">取消</button>
     </div></div>`;
 }
@@ -1728,10 +1779,11 @@ function renderWaiting() {
     const cls = index < needTotal ? 'chip chip-next' : 'chip chip-wait';
     // 顯示這次下場後已等了幾局；剛下場還沒等過顯示「剛下場」
     const waitNote = `<small>${p.wait ? `已等 ${p.wait}` : '剛下場'}</small>`;
-    return `<span class="${cls}">${escapeHtml(p.name)}${waitNote}</span>`;
+    return `<span class="${cls} bench-chip" data-pid="${p.id}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}${waitNote}</span>`;
   }).join('');
   return `<p class="sub num" style="margin:-4px 0 8px">共 ${ranked.length} 人，黃框為優先上場（實際組合會再考慮配對）。
-    「已等」為這次下場後等了幾局，達 ${waitLimit(needTotal)} 局會強制排上場；整晚累計請看球員分頁。</p>
+    「已等」為這次下場後等了幾局，達 ${waitLimit(needTotal)} 局會強制排上場；整晚累計請看球員分頁。
+    長按名字拖到場上的球員身上，就能換人上場。</p>
     <div class="chips">${chips}</div>
     ${renderRestingList()}`;
 }
@@ -1991,6 +2043,8 @@ function todayTitles() {
   // 同分並列的多位得主以陣列保存：卡片只列第一位，點開再顯示全部
   const joinNames = (names) => names.slice();
   const add = (icon, title, who, detail) => titles.push({ icon, title, who, detail });
+  const rares = [];   // 隱藏成就：排在最前面，金色顯示
+  const addRare = (icon, title, who, detail) => rares.push({ icon, title, who, detail, rare: true });
 
   // 🌟 開門紅：贏下今天第一場有記勝負的比賽
   if (recorded.length) {
@@ -2003,16 +2057,28 @@ function todayTitles() {
   const loseRun = {};
   const bestWin = {};
   const bestLose = {};
+  const dragon = {};      // 屠龍者 → {victim, length}
+  const runW = {};        // 逐場累計的勝場與場數（判斷「當時」的勝率王）
+  const runG = {};
   const ended = {};       // 終結者 → 終結次數
   const endedBest = {};   // 終結者 → 終結過最長的連勝 {victim, length}
   recorded.forEach((h) => {
     const players = h.teamA.concat(h.teamB);
     const winners = players.filter((n) => h.winners.includes(n));
     const losers = players.filter((n) => !h.winners.includes(n));
+    // 這場開打前的勝率王（至少 3 場有記勝負）
+    const eligible = Object.keys(runG).filter((n) => runG[n] >= 3);
+    const topRate = eligible.length ? Math.max(...eligible.map((n) => runW[n] / runG[n])) : null;
     // 先判斷這場有沒有打斷別人 3 連勝以上
     losers.forEach((victim) => {
       const length = winRun[victim] || 0;
       if (length < 3) return;
+      const isKing = topRate !== null && runG[victim] >= 3 && runW[victim] / runG[victim] === topRate;
+      if (length >= 7 && isKing && matchPrediction(h).upset) {
+        winners.forEach((w) => {
+          if (!dragon[w] || length > dragon[w].length) dragon[w] = { victim, length };
+        });
+      }
       winners.forEach((w) => {
         ended[w] = (ended[w] || 0) + 1;
         if (!endedBest[w] || length > endedBest[w].length) endedBest[w] = { victim, length };
@@ -2027,6 +2093,10 @@ function todayTitles() {
       loseRun[n] = (loseRun[n] || 0) + 1;
       winRun[n] = 0;
       bestLose[n] = Math.max(bestLose[n] || 0, loseRun[n]);
+    });
+    players.forEach((n) => {
+      runG[n] = (runG[n] || 0) + 1;
+      if (winners.includes(n)) runW[n] = (runW[n] || 0) + 1;
     });
   });
   // 勝敗計數（不敗金身、勝率王使用）
@@ -2147,21 +2217,19 @@ function todayTitles() {
   });
   const wins = (a, b) => (beat[a] && beat[a][b]) || 0;
 
-  // 🎯 剋星：對同一位對手至少 3 戰全勝
+  // 🎯 剋星（含苦主）：A 對同一位對手至少贏 3 場，且勝場是敗場的 2 倍以上；全勝優先，其次比淨勝
   let nemesis = null;
   Object.keys(beat).forEach((a) => Object.keys(beat[a]).forEach((b) => {
     const w = wins(a, b);
-    if (w >= 3 && wins(b, a) === 0 && (!nemesis || w > nemesis.w)) nemesis = { a, b, w };
+    const l = wins(b, a);
+    if (w < 3 || w < l * 2) return;
+    const score = (l === 0 ? 1000 : 0) + (w - l) * 10 + w;
+    if (!nemesis || score > nemesis.score) nemesis = { a, b, w, l, score };
   }));
-  if (nemesis) add('🎯', '剋星', nemesis.a, `對 ${escapeHtml(nemesis.b)} ${nemesis.w} 戰全勝`);
-
-  // 😵 苦主：輸給同一位對手最多次，至少 3 次
-  let victim = null;
-  Object.keys(beat).forEach((a) => Object.keys(beat[a]).forEach((b) => {
-    const w = wins(a, b);
-    if (w >= 3 && (!victim || w > victim.w)) victim = { loser: b, winner: a, w };
-  }));
-  if (victim) add('😵', '苦主', victim.loser, `被 ${escapeHtml(victim.winner)} 打敗 ${victim.w} 次`);
+  if (nemesis) {
+    add('🎯', '剋星', `${nemesis.a} 剋 ${nemesis.b}`,
+      nemesis.l === 0 ? `${nemesis.w} 戰全勝` : `${nemesis.w} 勝 ${nemesis.l} 敗`);
+  }
 
   // 🦸 復仇者：輸給某人後又贏回來最多次
   const avenger = topBy(revenge, 1);
@@ -2204,17 +2272,7 @@ function todayTitles() {
   });
   if (comeback) add('🔄', '逆轉人生', comeback.name, `連敗 ${comeback.lose} 場後連勝 ${comeback.win} 場`);
 
-  // 🐢 慢熱型：前兩場都輸，之後贏最多場（至少 2 場）
-  const slow = {};
-  Object.entries(results).forEach(([name, seq]) => {
-    if (seq.length >= 4 && seq[0] === 'L' && seq[1] === 'L') {
-      slow[name] = seq.slice(2).filter((r) => r === 'W').length;
-    }
-  });
-  const slowBest = topBy(slow, 2);
-  if (slowBest) add('🐢', '慢熱型', joinNames(slowBest.names), `前 2 場落敗，之後贏了 ${slowBest.value} 場`);
-
-  // 👑 勝率王 / 🫠 我就爛：至少記錄 3 場勝負；大家勝率都一樣時不頒
+  // 👑 勝率王：至少記錄 3 場勝負（勝率資料也供非洲酋長使用）
   const rate = {};
   todayStats().filter((r) => r.games >= 3).forEach((r) => { rate[r.name] = Math.round((r.wins / r.games) * 100); });
   const rates = Object.values(rate);
@@ -2237,10 +2295,10 @@ function todayTitles() {
   };
   const playerByName = {};
   state.players.forEach((p) => { playerByName[p.name] = p; });
-  const lowWins = {};
-  const zeroWins = {};
+  const miracle = {};     // 逆天改命：同一場爆冷＋體力劣勢
+  const lowWins = {};     // 鎖血戰士：低體力下贏球（自己低於 30，或隊伍平均少 20 以上）
+  const zeroWins = {};    // 其中體力歸零還贏的場次
   const favWins = {};     // 體力較滿的一隊贏
-  const underWins = {};   // 體力較少的一隊贏
   const HP_GAP = 20;      // 兩隊平均體力差距至少 20 才算「滿血 vs 少血」
   recorded.forEach((h) => {
     if (!h.startedAt) return;
@@ -2251,38 +2309,38 @@ function todayTitles() {
     };
     const hpA = teamHp(h.teamA);
     const hpB = teamHp(h.teamB);
+    let underdogTeam = false;
     if (hpA !== null && hpB !== null && Math.abs(hpA - hpB) >= HP_GAP) {
       const aWon = h.teamA.every((n) => h.winners.includes(n));
       const winnerFuller = aWon ? hpA > hpB : hpB > hpA;
-      h.winners.forEach((name) => {
-        const map = winnerFuller ? favWins : underWins;
-        map[name] = (map[name] || 0) + 1;
-      });
+      underdogTeam = !winnerFuller;
+      if (winnerFuller) h.winners.forEach((name) => { favWins[name] = (favWins[name] || 0) + 1; });
     }
+    // 同一場只算一次：自己體力低於 30，或整隊體力明顯較少，都算鎖血贏球
+    const { upset, winnerP } = matchPrediction(h);
     h.winners.forEach((name) => {
       const p = playerByName[name];
       if (!p) return;
       const hp = hpAt(p, h.startedAt);
-      if (hp < 30) lowWins[name] = (lowWins[name] || 0) + 1;
+      if (hp < 30 || underdogTeam) lowWins[name] = (lowWins[name] || 0) + 1;
+      if (upset && (hp < 30 || underdogTeam) && (!miracle[name] || winnerP < miracle[name].p)) {
+        miracle[name] = { p: winnerP, hp, no: displayNo(h) };
+      }
       if (hp <= 0) zeroWins[name] = (zeroWins[name] || 0) + 1;
     });
   });
-
-  // 🩸 殘血王：開打時體力低於 30，還贏最多場
-  const lowBest = topBy(lowWins, 2);
-  if (lowBest) add('🩸', '殘血王', joinNames(lowBest.names), `體力不到 30 還贏了 ${lowBest.value} 場`);
-
-  // 🧟 不死喪屍：體力 0 還贏球
-  const zombie = topBy(zeroWins, 1);
-  if (zombie) add('🧟', '不死喪屍', joinNames(zombie.names), `體力歸零還贏了 ${zombie.value} 場`);
 
   // 🍀 天時地利人和：體力較滿的一隊，贏最多場
   const favBest = topBy(favWins, 2);
   if (favBest) add('🍀', '天時地利人和', joinNames(favBest.names), `體力佔優勢時贏了 ${favBest.value} 場`);
 
-  // 🔒 鎖血戰士：體力較少的一隊，還贏最多場
-  const underBest = topBy(underWins, 1);
-  if (underBest) add('🔒', '鎖血戰士', joinNames(underBest.names), `體力較少還贏了 ${underBest.value} 場`);
+  // 🔒 鎖血戰士（含殘血王、不死喪屍）：體力劣勢下贏最多場
+  const lockBest = topBy(lowWins, 1);
+  if (lockBest) {
+    const zero = Math.max(...lockBest.names.map((n) => zeroWins[n] || 0));
+    add('🔒', '鎖血戰士', joinNames(lockBest.names),
+      `體力劣勢還贏了 ${lockBest.value} 場${zero ? `，其中 ${zero} 場體力歸零` : ''}`);
+  }
 
   // 🪫 第一個沒電：今天最早把體力打到 0
   let firstOut = null;
@@ -2309,20 +2367,125 @@ function todayTitles() {
     add('🎲', '爆冷王', joinNames(upsetBest.names), `爆冷贏了 ${upsetBest.value} 場，最低賽前勝率 ${Math.round(low * 100)}%`);
   }
 
-  // 🌍 非洲酋長：最長連敗
+  // 🌍 非洲酋長（含我就爛）：最長連敗至少 3 場；沒有人連敗 3 場時，頒給勝率最低的人
   const losing = topBy(bestLose, 3);
-  if (losing) add('🌍', '非洲酋長', joinNames(losing.names), `最長連敗 ${losing.value} 場`);
-
-  if (spread > 0) {
+  const rateText = (n) => (rate[n] !== undefined ? `，勝率 ${rate[n]}%` : '');
+  if (losing) {
+    // 同樣連敗時，勝率較低的人優先
+    const minRate = Math.min(...losing.names.map((n) => (rate[n] === undefined ? 101 : rate[n])));
+    const chiefs = losing.names.filter((n) => (rate[n] === undefined ? 101 : rate[n]) === minRate);
+    add('🌍', '非洲酋長', joinNames(chiefs), `最長連敗 ${losing.value} 場${rateText(chiefs[0])}`);
+  } else if (spread > 0) {
     const low = Math.min(...rates);
     const names = Object.keys(rate).filter((n) => rate[n] === low);
-    add('🫠', '我就爛', joinNames(names), `勝率 ${low}%`);
+    add('🌍', '非洲酋長', joinNames(names), `勝率 ${low}%`);
   }
-  return titles;
+
+  /* ===================== 隱藏成就 ===================== */
+  const everyone = Array.from(new Set(chrono.flatMap((h) => h.teamA.concat(h.teamB))));
+  const others = (n) => everyone.filter((x) => x !== n);
+
+  // 🌏 全員擊破：對每一位出場球員都是勝多於敗（至少 5 人出場）
+  if (everyone.length >= 5) {
+    const conquer = everyone.filter((n) => others(n).every((o) => wins(n, o) > wins(o, n)));
+    if (conquer.length) addRare('🌏', '全員擊破', joinNames(conquer), `今天 ${everyone.length - 1} 位對手，對每一位都勝多於敗`);
+  }
+
+  // 🪐 全員搭檔：和每一位出場球員都「一起贏過」（雙打，至少 5 人出場）
+  if (everyone.length >= 5) {
+    const wonWith = {};
+    recorded.forEach((h) => {
+      const team = h.teamA.every((n) => h.winners.includes(n)) ? h.teamA : h.teamB;
+      team.forEach((n) => {
+        wonWith[n] = wonWith[n] || new Set();
+        team.forEach((m) => { if (m !== n) wonWith[n].add(m); });
+      });
+    });
+    const all = everyone.filter((n) => wonWith[n] && others(n).every((o) => wonWith[n].has(o)));
+    if (all.length) addRare('🪐', '全員搭檔', joinNames(all), `和今天 ${everyone.length - 1} 位球員都一起贏過`);
+  }
+
+  // 🎭 雙面人生：兩人連續四場都碰在一起（中間都沒打別場），
+  //    依序是：輸給他 → 和他搭檔贏 → 打敗他 → 再和他搭檔贏
+  const twoFace = [];
+  const sideOf = (h, x) => (h.teamA.includes(x) ? 'A' : (h.teamB.includes(x) ? 'B' : null));
+  const seqOf = (x) => recorded.filter((h) => sideOf(h, x));
+  everyone.forEach((n) => {
+    const mine = seqOf(n);
+    for (let i = 3; i < mine.length; i += 1) {
+      const hs = mine.slice(i - 3, i + 1);
+      const res = hs.map((h) => h.winners.includes(n));
+      if (res[0] || !res[1] || !res[2] || !res[3]) continue;
+      everyone.forEach((x) => {
+        if (x === n) return;
+        const rel = hs.map((h) => (sideOf(h, x) ? (sideOf(h, x) === sideOf(h, n) ? 'mate' : 'opp') : null));
+        if (rel.join() !== 'opp,mate,opp,mate') return;
+        const theirs = seqOf(x);
+        const k = theirs.indexOf(hs[0]);
+        if (k >= 0 && hs.every((h, j) => theirs[k + j] === h)) twoFace.push({ n, x, no: displayNo(hs[3]) });
+      });
+    }
+  });
+  if (twoFace.length) {
+    const f = twoFace[0];
+    addRare('🎭', '雙面人生', joinNames(Array.from(new Set(twoFace.map((t) => t.n)))),
+      `和 ${f.x} 連續四場：輸給他 → 一起贏 → 打敗他 → 再一起贏（到 #${f.no}）`);
+  }
+
+  // ⚔️ 完美復仇：輸給一組對手後，自己的「下一場」就遇到完全相同的對手，並且贏回來
+  const lastLoss = {};    // 球員 → 上一場（有記勝負）輸給的對手組合；贏了或換對手就清掉
+  const avenged = {};
+  recorded.forEach((h) => {
+    const aWon = h.teamA.every((n) => h.winners.includes(n));
+    const [win, lose] = aWon ? [h.teamA, h.teamB] : [h.teamB, h.teamA];
+    const winKey = win.slice().sort().join('、');
+    const loseKey = lose.slice().sort().join('、');
+    win.forEach((n) => {
+      if (lastLoss[n] === loseKey) avenged[n] = { against: loseKey, no: displayNo(h) };
+      lastLoss[n] = null;
+    });
+    lose.forEach((n) => { lastLoss[n] = winKey; });
+  });
+  const avengers = Object.keys(avenged);
+  if (avengers.length) {
+    const first = avenged[avengers[0]];
+    addRare('⚔️', '完美復仇', joinNames(avengers), `輸給 ${first.against}，下一場 #${first.no} 立刻贏回來`);
+  }
+
+  // 🃏 逆天改命：同一場既是爆冷、又是體力劣勢，還贏了
+  const miracles = Object.keys(miracle);
+  if (miracles.length) {
+    const best = miracles.reduce((a, b) => (miracle[a].p <= miracle[b].p ? a : b));
+    const m = miracle[best];
+    addRare('🃏', '逆天改命', joinNames(miracles), `#${m.no} 賽前勝率只有 ${Math.round(m.p * 100)}%、體力 ${m.hp}，還是贏了`);
+  }
+
+  // 🐉 屠龍者：終結當時勝率王的 5 連勝以上
+  const slayers = Object.keys(dragon);
+  if (slayers.length) {
+    const d = dragon[slayers[0]];
+    addRare('🐉', '屠龍者', joinNames(slayers), `終結了勝率王 ${d.victim} 的 ${d.length} 連勝`);
+  }
+
+  // 🚀 一路長紅：今天前 5 場有記勝負的比賽全勝
+  const hotStart = everyone.filter((n) => {
+    const mine = recorded.filter((h) => h.teamA.includes(n) || h.teamB.includes(n)).slice(0, 7);
+    return mine.length === 7 && mine.every((h) => h.winners.includes(n));
+  });
+  if (hotStart.length) addRare('🚀', '一路長紅', joinNames(hotStart), '今天前 7 場全勝');
+
+  return rares.concat(titles);
 }
 
 // 稱號說明：點開卡片時顯示
 const TITLE_RULES = {
+  全員擊破: '隱藏成就：今天對每一位出場的球員都是勝多於敗（至少 5 人出場）。',
+  全員搭檔: '隱藏成就：今天和每一位出場的球員都當過搭檔，而且都一起贏過（至少 5 人出場）。',
+  雙面人生: '隱藏成就：兩人連續四場都碰在一起，依序是：輸給他 → 和他搭檔贏 → 打敗他 → 再和他搭檔贏。',
+  完美復仇: '隱藏成就：輸給某一組對手後，自己的下一場就遇到完全相同的對手，並且贏回來。',
+  逆天改命: '隱藏成就：同一場同時是爆冷（賽前勝率 40% 以下）和體力劣勢，還是贏了。',
+  屠龍者: '隱藏成就：以爆冷（賽前勝率 40% 以下）終結別人 7 連勝以上，而且對方是當時的勝率王。',
+  一路長紅: '隱藏成就：今天前 7 場有記勝負的比賽全部獲勝。',
   爆冷王: '依當下戰績預測勝率，賽前勝率 40% 以下卻贏球，就是爆冷；爆冷贏最多次的人。',
   開門紅: '贏下今天第一場有記勝負的比賽。',
   連勝王: '今天最長連勝的人，至少連勝 3 場。沒記勝負的場次不會中斷連勝。',
@@ -2331,31 +2494,32 @@ const TITLE_RULES = {
   最佳拍檔: '同隊至少 2 場、勝率最高的搭檔組合；同勝率時比勝場。',
   宿敵: '今天在對面交手最多次的兩人，至少 3 次。勝率只計算有記勝負的場次。',
   相愛相殺: '兩人當過搭檔、也當過對手，兩種各至少 2 次。',
-  剋星: '對同一位對手至少 3 戰全勝，對方一場都沒贏過。',
-  苦主: '輸給同一位對手最多次，至少 3 次。',
+  剋星: '對同一位對手至少贏 3 場，而且勝場是敗場的 2 倍以上；全勝的組合優先，其次比淨勝場。',
   復仇者: '輸給某人之後，又在對面贏回來最多次。',
   連勝終結者: '打斷別人 3 連勝以上的人。',
   逆轉人生: '連敗至少 2 場後，緊接著連勝至少 2 場；取反彈最大的那一段。',
-  慢熱型: '前兩場都輸，之後贏最多場，至少贏 2 場。',
   勝率王: '勝率最高的人，至少記錄 3 場勝負；同勝率時比勝場。',
-  非洲酋長: '今天最長的連敗，至少 3 場。沒記勝負的場次不會中斷連敗。',
-  殘血王: '比賽開打時體力低於 30，卻還贏最多場的人，至少 2 場。只計算有記勝負的場次。',
-  不死喪屍: '比賽開打時體力已經是 0，還是贏下比賽。只計算有記勝負的場次。',
+  非洲酋長: '今天最長的連敗，至少 3 場；同樣連敗時勝率低者優先。沒有人連敗 3 場時，頒給勝率最低的人（至少記錄 3 場勝負）。',
   第一個沒電: '今天最早把體力打到 0 的人。',
   天時地利人和: '開打時兩隊平均體力相差 20 以上，體力較滿的一隊贏球；贏最多場的人，至少 2 場。',
-  鎖血戰士: '開打時兩隊平均體力相差 20 以上，體力較少的一隊還是贏了；贏最多場的人。',
-  我就爛: '勝率最低的人，至少記錄 3 場勝負。大家勝率都一樣時不頒發。',
+  鎖血戰士: '體力劣勢時還贏球：開打時自己體力不到 30，或自己這隊平均體力比對手少 20 以上。贏最多場的人；體力歸零還贏的場次會另外註明。',
 };
 
 function renderTitles() {
   const titles = todayTitles();
   if (!titles.length) return '<p class="sub">多打幾場、記錄勝負後，就會出現今天的稱號。</p>';
-  return `<p class="sub" style="margin:-4px 0 10px">點卡片可以看詳細戰績與說明。</p>
-    <div class="titles">${titles.map((t, i) => `
-    <button class="title-card" data-action="title-open" data-index="${i}">
+  const card = (t, i) => `
+    <button class="title-card ${t.rare ? 'rare' : ''}" data-action="title-open" data-index="${i}">
       <div class="t-head"><span class="t-icon">${t.icon}</span>${t.title}</div>
       <div class="t-name">${escapeHtml(cardWho(t.who))}</div>
-    </button>`).join('')}</div>`;
+    </button>`;
+  const indexed = titles.map((t, i) => ({ t, i }));
+  const rare = indexed.filter((x) => x.t.rare);
+  const normal = indexed.filter((x) => !x.t.rare);
+  return `<p class="sub" style="margin:-4px 0 10px">點卡片可以看詳細戰績與說明。</p>
+    ${rare.length ? `<p class="rare-head">✨ 隱藏成就解鎖</p>
+      <div class="titles" style="margin-bottom:14px">${rare.map((x) => card(x.t, x.i)).join('')}</div>` : ''}
+    <div class="titles">${normal.map((x) => card(x.t, x.i)).join('')}</div>`;
 }
 
 // 卡片：多人並列時只列第一位；彈窗：列出全部
@@ -2373,7 +2537,7 @@ function renderTitleModal() {
   if (!t) return '<p class="sub">這個稱號已經不存在了。</p><button class="btn-primary btn-block" data-action="modal-close">關閉</button>';
   return `<div class="title-modal">
     <div class="t-big">${t.icon}</div>
-    <h3 style="margin-top:8px">${t.title}</h3>
+    <h3 style="margin-top:8px">${t.rare ? '✨ 隱藏成就・' : ''}${t.title}</h3>
     <div class="t-who">${escapeHtml(fullWho(t.who))}</div>
     ${Array.isArray(t.who) && t.who.length > 1 ? `<p class="sub" style="margin:0 0 6px">${t.who.length} 人並列</p>` : ''}
     <p class="t-fact">${t.detail}</p>
@@ -2398,43 +2562,76 @@ function renderEndDay() {
 }
 
 /**
- * 搭檔關係圖：球員排成一圈，搭檔過就連線，線越粗代表搭越多次。
- * 點一位球員會只亮出他的連線，再點一次取消；長按名字可開個人頁（點兩次也行）。
+ * 關係圖：球員排成一圈，兩種模式
+ * - 搭檔：同隊過就連線，線越粗搭越多次
+ * - 對戰：在對面交手過就連線，線越粗交手越多次；點選某人時，
+ *         綠線代表他贏比較多、紅線代表輸比較多、黃線代表平手或未記勝負
  */
-function renderNetwork() {
-  const pairs = {};
+function relationData(mode) {
+  const links = {};
   const names = new Set();
-  state.history.forEach((h) => [h.teamA, h.teamB].forEach((team) => {
-    team.forEach((n) => names.add(n));
-    withinPairs(team).forEach(([a, b]) => {
-      const key = [a, b].sort().join('|');
-      pairs[key] = (pairs[key] || 0) + 1;
+  const key = (a, b) => [a, b].sort().join('|');
+  state.history.forEach((h) => {
+    h.teamA.concat(h.teamB).forEach((n) => names.add(n));
+    const pairs = mode === 'rival' ? crossPairs(h.teamA, h.teamB) : withinPairs(h.teamA).concat(withinPairs(h.teamB));
+    pairs.forEach(([a, b]) => {
+      const k = key(a, b);
+      const r = links[k] || (links[k] = { count: 0, wins: {} });
+      r.count += 1;
+      if (mode === 'rival' && h.winners) {
+        const w = h.winners.includes(a) ? a : b;
+        r.wins[w] = (r.wins[w] || 0) + 1;
+      }
     });
-  }));
-  const list = Array.from(names);
-  if (!Object.keys(pairs).length) return '<p class="sub">打過雙打後，這裡會畫出誰和誰搭檔過。</p>';
+  });
+  return { links, names: Array.from(names) };
+}
+
+function renderNetwork() {
+  const mode = ui.networkMode === 'rival' ? 'rival' : 'partner';
+  const toggle = `<div class="seg" role="group" aria-label="關係圖類型" style="margin-bottom:10px">
+    <button data-action="network-mode" data-value="partner" aria-pressed="${mode === 'partner'}">搭檔</button>
+    <button data-action="network-mode" data-value="rival" aria-pressed="${mode === 'rival'}">對戰</button>
+  </div>`;
+  const { links, names } = relationData(mode);
+  if (!Object.keys(links).length) {
+    return `${toggle}<p class="sub">${mode === 'rival' ? '打過比賽後，這裡會畫出誰和誰交手過。' : '打過雙打後，這裡會畫出誰和誰搭檔過。'}</p>`;
+  }
 
   const size = 360;
   const c = size / 2;
   const r = size / 2 - 52;
   const pos = {};
-  list.forEach((n, i) => {
-    const a = (i / list.length) * Math.PI * 2 - Math.PI / 2;
+  names.forEach((n, i) => {
+    const a = (i / names.length) * Math.PI * 2 - Math.PI / 2;
     pos[n] = { x: c + r * Math.cos(a), y: c + r * Math.sin(a), a };
   });
-  const max = Math.max(...Object.values(pairs));
-  const focus = ui.networkFocus && names.has(ui.networkFocus) ? ui.networkFocus : null;
-  const edges = Object.entries(pairs).map(([key, count]) => {
-    const [a, b] = key.split('|');
+  const max = Math.max(...Object.values(links).map((l) => l.count));
+  const focus = ui.networkFocus && pos[ui.networkFocus] ? ui.networkFocus : null;
+  const recordOf = (l, me, other) => {
+    const w = l.wins[me] || 0;
+    const lo = l.wins[other] || 0;
+    return { w, lo };
+  };
+
+  const edges = Object.entries(links).map(([k, l]) => {
+    const [a, b] = k.split('|');
     const on = focus && (a === focus || b === focus);
-    const w = 1.5 + (count / max) * 7;
-    return `<line class="edge ${on ? 'on' : ''}" x1="${pos[a].x.toFixed(1)}" y1="${pos[a].y.toFixed(1)}"
+    let tone = '';
+    if (on && mode === 'rival') {
+      const other = a === focus ? b : a;
+      const { w, lo } = recordOf(l, focus, other);
+      tone = w > lo ? 'lead' : (w < lo ? 'trail' : 'even');
+    }
+    const w = 1.5 + (l.count / max) * 7;
+    const label = mode === 'rival' ? '交手' : '搭檔';
+    return `<line class="edge ${on ? 'on' : ''} ${tone}" x1="${pos[a].x.toFixed(1)}" y1="${pos[a].y.toFixed(1)}"
       x2="${pos[b].x.toFixed(1)}" y2="${pos[b].y.toFixed(1)}" stroke-width="${w.toFixed(1)}"
-      stroke-opacity="${on ? 1 : (0.35 + 0.5 * count / max).toFixed(2)}"><title>${escapeHtml(a)}、${escapeHtml(b)}：${count} 次</title></line>`;
+      stroke-opacity="${on ? 1 : (0.35 + 0.5 * l.count / max).toFixed(2)}"><title>${escapeHtml(a)}、${escapeHtml(b)}：${label} ${l.count} 次</title></line>`;
   }).join('');
-  const nodes = list.map((n) => {
+  const nodes = names.map((n) => {
     const p = pos[n];
-    const on = focus && (n === focus || pairs[[n, focus].sort().join('|')]);
+    const on = focus && (n === focus || links[[n, focus].sort().join('|')]);
     const lx = c + (r + 26) * Math.cos(p.a);
     const ly = c + (r + 26) * Math.sin(p.a);
     const anchor = Math.abs(Math.cos(p.a)) < 0.3 ? 'middle' : (Math.cos(p.a) > 0 ? 'start' : 'end');
@@ -2445,18 +2642,29 @@ function renderNetwork() {
     </g>`;
   }).join('');
 
-  let caption = '點球員名字，只顯示他的搭檔連線。';
+  let caption = mode === 'rival'
+    ? '點球員名字，看他和每個對手的交手紀錄。'
+    : '點球員名字，只顯示他的搭檔連線。';
   if (focus) {
-    const mates = Object.entries(pairs)
+    const rows = Object.entries(links)
       .filter(([k]) => k.split('|').includes(focus))
-      .map(([k, v]) => ({ n: k.split('|').find((x) => x !== focus), v }))
-      .sort((a, b) => b.v - a.v);
-    caption = `<strong>${escapeHtml(focus)}</strong> 搭檔過 ${mates.length} 人：${mates.map((m) => `${escapeHtml(m.n)} ${m.v} 次`).join('、')}
+      .map(([k, l]) => {
+        const other = k.split('|').find((x) => x !== focus);
+        return { other, l, ...recordOf(l, focus, other) };
+      })
+      .sort((x, y) => y.l.count - x.l.count);
+    const detail = mode === 'rival'
+      ? rows.map((x) => `${escapeHtml(x.other)} ${x.l.count} 次${x.w + x.lo ? `（${x.w} 勝 ${x.lo} 敗）` : ''}`).join('、')
+      : rows.map((x) => `${escapeHtml(x.other)} ${x.l.count} 次`).join('、');
+    caption = `<strong>${escapeHtml(focus)}</strong> ${mode === 'rival' ? '交手過' : '搭檔過'} ${rows.length} 人：${detail}
       <button class="btn-ghost" data-action="player-open" data-name="${escapeHtml(focus)}">看個人頁</button>`;
   }
-  return `<div class="network ${focus ? 'focus' : ''}">
-    <svg viewBox="0 0 ${size} ${size}" role="img" aria-label="搭檔關係圖">${edges}${nodes}</svg>
-  </div>
+  const legend = mode === 'rival' && focus
+    ? '<p class="sub" style="margin:6px 0 0">綠線：贏比較多｜紅線：輸比較多｜黃線：平手或未記勝負</p>'
+    : '';
+  return `${toggle}<div class="network ${mode} ${focus ? 'focus' : ''}">
+    <svg viewBox="0 0 ${size} ${size}" role="img" aria-label="${mode === 'rival' ? '對戰' : '搭檔'}關係圖">${edges}${nodes}</svg>
+  </div>${legend}
   <p class="sub" style="margin-top:6px">${caption}</p>`;
 }
 
@@ -2467,7 +2675,7 @@ function renderRecordsTab() {
     ${renderTitles()}
     <h2>今日戰績</h2>
     ${renderStats()}
-    <h2>搭檔關係圖</h2>
+    <h2>關係圖</h2>
     ${renderNetwork()}
     <h2>歷史紀錄</h2>
     ${renderHistory()}`;
@@ -2688,7 +2896,7 @@ function renderCopyModal() {
 
 function titleHolders(t) {
   if (Array.isArray(t.who)) return t.who;
-  return String(t.who).split(/、| vs /);
+  return String(t.who).split(/、| vs | 剋 /);
 }
 
 function renderProfileModal() {
@@ -2780,7 +2988,7 @@ function renderModal() {
   const enterClass = previous ? '' : ' modal-enter';
   root.innerHTML = content
     ? `<div class="modal-bg" data-action="modal-close">
-        <div class="modal${enterClass}" role="dialog" aria-modal="true">${content}</div></div>`
+        <div class="modal${enterClass}" role="dialog" aria-modal="true"><div class="sheet-handle" aria-hidden="true"></div>${content}</div></div>`
     : '';
 
   const current = root.querySelector('.modal');
@@ -2988,12 +3196,19 @@ function buildReportCanvas() {
       roundRect(ctx, x, y, cardW, cardRows[rowIndex], 22);
       ctx.fillStyle = C.card;
       ctx.fill();
-      ctx.fillStyle = C.tape;
+      if (c.t.rare) {
+        ctx.fillStyle = '#FFF1C4';
+        ctx.fill();
+        ctx.strokeStyle = '#E6C35C';
+        ctx.lineWidth = 4;
+        ctx.stroke();
+      }
+      ctx.fillStyle = c.t.rare ? '#D4A017' : C.tape;
       ctx.fillRect(x, y + 16, 8, cardRows[rowIndex] - 32);
       let cy = y + 24;
-      ctx.fillStyle = C.muted;
-      ctx.font = font(30, 500);
-      ctx.fillText(`${c.t.icon} ${c.t.title}`, x + 28, cy);
+      ctx.fillStyle = c.t.rare ? '#8A6A00' : C.muted;
+      ctx.font = font(30, c.t.rare ? 700 : 500);
+      ctx.fillText(`${c.t.icon} ${c.t.rare ? '隱藏成就・' : ''}${c.t.title}`, x + 28, cy);
       cy += 52;
       ctx.fillStyle = C.ink;
       ctx.font = font(38, 700);
@@ -3275,23 +3490,58 @@ function dragStart() {
   drag.source.classList.add('drag-source');
   const ghost = document.createElement('div');
   ghost.className = 'drag-ghost';
-  ghost.textContent = drag.source.textContent.trim();
+  ghost.textContent = drag.source.dataset.name || drag.source.textContent.trim();
   document.body.appendChild(ghost);
   drag.ghost = ghost;
   dragMove(drag.x, drag.y);
   if (navigator.vibrate) navigator.vibrate(15);
 }
 
+/* 拖到畫面上下邊緣時自動捲動，方便把場下球員拖到上方的場地 */
+const EDGE = 90;
+function autoScrollTick() {
+  if (!drag.active) { drag.scrollRaf = null; return; }
+  const bottomLimit = window.innerHeight - EDGE - 60;   // 扣掉底部分頁
+  let dy = 0;
+  if (drag.y < EDGE) dy = -Math.ceil((EDGE - drag.y) / 6);
+  else if (drag.y > bottomLimit) dy = Math.ceil((drag.y - bottomLimit) / 6);
+  if (dy) {
+    window.scrollBy(0, dy);
+    dragHitTest(drag.x, drag.y);
+  }
+  drag.scrollRaf = requestAnimationFrame(autoScrollTick);
+}
+
 function dragMove(x, y) {
+  drag.x = x;
+  drag.y = y;
   drag.ghost.style.left = `${x}px`;
   drag.ghost.style.top = `${y}px`;
+  if (!drag.scrollRaf) drag.scrollRaf = requestAnimationFrame(autoScrollTick);
+  dragHitTest(x, y);
+}
+
+function dragHitTest(x, y) {
   const under = document.elementFromPoint(x, y);
-  const chip = under && under.closest('.drag-chip');
-  const valid = chip && chip !== drag.source && chip.dataset.court === drag.source.dataset.court ? chip : null;
+  const fromBench = drag.source.classList.contains('bench-chip');
+  let valid = null;
+  if (fromBench) {
+    // 場下 → 場上任一位球員（暫停中的場地除外）
+    const chip = under && under.closest('.drag-chip');
+    if (chip && !chip.classList.contains('no-drag') && chip.dataset.pid) valid = chip;
+  } else {
+    // 場上 → 同場地換位，或拖到場下球員身上換人
+    const chip = under && under.closest('.drag-chip, .bench-chip');
+    if (chip && chip !== drag.source) {
+      if (chip.classList.contains('bench-chip')) valid = chip;
+      else if (chip.dataset.court === drag.source.dataset.court) valid = chip;
+    }
+  }
   if (drag.target && drag.target !== valid) drag.target.classList.remove('drop-target');
   if (valid) valid.classList.add('drop-target');
   drag.target = valid;
 }
+
 
 function dragEnd() {
   clearTimeout(drag.timer);
@@ -3301,18 +3551,34 @@ function dragEnd() {
     return;
   }
   const { source, target } = drag;
+  if (drag.scrollRaf) cancelAnimationFrame(drag.scrollRaf);
+  drag.scrollRaf = null;
   drag.ghost.remove();
   Object.assign(drag, { active: false, source: null, ghost: null, target: null, suppressClick: true });
   setTimeout(() => { drag.suppressClick = false; }, 400);
-  if (target && swapOnCourt(Number(source.dataset.court), Number(source.dataset.pid), Number(target.dataset.pid))) {
-    saveSession();
-    showToast('已交換位置');
+  if (target) {
+    const fromBench = source.classList.contains('bench-chip');
+    const toBench = target.classList.contains('bench-chip');
+    if (fromBench || toBench) {
+      const courtChip = fromBench ? target : source;
+      const benchChip = fromBench ? source : target;
+      const courtIndex = Number(courtChip.dataset.court);
+      const outId = Number(courtChip.dataset.pid);
+      const inId = Number(benchChip.dataset.pid);
+      if (substituteOnCourt(courtIndex, outId, inId)) {
+        saveSession();
+        showToast(`${playerName(inId)} 上場，${playerName(outId)} 下場`);
+      }
+    } else if (swapOnCourt(Number(source.dataset.court), Number(source.dataset.pid), Number(target.dataset.pid))) {
+      saveSession();
+      showToast('已交換位置');
+    }
   }
   render();
 }
 
 function dragPointerDown(target, x, y) {
-  const chip = target.closest('.drag-chip');
+  const chip = target.closest('.drag-chip, .bench-chip');
   if (!chip || chip.classList.contains('no-drag') || ui.manual || ui.result || ui.settings) return;
   drag.source = chip;
   drag.x = x;
@@ -3344,7 +3610,74 @@ document.addEventListener('mousedown', (e) => dragPointerDown(e.target, e.client
 document.addEventListener('mousemove', (e) => { if (drag.source) dragPointerMove(e, e.clientX, e.clientY); });
 document.addEventListener('mouseup', dragEnd);
 // 長按名字時不要跳出系統選單
-document.addEventListener('contextmenu', (e) => { if (e.target.closest('.drag-chip')) e.preventDefault(); });
+document.addEventListener('contextmenu', (e) => { if (e.target.closest('.drag-chip, .bench-chip')) e.preventDefault(); });
+
+/* ===================== 彈窗下拉關閉 =====================
+ * 在彈窗內往下推：彈窗內容已捲到最上方時才開始拖動，避免和內容捲動衝突。
+ * 放開時拖超過 100px 或快速往下甩就關閉，否則彈回原位。 */
+const sheet = { active: false, decided: false, startY: 0, startX: 0, dy: 0, t0: 0, el: null };
+const SHEET_CLOSE_PX = 100;
+const SHEET_FLICK_SPEED = 0.6;   // px/ms
+
+document.addEventListener('touchstart', (e) => {
+  const modal = e.target.closest('.modal');
+  if (!modal || e.touches.length !== 1) return;
+  if (e.target.closest('textarea, input, select')) return;
+  Object.assign(sheet, {
+    active: true, decided: false, el: modal, dy: 0, t0: Date.now(),
+    startY: e.touches[0].clientY, startX: e.touches[0].clientX,
+  });
+}, { passive: true });
+
+document.addEventListener('touchmove', (e) => {
+  if (!sheet.active) return;
+  const dy = e.touches[0].clientY - sheet.startY;
+  const dx = e.touches[0].clientX - sheet.startX;
+  if (!sheet.decided) {
+    if (Math.abs(dy) < 8 && Math.abs(dx) < 8) return;
+    sheet.decided = true;
+    // 只有「往下、偏垂直、內容在最上方」才當成下拉關閉；其他交給正常捲動
+    const atTop = sheet.el.scrollTop <= 0;
+    if (!(dy > 0 && Math.abs(dy) > Math.abs(dx) && atTop)) {
+      sheet.active = false;
+      return;
+    }
+    sheet.el.classList.add('dragging');
+    sheet.startY = e.touches[0].clientY;   // 從判定當下開始計算，避免一開始就跳一段
+    sheet.t0 = Date.now();
+  }
+  e.preventDefault();
+  sheet.dy = Math.max(0, e.touches[0].clientY - sheet.startY);
+  sheet.el.style.transform = `translateY(${sheet.dy}px)`;
+  const bg = sheet.el.parentElement;
+  if (bg) bg.style.background = `rgba(20, 38, 28, ${Math.max(0.1, 0.55 - sheet.dy / 600)})`;
+}, { passive: false });
+
+function sheetEnd() {
+  if (!sheet.active) return;
+  const { el, dy } = sheet;
+  sheet.active = false;
+  if (!sheet.decided || !el) return;
+  el.classList.remove('dragging');
+  const speed = dy / Math.max(1, Date.now() - sheet.t0);
+  const bg = el.parentElement;
+  if (dy > SHEET_CLOSE_PX || (dy > 30 && speed > SHEET_FLICK_SPEED)) {
+    el.classList.add('sheet-release');
+    el.style.transform = 'translateY(110%)';
+    if (bg) { bg.classList.add('sheet-fade'); bg.style.background = 'rgba(20, 38, 28, 0)'; }
+    setTimeout(() => {
+      const close = document.querySelector('.modal-bg');
+      if (close) handleAction(close);   // 與點背景關閉相同，包含「改為手動」未確認時的還原
+    }, 200);
+  } else {
+    el.classList.add('sheet-release');
+    el.style.transform = '';
+    if (bg) bg.style.background = '';
+    setTimeout(() => el.classList.remove('sheet-release'), 220);
+  }
+}
+document.addEventListener('touchend', sheetEnd);
+document.addEventListener('touchcancel', sheetEnd);
 
 /* ===================== 鎖定縮放 ===================== */
 /**
@@ -3714,6 +4047,7 @@ function handleAction(el) {
     case 'report-open': openReport(); return;
     case 'report-share': shareReport(); return;
     case 'player-open': ui.profileName = el.dataset.name; sessionChanged = false; break;
+    case 'network-mode': ui.networkMode = el.dataset.value; sessionChanged = false; break;
     case 'network-focus':
       ui.networkFocus = ui.networkFocus === el.dataset.name ? null : el.dataset.name;
       sessionChanged = false;
