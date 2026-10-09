@@ -274,6 +274,95 @@
   .bench-chip { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
   .bench-chip.drag-source { opacity: 0.35; }
   .bench-chip.drop-target { background: var(--tape); color: var(--on-tape); }
+
+  /* ===== 場邊（板凳區）：沿用場地卡片的配色變數，看起來像球場旁的場邊 ===== */
+  .courts-side { margin-top: 14px; }
+  .sideline .sideline-floor {
+    position: relative; border-radius: 3px; padding: 22px 10px 10px;
+    background-color: var(--c-floor); background-image: var(--c-floor-image);
+  }
+  /* 頂端白線：球場邊線，板凳就在線外 */
+  .sideline .sideline-line {
+    position: absolute; left: 0; right: 0; top: 8px; height: 0;
+    border-top: 2px solid var(--c-line); opacity: 0.85;
+  }
+  .sideline .bench-area { --wood: #C79A64; --wood-dark: #8A5A30; --wood-grain: rgba(60, 30, 10, 0.18); }
+  [data-court-theme="wood"] .sideline .bench-area { --wood: #6B4426; --wood-dark: #3E2612; }
+  .sideline .bench-seats { grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); padding: 0 4px; gap: 5px; }
+  .sideline .seat b { font-size: 14px; }
+  .sideline .bench-label { color: var(--c-line); }
+  .sideline .bench-label small { color: var(--c-line); opacity: 0.75; }
+  .sideline .seat {
+    background: var(--c-chip); color: var(--line); border: 2px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  }
+  .sideline .seat small { color: var(--line); opacity: 0.7; }
+  .sideline .seat-next { border-color: var(--tape); }
+  .sideline .seat-next small { color: var(--tape); opacity: 1; }
+  .sideline .seat-must { border-color: var(--danger); }
+  .sideline .seat-rest { opacity: 0.5; }
+  .sideline .bench-empty { color: var(--c-line); opacity: 0.8; }
+  .sideline .seat.drop-target { background: var(--tape); color: var(--on-tape); }
+  :root[data-appearance="dark"] .sideline .seat-next,
+  :root[data-appearance="dark"] .sideline .seat { background: var(--c-chip); color: var(--line); }
+
+  /* ===== 板凳區 ===== */
+  .bench-area {
+    --wood: #B7834F; --wood-dark: #8A5A30; --wood-grain: rgba(60, 30, 10, 0.12);
+    --cushion: #FFFFFF; --cushion-edge: #D9CDBF;
+    display: grid; gap: 14px;
+  }
+  :root[data-appearance="dark"] .bench-area {
+    --wood: #7A5434; --wood-dark: #553821; --wood-grain: rgba(0, 0, 0, 0.25);
+    --cushion: #26302A; --cushion-edge: #3B4740;
+  }
+  /* 標籤放在長椅上方，讓長椅佔滿整個寬度：手機上一排可以坐 4 人 */
+  .bench-row { display: grid; gap: 6px; }
+  .bench-label { font-weight: 700; font-size: 15px; color: var(--ink); line-height: 1.2; }
+  .bench-label small { font-weight: 400; font-size: 12px; color: var(--muted); margin-left: 6px; }
+  .bench { position: relative; padding-bottom: 16px; }
+  .bench-seats {
+    position: relative; z-index: 2;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(76px, 1fr)); gap: 6px;
+    padding: 0 8px; margin-bottom: -6px;   /* 坐墊稍微壓在木板上 */
+  }
+  .bench-plank {
+    position: relative; z-index: 1; height: 16px; border-radius: 5px;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 46px, var(--wood-grain) 46px 48px),
+      linear-gradient(180deg, var(--wood) 0%, var(--wood-dark) 100%);
+    box-shadow: 0 3px 0 var(--wood-dark), 0 6px 10px rgba(0, 0, 0, 0.15);
+  }
+  .bench-legs { position: absolute; left: 0; right: 0; bottom: 0; height: 16px; }
+  .bench-legs i {
+    position: absolute; bottom: 0; width: 8px; height: 16px; border-radius: 0 0 3px 3px;
+    background: var(--wood-dark);
+  }
+  .bench-legs i:first-child { left: 14%; }
+  .bench-legs i:last-child { right: 14%; }
+
+  .seat {
+    position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    min-height: 54px; padding: 6px 4px; border-radius: 12px 12px 6px 6px;
+    background: var(--cushion); border: 2px solid var(--cushion-edge); color: var(--ink);
+    box-shadow: 0 2px 0 var(--cushion-edge); text-align: center; cursor: grab;
+  }
+  .seat b { font-size: 15px; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .seat small { font-size: 11px; color: var(--muted); }
+  .seat-next { background: #FFF1C4; border-color: var(--tape); box-shadow: 0 2px 0 #D9AE2F; color: #3A2A00; }
+  .seat-next small { color: #7A6420; }
+  :root[data-appearance="dark"] .seat-next { background: #4A3D14; color: #FFE9A8; box-shadow: 0 2px 0 #2E2508; }
+  :root[data-appearance="dark"] .seat-next small { color: #E6C35C; }
+  .seat-must { border-color: var(--danger); box-shadow: 0 2px 0 var(--danger); }
+  .seat-flag {
+    position: absolute; top: -9px; right: -4px; font-style: normal; font-size: 11px; font-weight: 700;
+    background: var(--danger); color: #fff; padding: 0 6px; border-radius: 999px;
+  }
+  .seat-rest { opacity: 0.6; cursor: default; filter: grayscale(1); }
+  .row-rest .bench-plank { filter: grayscale(0.7); }
+  .bench-empty { grid-column: 1 / -1; text-align: center; font-size: 13px; color: var(--muted); padding: 14px 0 10px; }
+  .seat.drag-source { opacity: 0.35; }
+  .seat.drop-target { background: var(--tape); color: var(--on-tape); }
   .drag-chip.drop-target { background: rgba(242, 201, 76, 0.45); }
   .drag-chip.drop-target .name-chip { outline: 3px solid var(--tape); outline-offset: 2px; }
   .drag-ghost {
@@ -485,6 +574,7 @@
     .courts-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 20px; align-items: start; }
     .courts-side { position: sticky; top: 16px; }
     .courts-side h2 { margin-top: 0; }
+    .courts-side .bench-seats { grid-template-columns: repeat(auto-fill, minmax(62px, 1fr)); padding: 0 4px; }
   }
   /* 手機橫式（高度很矮）：壓縮上下留白，讓場地多露出一點 */
   @media (max-height: 500px) and (orientation: landscape) {
@@ -525,7 +615,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '3.43';
+const APP_VERSION = '3.45';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -1765,27 +1855,70 @@ function renderCourt(court, index) {
     </div></div>`;
 }
 
-function renderRestingList() {
-  const resting = state.players.filter((p) => !p.active);
-  if (!resting.length) return '';
-  return `<p class="resting-list"><span class="badge badge-rest">休息中</span>${resting.map((p) => escapeHtml(p.name)).join('、')}</p>`;
+/**
+ * 板凳區：場下等待的球員坐在木頭長椅上
+ * - 下一場：優先上場的人，黃色坐墊
+ * - 板凳區：其餘等待的人
+ * - 休息區：按了「休息」的人，灰色、不可拖曳
+ * 坐墊都可以長按拖到場上換人（沿用 bench-chip 的拖曳機制）
+ */
+function renderSeat(p, { next = false, limit = Infinity } = {}) {
+  const must = p.wait >= limit;
+  const note = p.wait ? `已等 ${p.wait}` : '剛下場';
+  return `<span class="seat bench-chip ${next ? 'seat-next' : ''} ${must ? 'seat-must' : ''}"
+      data-pid="${p.id}" data-name="${escapeHtml(p.name)}">
+    ${must ? '<em class="seat-flag">必上</em>' : ''}
+    <b>${escapeHtml(p.name)}</b><small class="num">${note}</small>
+  </span>`;
+}
+
+function renderBenchRow(label, seats, extraClass = '') {
+  return `<div class="bench-row ${extraClass}">
+    <div class="bench-label">${label}</div>
+    <div class="bench">
+      <div class="bench-seats">${seats}</div>
+      <div class="bench-plank" aria-hidden="true"></div>
+      <div class="bench-legs" aria-hidden="true"><i></i><i></i></div>
+    </div>
+  </div>`;
 }
 
 function renderWaiting() {
   const needTotal = TEAM_SIZE[state.mode] * 2;
+  const limit = waitLimit(needTotal);
   const ranked = rankPlayersStable(availablePlayers());
-  if (!ranked.length) return `<p class="sub">目前沒有在等待的球員。</p>${renderRestingList()}`;
-  const chips = ranked.map((p, index) => {
-    const cls = index < needTotal ? 'chip chip-next' : 'chip chip-wait';
-    // 顯示這次下場後已等了幾局；剛下場還沒等過顯示「剛下場」
-    const waitNote = `<small>${p.wait ? `已等 ${p.wait}` : '剛下場'}</small>`;
-    return `<span class="${cls} bench-chip" data-pid="${p.id}" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}${waitNote}</span>`;
-  }).join('');
-  return `<p class="sub num" style="margin:-4px 0 8px">共 ${ranked.length} 人，黃框為優先上場（實際組合會再考慮配對）。
-    「已等」為這次下場後等了幾局，達 ${waitLimit(needTotal)} 局會強制排上場；整晚累計請看球員分頁。
-    長按名字拖到場上的球員身上，就能換人上場。</p>
-    <div class="chips">${chips}</div>
-    ${renderRestingList()}`;
+  const resting = state.players.filter((p) => !p.active);
+  const nextUp = ranked.slice(0, needTotal);
+  const others = ranked.slice(needTotal);
+
+  let html = '';
+  if (!ranked.length) {
+    html += renderBenchRow('板凳區', '<span class="bench-empty">板凳是空的，大家都在場上</span>');
+  } else {
+    html += renderBenchRow(`下一場<small>${nextUp.length} 人</small>`,
+      nextUp.map((p) => renderSeat(p, { next: true, limit })).join(''), 'row-next');
+    if (others.length) {
+      html += renderBenchRow(`板凳區<small>${others.length} 人</small>`,
+        others.map((p) => renderSeat(p, { limit })).join(''));
+    }
+  }
+  if (resting.length) {
+    html += renderBenchRow(`休息區<small>${resting.length} 人</small>`,
+      resting.map((p) => `<span class="seat seat-rest"><b>${escapeHtml(p.name)}</b><small>休息中</small></span>`).join(''),
+      'row-rest');
+  }
+  // 場邊卡片沿用 .court 的配色變數，跟著「場地配色」一起變化
+  return `<div class="court sideline">
+      <div class="court-head">
+        <span class="court-name">場邊</span>
+        <span class="court-meta">${ranked.length} 人等待${resting.length ? `・${resting.length} 人休息` : ''}</span>
+      </div>
+      <div class="sideline-floor">
+        <div class="sideline-line" aria-hidden="true"></div>
+        <div class="bench-area">${html}</div>
+      </div>
+      <p class="court-hint">已等 ${limit} 局必上｜長按名字拖到場上換人</p>
+    </div>`;
 }
 
 function renderRegularQuickAdd() {
@@ -2004,7 +2137,6 @@ function renderCourtsTab() {
         ? '<button class="btn-primary btn-block" style="margin-top:12px" data-action="fill-all">填滿所有空場</button>' : ''}
     </div>
     <aside class="courts-side">
-      <h2>場下等待</h2>
       ${renderWaiting()}
     </aside>
   </div>`;
