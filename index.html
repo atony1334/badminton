@@ -645,7 +645,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '3.51';
+const APP_VERSION = '3.52';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -1429,6 +1429,46 @@ function substituteOnCourt(courtIndex, outId, inId) {
   return true;
 }
 
+/**
+ * 兩個場地的球員互換：a 從 courtA 換到 courtB，b 從 courtB 換到 courtA，各自接手對方的位置。
+ * 兩人都仍在場上，所以場數、等待都不變，只調整：
+ * - 兩場的配對統計（先扣回舊分隊，再加上新分隊）
+ * - 回退等待用的紀錄：上場前的等待、上一次上場的流水號，跟著人一起搬到新的場次
+ * 兩個場地的計時與開局時間都保留，不算新開局；暫停中的場地不能互換。
+ */
+function swapAcrossCourts(courtA, a, courtB, b) {
+  const mA = state.courts[courtA] && state.courts[courtA].match;
+  const mB = state.courts[courtB] && state.courts[courtB].match;
+  if (!mA || !mB || courtA === courtB || isPaused(mA) || isPaused(mB)) return false;
+  const inA = mA.teamA.includes(a) || mA.teamB.includes(a);
+  const inB = mB.teamA.includes(b) || mB.teamB.includes(b);
+  if (!inA || !inB) return false;
+
+  updatePairs(mA.teamA, mA.teamB, -1);
+  updatePairs(mB.teamA, mB.teamB, -1);
+  const put = (team, from, to) => team.map((id) => (id === from ? to : id));
+  mA.teamA = put(mA.teamA, a, b); mA.teamB = put(mA.teamB, a, b);
+  mB.teamA = put(mB.teamA, b, a); mB.teamB = put(mB.teamB, b, a);
+  updatePairs(mA.teamA, mA.teamB, 1);
+  updatePairs(mB.teamA, mB.teamB, 1);
+
+  // 回退資料跟著人走
+  [[a, mA, mB], [b, mB, mA]].forEach(([id, from, to]) => {
+    to.prevWait = to.prevWait || {};
+    to.prevLastStart = to.prevLastStart || {};
+    to.prevWait[id] = from.prevWait ? from.prevWait[id] : 0;
+    to.prevLastStart[id] = from.prevLastStart ? from.prevLastStart[id] : 0;
+    if (from.prevWait) delete from.prevWait[id];
+    if (from.prevLastStart) delete from.prevLastStart[id];
+    const p = getPlayer(id);
+    if (p && p.lastStartSeq === from.seq) p.lastStartSeq = to.seq;
+  });
+  mA.isManual = true;
+  mB.isManual = true;
+  if (ui.pendingWin && (ui.pendingWin.court === courtA || ui.pendingWin.court === courtB)) ui.pendingWin = null;
+  return true;
+}
+
 function recordHistory(courtIndex, match, winnerIds = null) {
   state.finishedCount += 1;
   state.history.unshift({
@@ -1860,7 +1900,7 @@ function renderCourt(court, index) {
   // 提示文字在選擇勝方前後都保留，避免版面高度改變而跳動
   const hint = paused
     ? '<p class="court-hint">暫停中無法記勝負或換位，繼續比賽後即可操作</p>'
-    : '<p class="court-hint">長按名字拖曳換位｜點勝隊半場記勝負｜按結束則不記</p>';
+    : '<p class="court-hint">長按名字拖曳換位（可跨場地）｜點勝隊半場記勝負｜按結束則不記</p>';
 
   if (picked) {
     const winners = (picked === 'A' ? court.match.teamA : court.match.teamB).map(playerName).join('、');
@@ -3790,12 +3830,9 @@ function dragHitTest(x, y) {
     const chip = under && under.closest('.drag-chip');
     if (chip && !chip.classList.contains('no-drag') && chip.dataset.pid) valid = chip;
   } else {
-    // 場上 → 同場地換位，或拖到場下球員身上換人
+    // 場上 → 同場地換位、跨場地互換，或拖到場下球員身上換人（暫停中的場地除外）
     const chip = under && under.closest('.drag-chip, .bench-chip');
-    if (chip && chip !== drag.source) {
-      if (chip.classList.contains('bench-chip')) valid = chip;
-      else if (chip.dataset.court === drag.source.dataset.court) valid = chip;
-    }
+    if (chip && chip !== drag.source && !chip.classList.contains('no-drag') && chip.dataset.pid) valid = chip;
   }
   if (drag.target && drag.target !== valid) drag.target.classList.remove('drop-target');
   if (valid) valid.classList.add('drop-target');
@@ -3828,6 +3865,13 @@ function dragEnd() {
       if (substituteOnCourt(courtIndex, outId, inId)) {
         saveSession();
         showToast(`${playerName(inId)} 上場，${playerName(outId)} 下場`);
+      }
+    } else if (source.dataset.court !== target.dataset.court) {
+      const a = Number(source.dataset.pid);
+      const b = Number(target.dataset.pid);
+      if (swapAcrossCourts(Number(source.dataset.court), a, Number(target.dataset.court), b)) {
+        saveSession();
+        showToast(`${playerName(a)} 和 ${playerName(b)} 互換場地`);
       }
     } else if (swapOnCourt(Number(source.dataset.court), Number(source.dataset.pid), Number(target.dataset.pid))) {
       saveSession();
