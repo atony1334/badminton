@@ -125,6 +125,51 @@
     padding: 28px 16px; border: 2px dashed var(--floor); border-radius: var(--radius-l);
   }
   .view-only { cursor: default; }
+  .rank-seg { margin: 4px 0 0; }
+  .account-card {
+    background: var(--surface); border-radius: var(--radius-l); padding: 12px 14px; margin-bottom: 10px;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  }
+  .account-card p { margin: 0; }
+  .claim-badge { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--tape); color: var(--on-tape); margin-left: 4px; }
+  .claim-badge.ok { background: var(--court-dark); color: var(--line); }
+  .member-h { margin: 4px 0 0; font-size: 14px; }
+  .member-badge { font-size: 12px; font-weight: 700; color: var(--on-tape); background: var(--tape); border-radius: 999px; padding: 0 7px; }
+  .member-badge:empty { display: none; }
+  .member-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+  .member-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .member-info { display: flex; flex-direction: column; min-width: 0; }
+  .member-info small { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; }
+  .member-btns { display: flex; gap: 6px; flex-shrink: 0; }
+  .member-btns button, .member-row > .btn-ghost { padding: 6px 10px; font-size: 13px; }
+  .rank-note { margin: 6px 0 8px; font-size: 13px; }
+  .rank-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--radius-l); overflow: hidden; }
+  .rank-list li + li { border-top: 1px solid var(--floor); }
+  .rank-row {
+    display: grid; grid-template-columns: 2.2em 1fr auto; align-items: center; gap: 10px; width: 100%;
+    background: transparent; border-radius: 0; padding: 10px 14px; text-align: left; color: var(--ink);
+  }
+  .rank-row.is-me { background: var(--floor); }
+  .rank-place {
+    width: 1.9em; height: 1.9em; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px; color: var(--muted);
+  }
+  .rank-place.top1 { background: var(--tape); color: var(--on-tape); }
+  .rank-place.top2 { background: #D9DEE2; color: #2B3238; }
+  .rank-place.top3 { background: #E8C3A0; color: #4A2E17; }
+  .rank-name { font-weight: 600; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rank-name small, .long-head small {
+    margin-left: 6px; font-size: 11px; font-weight: 700; padding: 1px 6px; border-radius: 999px;
+    background: var(--court-dark); color: var(--line); vertical-align: 1px;
+  }
+  .rank-value { text-align: right; font-weight: 700; font-size: 16px; }
+  .rank-value small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
+  .long-card { background: var(--surface); border-radius: var(--radius-l); padding: 14px; }
+  .long-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 17px; }
+  .long-head .btn-ghost { padding: 4px 8px; font-size: 13px; }
+  .long-places { margin: 10px 0 0; font-size: 13px; }
+  .me-pick { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; background: var(--surface); border-radius: var(--radius-l); padding: 12px 14px; }
+  .me-pick select { flex: 1; min-width: 10em; }
   .invite-qr {
     width: min(240px, 70vw); aspect-ratio: 1; margin: 6px auto 0; background: #fff; border-radius: 12px; padding: 8px;
     box-sizing: border-box; display: flex; align-items: center; justify-content: center;
@@ -151,7 +196,7 @@
   .tabbar-inner { position: relative; }
   .tab-indicator {
     position: absolute; top: 0; left: 0; height: 3px; background: var(--tape);
-    width: calc(100% / 3); transition: transform 0.25s ease;
+    width: calc(100% / 4); transition: transform 0.25s ease;
   }
   .tabbar button[aria-selected="true"] { border-top-color: transparent; }
   /* 在分頁列上左右滑動：指示條跟著手指，手指所在的分頁先亮起來 */
@@ -704,7 +749,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '4.3';
+const APP_VERSION = '5.0';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1141,6 +1186,8 @@ const VIEWER_ACTIONS = new Set([
   'toggle-voice', 'set-voice-on', 'set-voice-auto', 'set-voice-repeat', 'set-voice-rate', 'set-voice-pitch',
   'voice-test', 'speak-court', 'title-open', 'player-open', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
+  'rank-board', 'rank-open', 'me-set', 'me-clear',
+  'google-login', 'google-logout', 'claim-submit', 'claim-cancel',
 ]);
 
 const cloud = {
@@ -1180,7 +1227,8 @@ function randomId(length) {
 }
 
 function viewerLink() {
-  return `${window.location.origin}${window.location.pathname}?team=${cloud.teamId}`;
+  // openExternalBrowser=1：在 LINE 點開會自動改用手機的瀏覽器（Google 登入在 LINE 裡不能用）
+  return `${window.location.origin}${window.location.pathname}?team=${cloud.teamId}&openExternalBrowser=1`;
 }
 
 function teamRef(id = cloud.teamId || VIEW_TEAM) {
@@ -1230,11 +1278,12 @@ async function initCloud() {
     } catch (err) {
       cloud.db = fsMod.getFirestore(app);
     }
+    cloud.auth = authMod.getAuth(app);
     if (cloud.viewer) {
       startViewer();
+      authMod.onAuthStateChanged(cloud.auth, (user) => { onViewerUser(user); });
       return;
     }
-    cloud.auth = authMod.getAuth(app);
     authMod.onAuthStateChanged(cloud.auth, (user) => { onCloudUser(user); });
   } catch (err) {
     console.warn('雲端功能載入失敗:', err);
@@ -1307,6 +1356,8 @@ async function attachTeam(id, data) {
   cloud.phase = 'ready';
   render();
   scheduleCloudUpload(true);
+  backfillSessionStats();
+  watchMembers();
 }
 
 function scheduleCloudUpload(immediate = false) {
@@ -1367,7 +1418,7 @@ function archiveSession(reason) {
     stateJson: JSON.stringify(state),
     appVersion: APP_VERSION,
     savedAt: serverTimestamp(),
-  }).catch((err) => {
+  }).then(() => writeSessionStats(state)).then(() => { ranks.loadedAt = 0; }).catch((err) => {
     console.warn('封存失敗:', err);
     cloud.error = cloudErrorText(err);
     setSync('error');
@@ -1464,6 +1515,7 @@ async function cloudLogout() {
   cloud.teamId = null;
   cloud.lastLive = '';
   cloud.lastRegs = '';
+  stopWatchMembers();
   storageSet(CLOUD_TEAM_KEY, null);
   showToast('已登出，本機資料仍保留');
 }
@@ -1528,6 +1580,8 @@ function checkViewerFresh() {
 
 function applyViewerSnapshot(snap) {
   if (!snap.exists()) {
+    // 還沒連上伺服器時，快取裡沒有資料不代表管理者沒開始，先維持「正在連線」
+    if (snap.metadata && snap.metadata.fromCache) return;
     if (cloud.viewerStatus !== 'missing') cloud.viewerStatus = 'empty';
     render();
     return;
@@ -1692,6 +1746,8 @@ function renderCloudSettings() {
       <span id="cloud-sync-text">${escapeHtml(SYNC_LABEL[cloud.sync] || '已連線')}</span>
     </div>
     ${cloud.sync === 'error' ? err : ''}
+    <h5 class="member-h">球友帳號 <span class="member-badge" id="member-badge">${pendingMembers().length ? `${pendingMembers().length} 位待確認` : ''}</span></h5>
+    ${renderMembersAdmin()}
     <div class="set-actions">
       <button class="btn-primary" data-action="cloud-invite">邀請球友（QR Code）</button>
       <button class="${ui.logoutArmed ? 'btn-danger' : 'btn-ghost'}" data-action="cloud-logout">
@@ -1705,11 +1761,468 @@ function renderViewerSettings() {
     <section class="set-group"><div class="set-body" style="padding-top:12px">
       <h4 class="set-head">觀看模式</h4>
       <p class="sub set-note">${cloud.teamName ? `正在看「${escapeHtml(cloud.teamName)}」的排場。` : ''}這裡只能看，排場由管理者操作，會自動即時更新。</p>
+      ${cloud.user ? `<p class="sub set-note">已用 Google 登入：${escapeHtml(cloud.user.email || '')}${cloud.claim ? `（${escapeHtml(cloud.claim.name)}）` : ''}</p>
+        <button class="btn-ghost" data-action="google-logout" style="align-self:flex-start">登出</button>` : ''}
     </div></section>
     ${renderVoiceSettings()}
     ${renderLookSettings()}
     ${renderUpdateFooter()}
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">完成</button>`;
+}
+
+/* ===================== 球友帳號（Google 登入＋認領球員） ===================== */
+/**
+ * 球友用 Google 登入後，認領自己是名單裡的哪一位：
+ *   teams/{teamId}/members/{uid}  { name, email, displayName, status: 'pending' | 'approved', claimedAt }
+ * 球友自己只能送出「待確認」，由管理者在設定頁確認，避免有人冒認別人。
+ * 確認前也能先看自己的戰績；確認後才算正式綁定（之後的自己報到會用到）。
+ */
+const IN_APP_BROWSER = /Line\/|FBAN|FBAV|Instagram|MicroMessenger/i.test(navigator.userAgent || '');
+const members = { unsub: null, list: [], mineUnsub: null };
+
+function onViewerUser(user) {
+  cloud.user = user;
+  if (members.mineUnsub) { members.mineUnsub(); members.mineUnsub = null; }
+  cloud.claim = null;
+  if (user) {
+    const { doc, onSnapshot } = cloud.fb;
+    members.mineUnsub = onSnapshot(doc(cloud.db, 'teams', VIEW_TEAM, 'members', user.uid), (snap) => {
+      cloud.claim = snap.exists() ? snap.data() : null;
+      render();
+    }, () => { cloud.claim = null; render(); });
+  }
+  render();
+}
+
+// 登入後認領的名字優先；沒登入就用這支手機記住的「我是誰」
+function myName() {
+  if (cloud.viewer && cloud.claim && cloud.claim.name) return cloud.claim.name;
+  return prefs.me || null;
+}
+
+async function googleLogin() {
+  if (IN_APP_BROWSER) {
+    showToast('LINE 裡無法用 Google 登入，請按右上角選「用瀏覽器開啟」');
+    return;
+  }
+  const { GoogleAuthProvider, signInWithPopup } = cloud.fb;
+  cloud.busy = true;
+  render();
+  try {
+    await signInWithPopup(cloud.auth, new GoogleAuthProvider());
+  } catch (err) {
+    const code = (err && err.code) || '';
+    if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
+      showToast(code === 'auth/popup-blocked' ? '登入視窗被擋住了，請允許彈出視窗後再試'
+        : code === 'auth/unauthorized-domain' ? '這個網址還沒加入 Firebase 的授權網域'
+          : cloudErrorText(err));
+    }
+  }
+  cloud.busy = false;
+  render();
+}
+
+async function claimPlayer(name) {
+  if (!cloud.user || !name) return;
+  const { doc, setDoc, serverTimestamp } = cloud.fb;
+  try {
+    await setDoc(doc(cloud.db, 'teams', VIEW_TEAM, 'members', cloud.user.uid), {
+      name,
+      email: cloud.user.email || '',
+      displayName: cloud.user.displayName || '',
+      status: 'pending',
+      claimedAt: serverTimestamp(),
+    });
+    showToast('已送出，等管理者確認');
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+}
+
+async function cancelClaim() {
+  if (!cloud.user) return;
+  const { doc, deleteDoc } = cloud.fb;
+  await deleteDoc(doc(cloud.db, 'teams', VIEW_TEAM, 'members', cloud.user.uid)).catch((err) => showToast(cloudErrorText(err)));
+}
+
+async function viewerLogout() {
+  await cloud.fb.signOut(cloud.auth).catch(() => {});
+  showToast('已登出');
+}
+
+// 管理者：即時看到誰送出了認領
+function watchMembers() {
+  if (members.unsub || !cloudReady()) return;
+  const { collection, onSnapshot } = cloud.fb;
+  members.unsub = onSnapshot(collection(cloud.db, 'teams', cloud.teamId, 'members'), (snap) => {
+    members.list = snap.docs.map((d) => Object.assign({ uid: d.id }, d.data()));
+    if (ui.settings) renderModal();
+    const chip = document.getElementById('member-badge');
+    if (chip) chip.textContent = pendingMembers().length ? `${pendingMembers().length} 位待確認` : '';
+  }, (err) => console.warn('讀取球友帳號失敗:', err));
+}
+
+function stopWatchMembers() {
+  if (members.unsub) members.unsub();
+  members.unsub = null;
+  members.list = [];
+}
+
+function pendingMembers() {
+  return members.list.filter((m) => m.status !== 'approved');
+}
+
+async function setMemberStatus(uid, approve) {
+  const { doc, updateDoc, deleteDoc } = cloud.fb;
+  const ref = doc(cloud.db, 'teams', cloud.teamId, 'members', uid);
+  try {
+    if (approve) await updateDoc(ref, { status: 'approved' });
+    else await deleteDoc(ref);
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+}
+
+function renderMembersAdmin() {
+  if (!members.list.length) {
+    return '<p class="sub set-note">還沒有球友用 Google 登入認領。球友掃 QR Code 後，在「排行」分頁就能登入。</p>';
+  }
+  const taken = {};
+  members.list.filter((m) => m.status === 'approved').forEach((m) => { taken[m.name] = m.uid; });
+  const row = (m) => {
+    const clash = m.status !== 'approved' && taken[m.name];
+    return `<li class="member-row">
+      <span class="member-info"><b>${escapeHtml(m.name)}</b>
+        <small>${escapeHtml(m.displayName || '')} ${escapeHtml(m.email || '')}</small>
+        ${clash ? '<small class="cloud-error">這個名字已經被其他帳號認領</small>' : ''}</span>
+      ${m.status === 'approved'
+        ? `<button class="btn-ghost" data-action="member-remove" data-uid="${escapeHtml(m.uid)}">移除</button>`
+        : `<span class="member-btns">
+            <button class="btn-primary" data-action="member-approve" data-uid="${escapeHtml(m.uid)}">確認</button>
+            <button class="btn-ghost" data-action="member-remove" data-uid="${escapeHtml(m.uid)}">拒絕</button></span>`}
+    </li>`;
+  };
+  const pending = pendingMembers();
+  const approved = members.list.filter((m) => m.status === 'approved');
+  return `
+    ${pending.length ? `<h5 class="member-h">待確認</h5><ul class="member-list">${pending.map(row).join('')}</ul>` : ''}
+    ${approved.length ? `<h5 class="member-h">已確認</h5><ul class="member-list">${approved.map(row).join('')}</ul>` : ''}`;
+}
+
+// 排行分頁最上面「我的戰績」的帳號區塊（觀看者）
+function renderAccountCard(all) {
+  if (!cloud.viewer || !cloud.auth) return '';
+  const names = all.map((p) => p.n).sort((a, b) => a.localeCompare(b));
+  if (!cloud.user) {
+    return `<div class="account-card">
+      <p>用 Google 登入，認領你是哪位球員，換手機也能看到自己的戰績。</p>
+      ${IN_APP_BROWSER ? '<p class="cloud-error">LINE 裡無法用 Google 登入：請按右上角「⋯」選「用瀏覽器開啟」。</p>' : ''}
+      <button class="btn-primary" data-action="google-login" ${cloud.busy ? 'disabled' : ''}>${cloud.busy ? '登入中…' : '用 Google 登入'}</button>
+    </div>`;
+  }
+  const who = escapeHtml(cloud.user.displayName || cloud.user.email || '');
+  if (!cloud.claim) {
+    return `<div class="account-card">
+      <p>${who} 你好！你是名單裡的哪一位？</p>
+      <div class="me-pick" style="padding:0;background:none">
+        <select id="claim-select" aria-label="選擇你是誰">
+          <option value="">選擇你是誰</option>
+          ${names.map((n) => `<option value="${escapeHtml(n)}" ${ui.claimName === n ? 'selected' : ''}>${escapeHtml(n)}</option>`).join('')}
+        </select>
+        <button class="btn-primary" data-action="claim-submit">送出</button>
+      </div>
+      <button class="btn-ghost" data-action="google-logout">登出</button>
+    </div>`;
+  }
+  const approved = cloud.claim.status === 'approved';
+  return `<div class="account-card">
+    <p>${who}・已認領 <b>${escapeHtml(cloud.claim.name)}</b>
+      <span class="claim-badge ${approved ? 'ok' : ''}">${approved ? '已確認' : '等待管理者確認'}</span></p>
+    <span class="member-btns">
+      <button class="btn-ghost" data-action="claim-cancel">${approved ? '解除認領' : '取消認領'}</button>
+      <button class="btn-ghost" data-action="google-logout">登出</button>
+    </span>
+  </div>`;
+}
+
+/* ===================== 長期排行榜 ===================== */
+/**
+ * 每個球局結束封存時，另外存一份精簡統計到 teams/{teamId}/stats/{sessionId}：
+ *   { sessionId, date, matchCount, players: [{ n, g, rec, w, min, partners: [{n,g,rec,w}], opponents: [...] }] }
+ * 排行榜只讀這些精簡資料（每份只有幾 KB），再加上今天還沒封存的球局即時計算。
+ */
+const RANK_MIN_RECORDED = 10;   // 勝率榜門檻：至少幾場有記勝負
+const RANK_BOARDS = {
+  rate: { label: '勝率', note: `至少 ${RANK_MIN_RECORDED} 場有記勝負` },
+  wins: { label: '勝場', note: '有記勝負的場次' },
+  games: { label: '場數', note: '完成的場次' },
+  days: { label: '出席', note: '有上場的球局數' },
+};
+const ranks = { status: 'idle', list: [], loadedAt: 0, error: '' };
+
+function sessionSummary(st) {
+  const map = {};
+  const ensure = (n) => map[n] || (map[n] = { n, g: 0, rec: 0, w: 0, min: 0, partners: {}, opponents: {} });
+  const bump = (bucket, n, decided, won) => {
+    const r = bucket[n] || (bucket[n] = { n, g: 0, rec: 0, w: 0 });
+    r.g += 1;
+    if (decided) { r.rec += 1; if (won) r.w += 1; }
+  };
+  st.history.forEach((h) => {
+    const minutes = h.endedAt ? Math.max(1, playedMinutes(h)) : 0;
+    [[h.teamA, h.teamB], [h.teamB, h.teamA]].forEach(([mine, theirs]) => {
+      mine.forEach((n) => {
+        const p = ensure(n);
+        const decided = Boolean(h.winners);
+        const won = decided && h.winners.includes(n);
+        p.g += 1;
+        p.min += minutes;
+        if (decided) { p.rec += 1; if (won) p.w += 1; }
+        mine.filter((m) => m !== n).forEach((m) => bump(p.partners, m, decided, won));
+        theirs.forEach((m) => bump(p.opponents, m, decided, won));
+      });
+    });
+  });
+  const starts = st.history.map((h) => h.startedAt).filter(Boolean);
+  return {
+    sessionId: st.sessionId,
+    date: starts.length ? Math.min(...starts) : Date.now(),
+    matchCount: st.history.length,
+    players: Object.values(map).map((p) => Object.assign({}, p, {
+      partners: Object.values(p.partners),
+      opponents: Object.values(p.opponents),
+    })),
+  };
+}
+
+function writeSessionStats(st) {
+  if (!cloudReady() || !st.history.length) return Promise.resolve();
+  const { doc, setDoc } = cloud.fb;
+  return setDoc(doc(cloud.db, 'teams', cloud.teamId, 'stats', st.sessionId),
+    Object.assign(sessionSummary(st), { appVersion: APP_VERSION }));
+}
+
+// v4.4 以前封存的球局沒有精簡統計：管理者接上球團時補算一次
+async function backfillSessionStats() {
+  const key = `badminton-stats-backfill-${cloud.teamId}`;
+  if (storageGet(key)) return;
+  const { collection, getDocs } = cloud.fb;
+  try {
+    const [sessions, stats] = await Promise.all([
+      getDocs(collection(cloud.db, 'teams', cloud.teamId, 'sessions')),
+      getDocs(collection(cloud.db, 'teams', cloud.teamId, 'stats')),
+    ]);
+    const have = new Set(stats.docs.map((d) => d.id));
+    const jobs = sessions.docs.filter((d) => !have.has(d.id)).map((d) => {
+      try {
+        return writeSessionStats(normalizeState(JSON.parse(d.data().stateJson)));
+      } catch (err) {
+        return Promise.resolve();
+      }
+    });
+    await Promise.all(jobs);
+    storageSet(key, true);
+    if (jobs.length) ranks.loadedAt = 0;
+  } catch (err) {
+    console.warn('補算排行榜資料失敗，下次再試:', err);
+  }
+}
+
+function rankTeamId() {
+  return cloud.viewer ? VIEW_TEAM : cloud.teamId;
+}
+
+function ranksAvailable() {
+  return Boolean(cloud.fb && rankTeamId() && (cloud.viewer || cloudReady()));
+}
+
+async function loadRanks(force = false) {
+  if (!ranksAvailable() || ranks.status === 'loading') return;
+  if (!force && ranks.status === 'ready' && Date.now() - ranks.loadedAt < 60000) return;
+  ranks.status = 'loading';
+  const { collection, getDocs } = cloud.fb;
+  try {
+    const snap = await getDocs(collection(cloud.db, 'teams', rankTeamId(), 'stats'));
+    ranks.list = snap.docs.map((d) => d.data());
+    ranks.status = 'ready';
+    ranks.loadedAt = Date.now();
+  } catch (err) {
+    ranks.status = 'error';
+    ranks.error = cloudErrorText(err);
+  }
+  if (ui.tab === 'ranks' || ui.rankProfile) render();
+}
+
+// 已封存的 + 今天還沒封存的球局（同一個球局以今天即時的資料為準）
+function rankSessions() {
+  const list = ranks.list.filter((s) => s.sessionId !== state.sessionId);
+  if (state.history.length) list.push(sessionSummary(state));
+  return list;
+}
+
+function mergeRows(target, rows) {
+  rows.forEach((r) => {
+    const t = target[r.n] || (target[r.n] = { n: r.n, g: 0, rec: 0, w: 0 });
+    t.g += r.g; t.rec += r.rec; t.w += r.w;
+  });
+}
+
+function aggregateRanks() {
+  const totals = {};
+  rankSessions().forEach((s) => {
+    s.players.forEach((p) => {
+      const t = totals[p.n] || (totals[p.n] = { n: p.n, g: 0, rec: 0, w: 0, min: 0, days: 0, partners: {}, opponents: {}, last: 0 });
+      t.g += p.g; t.rec += p.rec; t.w += p.w; t.min += p.min || 0;
+      if (p.g > 0) t.days += 1;
+      t.last = Math.max(t.last, s.date || 0);
+      mergeRows(t.partners, p.partners || []);
+      mergeRows(t.opponents, p.opponents || []);
+    });
+  });
+  return Object.values(totals);
+}
+
+function boardRows(all, board) {
+  const rate = (p) => (p.rec ? p.w / p.rec : 0);
+  const rows = board === 'rate' ? all.filter((p) => p.rec >= RANK_MIN_RECORDED) : all.slice();
+  const key = {
+    rate: (a, b) => rate(b) - rate(a) || b.w - a.w,
+    wins: (a, b) => b.w - a.w || rate(b) - rate(a),
+    games: (a, b) => b.g - a.g || b.min - a.min,
+    days: (a, b) => b.days - a.days || b.g - a.g,
+  }[board];
+  rows.sort((a, b) => key(a, b) || a.n.localeCompare(b.n));
+  // 同分同名次
+  let prev = null;
+  let place = 0;
+  return rows.map((p, i) => {
+    const v = boardValue(p, board);
+    if (v !== prev) { place = i + 1; prev = v; }
+    return Object.assign({ place }, p);
+  });
+}
+
+function boardValue(p, board) {
+  if (board === 'rate') return p.rec ? Math.round((p.w / p.rec) * 1000) / 10 : 0;
+  return { wins: p.w, games: p.g, days: p.days }[board];
+}
+
+function boardValueText(p, board) {
+  return {
+    rate: `${boardValue(p, 'rate')}%`,
+    wins: `${p.w} 勝`,
+    games: `${p.g} 場`,
+    days: `${p.days} 次`,
+  }[board];
+}
+
+function boardSubText(p, board) {
+  const rec = p.rec ? `${p.w} 勝 ${p.rec - p.w} 敗` : '未記勝負';
+  return board === 'days' ? `${p.g} 場・${rec}` : board === 'games' ? `${Math.round(p.min / 60 * 10) / 10} 小時・${p.days} 次出席` : rec;
+}
+
+function renderRanksTab() {
+  if (!cloudConfigured() || (!cloud.viewer && cloud.phase !== 'ready')) {
+    return `<h2>長期排行榜</h2>
+      <div class="viewer-wait" style="margin-top:0">長期排行榜需要雲端同步。<br>到「設定 → 雲端同步」登入並建立球團後，每天的紀錄會自動累積在這裡。</div>`;
+  }
+  if (ranks.status === 'idle' || (ranks.status === 'ready' && Date.now() - ranks.loadedAt > 60000)) {
+    setTimeout(() => loadRanks(), 0);
+  }
+  const all = aggregateRanks();
+  const board = RANK_BOARDS[ui.rankBoard] ? ui.rankBoard : 'rate';
+  const rows = boardRows(all, board);
+  const myself = myName();
+  const me = myself && all.find((p) => p.n === myself);
+  const sessions = rankSessions();
+  const loading = ranks.status === 'loading' && !ranks.list.length;
+
+  const list = loading
+    ? '<p class="sub">載入中…</p>'
+    : rows.length
+      ? `<ol class="rank-list">${rows.map((p) => `
+          <li><button class="rank-row ${p.n === myself ? 'is-me' : ''}" data-action="rank-open" data-name="${escapeHtml(p.n)}">
+            <span class="rank-place num ${p.place <= 3 ? `top${p.place}` : ''}">${p.place}</span>
+            <span class="rank-name">${escapeHtml(p.n)}${p.n === myself ? '<small>我</small>' : ''}</span>
+            <span class="rank-value num">${boardValueText(p, board)}<small>${boardSubText(p, board)}</small></span>
+          </button></li>`).join('')}</ol>`
+      : `<p class="sub">${board === 'rate' ? `還沒有人累積到 ${RANK_MIN_RECORDED} 場有記勝負` : '還沒有紀錄'}</p>`;
+
+  const pick = !myself && all.length && !(cloud.viewer && cloud.user)
+    ? `<div class="me-pick">
+        <span>想快速看到自己的戰績？</span>
+        <select id="me-select" aria-label="選擇你是誰">
+          <option value="">選擇你是誰</option>
+          ${all.slice().sort((a, b) => a.n.localeCompare(b.n)).map((p) => `<option value="${escapeHtml(p.n)}">${escapeHtml(p.n)}</option>`).join('')}
+        </select>
+      </div>`
+    : '';
+
+  return `
+    <h2>我的戰績</h2>
+    ${renderAccountCard(all)}
+    ${me ? renderLongProfile(me, all, true) : pick || (cloud.viewer && cloud.user ? '' : '<p class="sub">還沒有紀錄</p>')}
+    <h2>長期排行榜</h2>
+    <p class="sub" style="margin-top:-4px">累計 ${sessions.length} 次球局、${sessions.reduce((n, s) => n + s.matchCount, 0)} 場比賽${ranks.status === 'error' ? `・<span class="cloud-error" style="display:inline">${escapeHtml(ranks.error)}</span>` : ''}</p>
+    <div class="seg rank-seg" role="group" aria-label="排行榜種類">
+      ${Object.entries(RANK_BOARDS).map(([key, b]) => `
+        <button data-action="rank-board" data-value="${key}" aria-pressed="${board === key}">${b.label}</button>`).join('')}
+    </div>
+    <p class="sub rank-note">${RANK_BOARDS[board].note}</p>
+    ${list}`;
+}
+
+// 個人長期戰績：用在「我的戰績」卡片和點排行榜名字的彈窗
+function renderLongProfile(p, all, compact) {
+  const rateText = p.rec ? `${Math.round((p.w / p.rec) * 100)}%` : '—';
+  const place = (board) => {
+    const row = boardRows(all, board).find((r) => r.n === p.n);
+    return row ? `第 ${row.place} 名` : '未上榜';
+  };
+  const record = (r) => (r.rec ? `${r.w} 勝 ${r.rec - r.w} 敗` : '未記勝負');
+  const partners = Object.values(p.partners);
+  const opponents = Object.values(p.opponents);
+  const most = partners.slice().sort((a, b) => b.g - a.g || b.w - a.w).slice(0, 3);
+  const best = partners.filter((r) => r.rec >= 3 && r.w * 2 > r.rec)
+    .sort((a, b) => b.w / b.rec - a.w / a.rec || b.rec - a.rec)[0];
+  const rival = opponents.filter((r) => r.rec >= 3 && r.w * 2 < r.rec)
+    .sort((a, b) => a.w / a.rec - b.w / b.rec || b.rec - a.rec)[0];
+  const prey = opponents.filter((r) => r.rec >= 3 && r.w * 2 > r.rec)
+    .sort((a, b) => b.w / b.rec - a.w / a.rec || b.rec - a.rec)[0];
+  const relation = [
+    best ? `<li><span>最合拍搭檔：${escapeHtml(best.n)}</span><span>${record(best)}</span></li>` : '',
+    prey ? `<li><span>最好打的對手：${escapeHtml(prey.n)}</span><span>${record(prey)}</span></li>` : '',
+    rival ? `<li><span>最難纏的對手：${escapeHtml(rival.n)}</span><span>${record(rival)}</span></li>` : '',
+  ].join('');
+  return `
+    <div class="${compact ? 'long-card' : ''}">
+      ${compact ? `<div class="long-head"><b>${escapeHtml(p.n)}</b>
+        ${cloud.viewer && cloud.claim ? '' : '<button class="btn-ghost" data-action="me-clear">不是我</button>'}</div>` : ''}
+      <div class="profile-stats">
+        <div><b class="num">${p.days}</b><small>出席</small></div>
+        <div><b class="num">${p.g}</b><small>場數</small></div>
+        <div><b class="num">${p.w}</b><small>勝</small></div>
+        <div><b class="num">${rateText}</b><small>勝率</small></div>
+      </div>
+      <p class="sub long-places">勝率 ${place('rate')}・勝場 ${place('wins')}・場數 ${place('games')}・出席 ${place('days')}
+        ${p.rec < RANK_MIN_RECORDED ? `<br>再記 ${RANK_MIN_RECORDED - p.rec} 場勝負就能進勝率榜` : ''}</p>
+      ${relation ? `<h4 class="profile-h">關係</h4><ul class="profile-list">${relation}</ul>` : ''}
+      ${most.length ? `<h4 class="profile-h">最常搭檔</h4><ul class="profile-list">
+        ${most.map((r) => `<li><span>${escapeHtml(r.n)}</span><span>${r.g} 次・${record(r)}</span></li>`).join('')}</ul>` : ''}
+    </div>`;
+}
+
+function renderRankProfileModal() {
+  const all = aggregateRanks();
+  const p = all.find((r) => r.n === ui.rankProfile);
+  if (!p) return `<h3>${escapeHtml(ui.rankProfile)}</h3><p class="sub">還沒有紀錄</p>
+    <button class="btn-primary btn-block" data-action="modal-close">關閉</button>`;
+  return `
+    <h3>${escapeHtml(p.n)}</h3>
+    <p class="sub" style="margin:0 0 4px">長期累計${p.last ? `・最近一次 ${new Date(p.last).getMonth() + 1}/${new Date(p.last).getDate()}` : ''}</p>
+    ${renderLongProfile(p, all, false)}
+    ${myName() === p.n || (cloud.viewer && cloud.user) ? '' : `<button class="btn-ghost btn-block" data-action="me-set" data-name="${escapeHtml(p.n)}">這是我（在這支手機記住）</button>`}
+    <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">關閉</button>`;
 }
 
 /* ===================== 工具函式 ===================== */
@@ -3738,7 +4251,7 @@ function renderRecordsTab() {
     ${renderHistory()}`;
 }
 
-const TAB_ORDER = ['courts', 'players', 'records'];
+const TAB_ORDER = ['courts', 'players', 'records', 'ranks'];
 
 function renderTabBar() {
   const waiting = availablePlayers().length;
@@ -3746,6 +4259,7 @@ function renderTabBar() {
     { key: 'courts', label: '場地', note: `${waiting} 人等待` },
     { key: 'players', label: '球員', note: `${state.players.filter((p) => p.active).length} 人` },
     { key: 'records', label: '紀錄', note: `${state.history.length} 場` },
+    { key: 'ranks', label: '排行', note: '長期' },
   ];
   // 指示條先停在上一個分頁的位置，畫面更新後再滑到目前分頁（見 animateTabIndicator）
   const from = TAB_ORDER.indexOf(ui.prevTab || ui.tab);
@@ -3757,7 +4271,7 @@ function renderTabBar() {
 }
 
 function renderTabBody() {
-  return { courts: renderCourtsTab, players: renderPlayersTab, records: renderRecordsTab }[ui.tab]();
+  return { courts: renderCourtsTab, players: renderPlayersTab, records: renderRecordsTab, ranks: renderRanksTab }[ui.tab]();
 }
 
 function renderMain() {
@@ -3897,7 +4411,10 @@ function settingsGroupSummary(key) {
   switch (key) {
     case 'cloud':
       if (!cloudConfigured()) return '單機模式';
-      if (cloud.phase === 'ready') return `${cloud.teamName || '球團'}・${SYNC_LABEL[cloud.sync] || '已連線'}`;
+      if (cloud.phase === 'ready') {
+        const waiting = pendingMembers().length;
+        return `${cloud.teamName || '球團'}・${SYNC_LABEL[cloud.sync] || '已連線'}${waiting ? `・${waiting} 位球友待確認` : ''}`;
+      }
       return { 'signed-out': '尚未登入', 'no-team': '尚未建立球團', error: '連線失敗' }[cloud.phase] || '連線中…';
     case 'play':
       return `${MODE_LABEL[state.mode]}・${state.courts.length} 面場地・${FAIRNESS_LABEL[state.fairness]}`;
@@ -4158,6 +4675,7 @@ function renderModal() {
   else if (ui.report) content = renderReportModal();
   else if (ui.profileName) content = renderProfileModal();
   else if (ui.invite) content = renderInviteModal();
+  else if (ui.rankProfile) content = renderRankProfileModal();
   else if (ui.settings) content = renderSettingsModal();
 
   // 只有第一次開啟才播放進場動畫，之後的更新不重播
@@ -5416,6 +5934,7 @@ function handleAction(el) {
         break;
       }
       ui.manual = null;
+      ui.rankProfile = null;
       ui.backup = null;
       ui.result = null;
       ui.settings = false;
@@ -5426,6 +5945,29 @@ function handleAction(el) {
       sessionChanged = false;
       break;
 
+    case 'google-login': googleLogin(); return;
+    case 'google-logout': viewerLogout(); return;
+    case 'claim-submit':
+      if (!ui.claimName) { showToast('請先選擇你是誰'); return; }
+      claimPlayer(ui.claimName);
+      return;
+    case 'claim-cancel': cancelClaim(); return;
+    case 'member-approve': setMemberStatus(el.dataset.uid, true); return;
+    case 'member-remove': setMemberStatus(el.dataset.uid, false); return;
+    case 'rank-board': ui.rankBoard = el.dataset.value; sessionChanged = false; break;
+    case 'rank-open': ui.rankProfile = el.dataset.name; sessionChanged = false; break;
+    case 'me-set':
+      prefs.me = el.dataset.name;
+      savePrefs();
+      ui.rankProfile = null;
+      showToast(`已記住你是 ${prefs.me}`);
+      sessionChanged = false;
+      break;
+    case 'me-clear':
+      prefs.me = null;
+      savePrefs();
+      sessionChanged = false;
+      break;
     case 'set-group-toggle': {
       const key = el.dataset.group;
       prefs.settingsOpen = Object.assign({}, prefs.settingsOpen, { [key]: !settingsGroupOpen(key) });
@@ -5503,6 +6045,12 @@ document.addEventListener('change', (event) => {
   const { id } = event.target;
   if (id === 'save-new') {
     ui.setupSaveNew = event.target.checked;
+  } else if (id === 'claim-select') {
+    ui.claimName = event.target.value || null;
+  } else if (id === 'me-select') {
+    prefs.me = event.target.value || null;
+    savePrefs();
+    render();
   } else if (id === 'history-filter') {
     ui.historyFilter = event.target.value;
     ui.historyExpanded = false;
