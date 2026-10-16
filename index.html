@@ -704,7 +704,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '4.2';
+const APP_VERSION = '4.3';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1155,6 +1155,7 @@ const cloud = {
   error: '', busy: false,
   uploadTimer: null, uploadSeq: 0, lastLive: '', lastRegs: '',
   viewerUpdatedAt: 0,
+  viewerCheckedAt: 0,
 };
 
 function cloudConfigured() {
@@ -1407,6 +1408,9 @@ window.addEventListener('online', () => {
   }
 });
 window.addEventListener('offline', () => { if (cloud.sync === 'pending') setSync('offline'); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && cloudReady()) scheduleCloudUpload(true);   // 內容沒變不會重傳
+});
 
 async function cloudLogin() {
   const email = (ui.cloudEmail || '').trim();
@@ -1465,9 +1469,18 @@ async function cloudLogout() {
 }
 
 /* ---------- 觀看者 ---------- */
+/**
+ * 觀看者的即時更新。手機鎖屏、切到別的 App 或網路切換（Wi-Fi ↔ 行動網路）後，
+ * 即時連線有時會「看起來還連著、其實已經斷了」，畫面就停在舊的排場。所以另外加三道保險：
+ *  1. 回到畫面、網路恢復時：重新訂閱，並直接向伺服器拿一次最新資料
+ *  2. 畫面開著時每 20 秒向伺服器確認一次（資料沒變就不重畫）
+ *  3. 頂部顯示「更新於幾點幾分」，球友看得出是不是最新的
+ */
+const VIEWER_CHECK_MS = 20000;
+const viewerSync = { unsub: null, lastJson: '', timer: null, checking: false };
+
 function startViewer() {
-  const { getDoc, onSnapshot } = cloud.fb;
-  getDoc(teamRef(VIEW_TEAM)).then((snap) => {
+  cloud.fb.getDoc(teamRef(VIEW_TEAM)).then((snap) => {
     if (!snap.exists()) {
       cloud.viewerStatus = 'missing';
       render();
@@ -1480,27 +1493,73 @@ function startViewer() {
     cloud.error = cloudErrorText(err);
     render();
   });
-  onSnapshot(liveRef(VIEW_TEAM), (snap) => {
-    if (!snap.exists()) {
-      if (cloud.viewerStatus !== 'missing') cloud.viewerStatus = 'empty';
-      render();
-      return;
-    }
-    const d = snap.data();
-    try {
-      state = normalizeState(JSON.parse(d.stateJson));
-    } catch (err) {
-      console.warn('雲端資料格式錯誤:', err);
-      return;
-    }
-    cloud.viewerStatus = 'live';
-    cloud.viewerUpdatedAt = d.updatedAt || Date.now();
-    render();
-  }, (err) => {
+  subscribeViewer();
+  clearInterval(viewerSync.timer);
+  viewerSync.timer = setInterval(() => {
+    if (document.visibilityState === 'visible') checkViewerFresh();
+  }, VIEWER_CHECK_MS);
+  const wake = () => {
+    if (document.visibilityState !== 'visible') return;
+    subscribeViewer();
+    checkViewerFresh();
+  };
+  document.addEventListener('visibilitychange', wake);
+  window.addEventListener('online', wake);
+  window.addEventListener('pageshow', (e) => { if (e.persisted) wake(); });
+}
+
+function subscribeViewer() {
+  if (viewerSync.unsub) viewerSync.unsub();
+  viewerSync.unsub = cloud.fb.onSnapshot(liveRef(VIEW_TEAM), applyViewerSnapshot, (err) => {
     cloud.viewerStatus = 'error';
     cloud.error = cloudErrorText(err);
     render();
   });
+}
+
+function checkViewerFresh() {
+  if (viewerSync.checking || !cloud.fb.getDocFromServer) return;
+  viewerSync.checking = true;
+  cloud.fb.getDocFromServer(liveRef(VIEW_TEAM))
+    .then(applyViewerSnapshot)
+    .catch(() => {})   // 離線時略過，恢復連線會再試
+    .finally(() => { viewerSync.checking = false; });
+}
+
+function applyViewerSnapshot(snap) {
+  if (!snap.exists()) {
+    if (cloud.viewerStatus !== 'missing') cloud.viewerStatus = 'empty';
+    render();
+    return;
+  }
+  const d = snap.data();
+  const updatedAt = d.updatedAt || 0;
+  cloud.viewerCheckedAt = Date.now();
+  // 舊的資料（例如快取比伺服器晚到）或內容沒變，就不重畫
+  if (updatedAt < cloud.viewerUpdatedAt) return;
+  if (d.stateJson === viewerSync.lastJson && cloud.viewerStatus === 'live') {
+    updateViewerStamp();
+    return;
+  }
+  try {
+    state = normalizeState(JSON.parse(d.stateJson));
+  } catch (err) {
+    console.warn('雲端資料格式錯誤:', err);
+    return;
+  }
+  viewerSync.lastJson = d.stateJson;
+  cloud.viewerStatus = 'live';
+  cloud.viewerUpdatedAt = updatedAt;
+  render();
+}
+
+function viewerStampText() {
+  return cloud.viewerUpdatedAt ? `更新於 ${formatTime(cloud.viewerUpdatedAt)}` : '';
+}
+
+function updateViewerStamp() {
+  const el = document.getElementById('viewer-stamp');
+  if (el) el.textContent = viewerStampText();
 }
 
 function renderViewerWaiting() {
@@ -3707,7 +3766,7 @@ function renderMain() {
     <header class="top">
       <div>
         <h1>羽球輪轉排場</h1>
-        <p class="sub num">${cloud.viewer ? `<span class="live-dot" aria-hidden="true"></span>觀看中${cloud.teamName ? `・${escapeHtml(cloud.teamName)}` : ''}<br>` : ''}${state.players.filter((p) => p.active).length} 人在場館，已完成 ${state.history.length} 場</p>
+        <p class="sub num">${cloud.viewer ? `<span class="live-dot" aria-hidden="true"></span>觀看中${cloud.teamName ? `・${escapeHtml(cloud.teamName)}` : ''}・<span id="viewer-stamp">${viewerStampText()}</span><br>` : ''}${state.players.filter((p) => p.active).length} 人在場館，已完成 ${state.history.length} 場</p>
         ${syncChip()}
       </div>
       <div class="top-actions">
