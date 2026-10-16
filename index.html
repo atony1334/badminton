@@ -91,6 +91,18 @@
   .set-group .row + .row { margin-top: 0; }
   .set-group .label { min-width: 4.6em; }
   .set-head { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.08em; color: var(--muted, #5C6B61); }
+  .set-group { gap: 0; padding: 0; }
+  .set-toggle {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
+    background: transparent; padding: 12px; text-align: left; border-radius: inherit; color: inherit;
+  }
+  .set-toggle-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .set-toggle .set-head { font-size: 15px; letter-spacing: 0.04em; color: var(--ink, inherit); }
+  .set-summary { font-size: 13px; color: var(--muted); font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .set-chevron { width: 20px; height: 20px; flex-shrink: 0; color: var(--muted); transition: transform 0.2s ease; }
+  .set-group.is-open .set-chevron { transform: rotate(180deg); }
+  .set-body { display: flex; flex-direction: column; gap: 12px; padding: 0 12px 12px; }
+  @media (prefers-reduced-motion: reduce) { .set-chevron { transition: none; } }
   .set-note { margin: 0; }
   .set-actions { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
   .set-group input[type="email"], .set-group input[type="password"], .set-group input[type="text"] { width: 100%; box-sizing: border-box; }
@@ -176,7 +188,7 @@
   .btn-danger { background: var(--danger); color: #fff; }
   .btn-block { width: 100%; padding: 12px; }
 
-  textarea, input[type="text"], select {
+  textarea, input[type="text"], input[type="email"], input[type="password"], select {
     width: 100%; font: inherit; padding: 10px 12px; color: var(--ink);
     border: 2px solid var(--border); border-radius: var(--radius-s); background: var(--surface);
   }
@@ -692,7 +704,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '4.0';
+const APP_VERSION = '4.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1125,7 +1137,7 @@ const CLOUD_UPLOAD_DELAY_MS = 1200;
 const CLOUD_TEAM_KEY = 'badminton-cloud-team';
 // 觀看者可以用的操作：只看、切換分頁、調整自己手機的外觀與語音
 const VIEWER_ACTIONS = new Set([
-  'tab', 'settings-open', 'modal-close', 'set-appearance', 'set-theme', 'set-awake',
+  'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'set-appearance', 'set-theme', 'set-awake',
   'toggle-voice', 'set-voice-on', 'set-voice-auto', 'set-voice-repeat', 'set-voice-rate', 'set-voice-pitch',
   'voice-test', 'speak-court', 'title-open', 'player-open', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
@@ -1227,8 +1239,7 @@ async function initCloud() {
     console.warn('雲端功能載入失敗:', err);
     cloud.phase = 'error';
     cloud.error = '無法載入雲端功能，請確認網路後重新整理';
-    if (cloud.viewer) cloud.viewerStatus = 'error';
-    render();
+    if (cloud.viewer) { cloud.viewerStatus = 'error'; render(); } else if (ui.settings) renderModal();
   }
 }
 
@@ -1384,8 +1395,8 @@ function setSync(next) {
   if (el && SYNC_LABEL[next]) {
     el.className = `sync-chip sync-${next}`;
     el.textContent = SYNC_LABEL[next];
-  } else if (Boolean(el) !== Boolean(SYNC_LABEL[next]) && document.getElementById('app')) {
-    render();
+  } else if (Boolean(el) !== Boolean(SYNC_LABEL[next]) && document.getElementById('app') && !drag.active) {
+    render();   // 拖曳中不重畫，標籤等下次重畫再出現
   }
 }
 
@@ -1433,6 +1444,7 @@ async function cloudCreateTeam() {
       updatedAt: serverTimestamp(),
     });
     cloud.lastRegs = JSON.stringify(regulars);
+    prefs.settingsOpen = Object.assign({}, prefs.settingsOpen, { cloud: true });   // 建好後保持展開，方便接著邀請球友
     await attachTeam(id, { name, regulars });
     showToast('球團已建立，可以邀請球友了');
   } catch (err) {
@@ -1584,8 +1596,7 @@ function copyInviteLink() {
 
 /* ---------- 設定頁：雲端同步區塊 ---------- */
 function renderCloudSettings() {
-  const head = '<h4 class="set-head" id="set-h-cloud">雲端同步</h4>';
-  const wrap = (body) => `<section class="set-group" aria-labelledby="set-h-cloud">${head}${body}</section>`;
+  const wrap = (body) => `${settingsGroupHead('cloud', '雲端同步')}${body}${SETTINGS_GROUP_END}`;
   const err = cloud.error ? `<p class="cloud-error" role="alert">${escapeHtml(cloud.error)}</p>` : '';
   if (!cloudConfigured()) {
     return wrap('<p class="sub set-note">尚未設定 Firebase，目前是單機模式，資料只存在這支手機。</p>');
@@ -1632,10 +1643,10 @@ function renderCloudSettings() {
 function renderViewerSettings() {
   return `
     <h3>設定</h3>
-    <section class="set-group">
+    <section class="set-group"><div class="set-body" style="padding-top:12px">
       <h4 class="set-head">觀看模式</h4>
       <p class="sub set-note">${cloud.teamName ? `正在看「${escapeHtml(cloud.teamName)}」的排場。` : ''}這裡只能看，排場由管理者操作，會自動即時更新。</p>
-    </section>
+    </div></section>
     ${renderVoiceSettings()}
     ${renderLookSettings()}
     ${renderUpdateFooter()}
@@ -3815,10 +3826,52 @@ function wakeLockSupported() {
   return 'wakeLock' in navigator;
 }
 
+/* 設定頁區塊收合：展開狀態記在這支手機；收起時標題下方顯示目前設定的摘要 */
+function settingsGroupOpen(key) {
+  const saved = prefs.settingsOpen && prefs.settingsOpen[key];
+  if (typeof saved === 'boolean') return saved;
+  if (key === 'cloud') return cloudConfigured() && !cloud.viewer && cloud.phase !== 'ready';   // 還沒登入時預設展開
+  return key === 'play';
+}
+
+function settingsGroupSummary(key) {
+  switch (key) {
+    case 'cloud':
+      if (!cloudConfigured()) return '單機模式';
+      if (cloud.phase === 'ready') return `${cloud.teamName || '球團'}・${SYNC_LABEL[cloud.sync] || '已連線'}`;
+      return { 'signed-out': '尚未登入', 'no-team': '尚未建立球團', error: '連線失敗' }[cloud.phase] || '連線中…';
+    case 'play':
+      return `${MODE_LABEL[state.mode]}・${state.courts.length} 面場地・${FAIRNESS_LABEL[state.fairness]}`;
+    case 'voice':
+      if (!speechSupported()) return '不支援';
+      if (!prefs.voice.enabled) return '關';
+      return `${cloud.viewer ? '' : `自動唸名${prefs.voice.auto ? '開' : '關'}・`}重複 ${prefs.voice.repeat} 次`;
+    case 'look': {
+      const theme = COURT_THEMES[prefs.courtTheme] || COURT_THEMES.green;
+      return `${APPEARANCE_LABEL[prefs.appearance] || '淺色'}・${theme.label}`;
+    }
+    case 'data':
+      return '戰報、備份、清除紀錄';
+    default:
+      return '';
+  }
+}
+
+function settingsGroupHead(key, title) {
+  const open = settingsGroupOpen(key);
+  return `<section class="set-group ${open ? 'is-open' : ''}">
+      <button class="set-toggle" data-action="set-group-toggle" data-group="${key}" aria-expanded="${open}" aria-controls="set-body-${key}">
+        <span class="set-toggle-text"><span class="set-head">${title}</span>
+          ${open ? '' : `<span class="set-summary">${escapeHtml(settingsGroupSummary(key))}</span>`}</span>
+        <svg class="set-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+      <div class="set-body" id="set-body-${key}" ${open ? '' : 'hidden'}>`;
+}
+const SETTINGS_GROUP_END = '</div></section>';
+
 function renderLookSettings() {
   return `
-    <section class="set-group" aria-labelledby="set-h-look">
-      <h4 class="set-head" id="set-h-look">畫面</h4>
+    ${settingsGroupHead('look', '畫面')}
       <div class="row">
         <span class="label">外觀</span>
         <div class="seg" role="group" aria-label="外觀">
@@ -3843,7 +3896,7 @@ function renderLookSettings() {
             </div>`
           : '<span class="sub" style="margin:0">此裝置或瀏覽器不支援</span>'}
       </div>
-    </section>`;
+    ${SETTINGS_GROUP_END}`;
 }
 
 function renderSettingsModal() {
@@ -3851,8 +3904,7 @@ function renderSettingsModal() {
   return `
     <h3>設定</h3>
     ${renderCloudSettings()}
-    <section class="set-group" aria-labelledby="set-h-play">
-      <h4 class="set-head" id="set-h-play">排場</h4>
+    ${settingsGroupHead('play', '排場')}
       <div class="row">
         <span class="label">賽制</span>
         ${renderModeSeg(state.mode, 'set-mode')}
@@ -3879,14 +3931,13 @@ function renderSettingsModal() {
           <button data-action="set-auto" data-value="0" aria-pressed="${!state.autoFill}">留空</button>
         </div>
       </div>
-    </section>
+    ${SETTINGS_GROUP_END}
 
     ${renderVoiceSettings()}
 
     ${renderLookSettings()}
 
-    <section class="set-group" aria-labelledby="set-h-data">
-      <h4 class="set-head" id="set-h-data">資料</h4>
+    ${settingsGroupHead('data', '資料')}
       <div class="set-actions">
         <button class="btn-ghost" data-action="settings-end-day">結束今日打球、產生戰報</button>
         <button class="btn-ghost" data-action="backup-open">備份與還原</button>
@@ -3894,21 +3945,19 @@ function renderSettingsModal() {
           ${ui.resetArmed ? '再按一次確認（常用球員會保留）' : '清除排場紀錄，開新球局'}
         </button>
       </div>
-    </section>
+    ${SETTINGS_GROUP_END}
     ${renderUpdateFooter()}
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">完成</button>`;
 }
 
 function renderVoiceSettings() {
-  const head = '<h4 class="set-head" id="set-h-voice">語音唸名</h4>';
   if (!speechSupported()) {
-    return `<section class="set-group" aria-labelledby="set-h-voice">${head}
-      <p class="sub" style="margin:0">此裝置或瀏覽器不支援語音朗讀</p></section>`;
+    return `${settingsGroupHead('voice', '語音唸名')}
+      <p class="sub" style="margin:0">此裝置或瀏覽器不支援語音朗讀</p>${SETTINGS_GROUP_END}`;
   }
   const v = prefs.voice;
   return `
-    <section class="set-group" aria-labelledby="set-h-voice">
-      ${head}
+    ${settingsGroupHead('voice', '語音唸名')}
       <div class="row">
         <span class="label">唸名按鈕</span>
         <div class="seg" role="group" aria-label="語音唸名">
@@ -3950,7 +3999,7 @@ function renderVoiceSettings() {
         <button class="btn-ghost" data-action="voice-test">${SPEAKER_SVG}唸一次看看</button>
       </div>
       <p class="sub set-note">聲音使用美佳。沒聲音時請確認音量；iPhone 請關閉靜音模式。</p>` : ''}
-    </section>`;
+    ${SETTINGS_GROUP_END}`;
 }
 
 function renderCopyModal() {
@@ -5318,6 +5367,14 @@ function handleAction(el) {
       sessionChanged = false;
       break;
 
+    case 'set-group-toggle': {
+      const key = el.dataset.group;
+      prefs.settingsOpen = Object.assign({}, prefs.settingsOpen, { [key]: !settingsGroupOpen(key) });
+      savePrefs();
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    }
     case 'cloud-login': cloudLogin(); return;
     case 'cloud-create-team': cloudCreateTeam(); return;
     case 'cloud-invite': openInvite(); sessionChanged = false; break;
