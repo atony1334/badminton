@@ -131,6 +131,28 @@
     display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
   }
   .account-card p { margin: 0; }
+  .end-day.end-day-choice { flex-direction: column; align-items: stretch; text-align: center; gap: 8px; }
+  .end-day.end-day-choice .sub { margin: 0 0 4px; }
+  .end-day.end-day-choice button { width: 100%; }
+  .push-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 8px 0; border-top: 1px solid var(--floor); border-bottom: 1px solid var(--floor); }
+  .push-row span { display: flex; flex-direction: column; min-width: 0; }
+  .push-row small { color: var(--muted); font-size: 12px; }
+  .push-row button { flex-shrink: 0; padding: 6px 14px; }
+  .turn-alert {
+    position: fixed; inset: 0; z-index: 30; background: rgba(0, 0, 0, 0.55);
+    display: flex; align-items: center; justify-content: center;
+    padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+  }
+  .turn-card {
+    background: var(--court); color: var(--line); border-radius: var(--radius-l); padding: 22px 20px; width: min(340px, 100%);
+    display: flex; flex-direction: column; align-items: center; gap: 6px; text-align: center; box-shadow: 0 10px 40px rgba(0,0,0,0.4);
+    animation: turn-pop 0.35s ease-out;
+  }
+  .turn-card b { font-size: 24px; }
+  .turn-court { font-size: 40px; font-weight: 800; color: var(--tape); line-height: 1.2; }
+  .turn-card .btn-tape { margin-top: 10px; width: 100%; padding: 12px; font-size: 17px; }
+  @keyframes turn-pop { from { transform: scale(0.85); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .turn-card { animation: none; } }
   .claim-badge { font-size: 12px; font-weight: 700; padding: 1px 8px; border-radius: 999px; background: var(--tape); color: var(--on-tape); margin-left: 4px; }
   .claim-badge.ok { background: var(--court-dark); color: var(--line); }
   .member-h { margin: 4px 0 0; font-size: 14px; }
@@ -749,7 +771,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '5.0';
+const APP_VERSION = '5.3';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1183,11 +1205,10 @@ const CLOUD_TEAM_KEY = 'badminton-cloud-team';
 // 觀看者可以用的操作：只看、切換分頁、調整自己手機的外觀與語音
 const VIEWER_ACTIONS = new Set([
   'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'set-appearance', 'set-theme', 'set-awake',
-  'toggle-voice', 'set-voice-on', 'set-voice-auto', 'set-voice-repeat', 'set-voice-rate', 'set-voice-pitch',
-  'voice-test', 'speak-court', 'title-open', 'player-open', 'network-mode', 'network-focus',
+  'title-open', 'player-open', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear',
-  'google-login', 'google-logout', 'claim-submit', 'claim-cancel',
+  'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
 ]);
 
 const cloud = {
@@ -1268,6 +1289,7 @@ async function initCloud() {
     ]);
     cloud.fb = Object.assign({}, appMod, authMod, fsMod);
     const app = appMod.initializeApp(cloud.config);
+    cloud.app = app;
     // 管理者用離線快取：網路斷掉時先存在手機，恢復後自動補傳；觀看者不需要
     try {
       cloud.db = cloud.viewer
@@ -1357,6 +1379,10 @@ async function attachTeam(id, data) {
   render();
   scheduleCloudUpload(true);
   backfillSessionStats();
+  const appUrl = `${window.location.origin}${window.location.pathname}`;
+  if (/^https:/.test(appUrl) && (!data || data.appUrl !== appUrl)) {
+    cloud.fb.updateDoc(teamRef(id), { appUrl }).catch(() => {});
+  }
   watchMembers();
 }
 
@@ -1403,6 +1429,10 @@ async function uploadLive() {
 }
 
 // 封存當天紀錄：同一個球局重複封存會覆蓋同一份，不會重複
+/**
+ * 存入長期紀錄（排行榜用）。只在管理者按「結束今日打球 → 存入長期紀錄」時執行；
+ * 測試用的球局不會進資料庫。成功後 state.archived = true。
+ */
 function archiveSession(reason) {
   if (!cloudReady() || !state.history.length) return;
   const { doc, setDoc, serverTimestamp } = cloud.fb;
@@ -1418,8 +1448,15 @@ function archiveSession(reason) {
     stateJson: JSON.stringify(state),
     appVersion: APP_VERSION,
     savedAt: serverTimestamp(),
-  }).then(() => writeSessionStats(state)).then(() => { ranks.loadedAt = 0; }).catch((err) => {
+  }).then(() => writeSessionStats(state)).then(() => {
+    ranks.loadedAt = 0;
+    state.archived = true;
+    saveSession();
+    showToast('已存入長期紀錄');
+    render();
+  }).catch((err) => {
     console.warn('封存失敗:', err);
+    showToast(`存入長期紀錄失敗：${cloudErrorText(err)}`);
     cloud.error = cloudErrorText(err);
     setSync('error');
   });
@@ -1604,6 +1641,7 @@ function applyViewerSnapshot(snap) {
   viewerSync.lastJson = d.stateJson;
   cloud.viewerStatus = 'live';
   cloud.viewerUpdatedAt = updatedAt;
+  checkMyTurn();
   render();
 }
 
@@ -1764,7 +1802,6 @@ function renderViewerSettings() {
       ${cloud.user ? `<p class="sub set-note">已用 Google 登入：${escapeHtml(cloud.user.email || '')}${cloud.claim ? `（${escapeHtml(cloud.claim.name)}）` : ''}</p>
         <button class="btn-ghost" data-action="google-logout" style="align-self:flex-start">登出</button>` : ''}
     </div></section>
-    ${renderVoiceSettings()}
     ${renderLookSettings()}
     ${renderUpdateFooter()}
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">完成</button>`;
@@ -1788,6 +1825,9 @@ function onViewerUser(user) {
     const { doc, onSnapshot } = cloud.fb;
     members.mineUnsub = onSnapshot(doc(cloud.db, 'teams', VIEW_TEAM, 'members', user.uid), (snap) => {
       cloud.claim = snap.exists() ? snap.data() : null;
+      pushState.seen = null;   // 認領的名字可能換了，重新記錄目前在場上的位置
+      checkMyTurn();
+      refreshPushToken();
       render();
     }, () => { cloud.claim = null; render(); });
   }
@@ -1912,7 +1952,9 @@ function renderMembersAdmin() {
 // 排行分頁最上面「我的戰績」的帳號區塊（觀看者）
 function renderAccountCard(all) {
   if (!cloud.viewer || !cloud.auth) return '';
-  const names = all.map((p) => p.n).sort((a, b) => a.localeCompare(b));
+  // 可以認領的名字：長期紀錄裡的人＋今天在名單上的人（新來的球友還沒有長期紀錄）
+  const names = Array.from(new Set(all.map((p) => p.n).concat(state.players.map((p) => p.name))))
+    .sort((a, b) => a.localeCompare(b));
   if (!cloud.user) {
     return `<div class="account-card">
       <p>用 Google 登入，認領你是哪位球員，換手機也能看到自己的戰績。</p>
@@ -1938,11 +1980,184 @@ function renderAccountCard(all) {
   return `<div class="account-card">
     <p>${who}・已認領 <b>${escapeHtml(cloud.claim.name)}</b>
       <span class="claim-badge ${approved ? 'ok' : ''}">${approved ? '已確認' : '等待管理者確認'}</span></p>
+    ${renderPushControl()}
     <span class="member-btns">
       <button class="btn-ghost" data-action="claim-cancel">${approved ? '解除認領' : '取消認領'}</button>
       <button class="btn-ghost" data-action="google-logout">登出</button>
     </span>
   </div>`;
+}
+
+/* ===================== 上場通知 ===================== */
+/**
+ * 兩層提醒：
+ *  1. 推播通知：雲端程式（functions/）看到新上場的人，就推播給「已確認＋開啟通知」的球友。
+ *     App 關著也收得到；iPhone 要先加到主畫面、從主畫面打開才能開啟。
+ *  2. 頁面提醒：觀看頁開著時，輪到自己就跳出提醒、震動、語音唸出（推播收不到時的備案）。
+ */
+const VAPID_KEY = 'BFKboS0fneTVn8qsREzdJ6MTUagFa5Mi0vNNbvqIMAuWvjZCYjoGKh_bL2ViCIHhVCLAIhGRVF6uGy_J3N9XsDI';
+const PUSH_TOKEN_KEY = 'badminton-push-token';
+const pushState = { busy: false, refreshed: false, seen: null };
+
+function isIOS() {
+  return /iPhone|iPad|iPod/.test(navigator.userAgent || '')
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function isStandalone() {
+  return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+}
+
+// ok | inapp | ios-browser | unsupported
+function pushEnvironment() {
+  if (IN_APP_BROWSER) return 'inapp';
+  const capable = 'serviceWorker' in navigator && 'Notification' in window && 'PushManager' in window;
+  if (isIOS() && !isStandalone()) return 'ios-browser';
+  if (!capable || (window.location.protocol !== 'https:' && !TEST_CLOUD)) return 'unsupported';
+  return 'ok';
+}
+
+function memberRef() {
+  return cloud.fb.doc(cloud.db, 'teams', VIEW_TEAM, 'members', cloud.user.uid);
+}
+
+async function obtainPushToken() {
+  const msgMod = await import(`${cloud.sdkBase}/firebase-messaging.js`);
+  if (msgMod.isSupported && !(await msgMod.isSupported())) throw Object.assign(new Error('unsupported'), { code: 'push/unsupported' });
+  const reg = await navigator.serviceWorker.register('sw.js');
+  await navigator.serviceWorker.ready;
+  const messaging = msgMod.getMessaging(cloud.app);
+  return msgMod.getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
+}
+
+async function enablePush() {
+  const env = pushEnvironment();
+  if (env !== 'ok') {
+    showToast({
+      inapp: '請先按右上角「⋯」選「用瀏覽器開啟」',
+      'ios-browser': 'iPhone 要先「加入主畫面」，從主畫面打開後才能開啟通知',
+      unsupported: '這個瀏覽器不支援推播通知',
+    }[env]);
+    return;
+  }
+  pushState.busy = true;
+  render();
+  try {
+    // 一定要在按下按鈕的當下先詢問權限（iPhone 規定）
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      showToast('通知被拒絕了，要到手機設定裡允許這個網站的通知');
+      return;
+    }
+    const token = await obtainPushToken();
+    const { updateDoc, arrayUnion, serverTimestamp } = cloud.fb;
+    await updateDoc(memberRef(), { fcmTokens: arrayUnion(token), notifyOn: true, tokenUpdatedAt: serverTimestamp() });
+    storageSet(PUSH_TOKEN_KEY, token);
+    showToast('已開啟上場通知');
+  } catch (err) {
+    console.warn('開啟通知失敗:', err);
+    showToast(err && err.code === 'push/unsupported' ? '這個瀏覽器不支援推播通知' : `開啟通知失敗（${(err && (err.code || err.message)) || '未知'}）`);
+  } finally {
+    pushState.busy = false;
+    render();
+  }
+}
+
+async function disablePush() {
+  const { updateDoc, arrayRemove } = cloud.fb;
+  const token = storageGet(PUSH_TOKEN_KEY);
+  const patch = token ? { notifyOn: false, fcmTokens: arrayRemove(token) } : { notifyOn: false };
+  await updateDoc(memberRef(), patch).catch((err) => showToast(cloudErrorText(err)));
+  storageSet(PUSH_TOKEN_KEY, null);
+  showToast('已關閉上場通知');
+}
+
+// 推播憑證偶爾會更新：每次打開頁面、已允許通知時，悄悄確認一次
+async function refreshPushToken() {
+  if (pushState.refreshed || !cloud.claim || !cloud.claim.notifyOn || pushEnvironment() !== 'ok') return;
+  if (!('Notification' in window) || Notification.permission !== 'granted') return;
+  pushState.refreshed = true;
+  try {
+    const token = await obtainPushToken();
+    if (token && token !== storageGet(PUSH_TOKEN_KEY)) {
+      const { updateDoc, arrayUnion, serverTimestamp } = cloud.fb;
+      await updateDoc(memberRef(), { fcmTokens: arrayUnion(token), tokenUpdatedAt: serverTimestamp() });
+      storageSet(PUSH_TOKEN_KEY, token);
+    }
+  } catch (err) {
+    console.warn('更新推播憑證失敗:', err);
+  }
+}
+
+function renderPushControl() {
+  if (!cloud.claim || cloud.claim.status !== 'approved') {
+    return cloud.claim ? '<p class="sub" style="margin:0">管理者確認後，就能開啟「輪到你上場」通知。</p>' : '';
+  }
+  const on = Boolean(cloud.claim.notifyOn);
+  const env = pushEnvironment();
+  const hint = {
+    inapp: '要開通知，請先按右上角「⋯」選「用瀏覽器開啟」。',
+    'ios-browser': 'iPhone 要先按分享鈕「加入主畫面」，從主畫面的圖示打開，才能開啟通知。',
+    unsupported: '這個瀏覽器不支援推播通知，頁面開著時仍會跳出提醒。',
+  }[env];
+  const denied = env === 'ok' && 'Notification' in window && Notification.permission === 'denied';
+  return `<div class="push-row">
+      <span><b>輪到你上場通知</b><small>${on ? '已開啟，App 關著也會通知你' : '開啟後，輪到你時手機會跳出通知'}</small></span>
+      ${env === 'ok' && !denied
+        ? `<button class="${on ? 'btn-ghost' : 'btn-primary'}" data-action="${on ? 'push-off' : 'push-on'}" ${pushState.busy ? 'disabled' : ''}>
+            ${pushState.busy ? '設定中…' : on ? '關閉' : '開啟'}</button>`
+        : ''}
+    </div>
+    ${hint ? `<p class="sub" style="margin:0">${hint}</p>` : ''}
+    ${denied ? '<p class="cloud-error">通知權限被封鎖了，要到手機或瀏覽器的網站設定裡改成「允許」。</p>' : ''}`;
+}
+
+/* ---------- 頁面開著時的提醒 ---------- */
+function myCourtSeats() {
+  const name = myName();
+  if (!name) return {};
+  const seats = {};
+  state.courts.forEach((court, i) => {
+    if (!court.match) return;
+    const ids = court.match.teamA.concat(court.match.teamB);
+    if (ids.map(playerName).includes(name)) seats[`${i}#${court.match.seq || court.match.startedAt}`] = i;
+  });
+  return seats;
+}
+
+// 觀看者每次收到新排場就比對：自己出現在新的一局 → 提醒
+function checkMyTurn() {
+  if (!cloud.viewer) return;
+  const seats = myCourtSeats();
+  const first = pushState.seen === null;
+  const fresh = Object.keys(seats).filter((k) => !(pushState.seen || {})[k]);
+  pushState.seen = seats;
+  if (first || !fresh.length) return;   // 剛打開頁面時已經在場上，不重複提醒
+  const index = seats[fresh[0]];
+  const match = state.courts[index].match;
+  const name = myName();
+  const mine = match.teamA.map(playerName).includes(name) ? match.teamA : match.teamB;
+  const theirs = mine === match.teamA ? match.teamB : match.teamA;
+  ui.turnAlert = {
+    court: index + 1,
+    partners: mine.map(playerName).filter((n) => n !== name),
+    opponents: theirs.map(playerName),
+  };
+  if (navigator.vibrate) navigator.vibrate([300, 150, 300, 150, 300]);
+}
+
+function renderTurnAlert() {
+  const a = ui.turnAlert;
+  if (!a) return '';
+  return `<div class="turn-alert" role="alertdialog" aria-live="assertive">
+      <div class="turn-card">
+        <b>🏸 輪到你上場！</b>
+        <span class="turn-court">第 ${a.court} 場地</span>
+        ${a.partners.length ? `<span>搭檔：${escapeHtml(a.partners.join('、'))}</span>` : ''}
+        <span>對手：${escapeHtml(a.opponents.join('、'))}</span>
+        <button class="btn-tape" data-action="turn-dismiss">知道了</button>
+      </div>
+    </div>`;
 }
 
 /* ===================== 長期排行榜 ===================== */
@@ -2051,13 +2266,44 @@ async function loadRanks(force = false) {
     ranks.error = cloudErrorText(err);
   }
   if (ui.tab === 'ranks' || ui.rankProfile) render();
+  else if (ui.settings) renderModal();
 }
 
 // 已封存的 + 今天還沒封存的球局（同一個球局以今天即時的資料為準）
+// 只算已存入長期紀錄的球局；今天還沒存的（可能只是測試）不列入
 function rankSessions() {
-  const list = ranks.list.filter((s) => s.sessionId !== state.sessionId);
-  if (state.history.length) list.push(sessionSummary(state));
-  return list;
+  return ranks.list.slice();
+}
+
+// 管理者刪除存錯的球局（例如測試資料）：原始紀錄和排行榜統計一起刪
+async function deleteArchive(sessionId) {
+  const { doc, deleteDoc } = cloud.fb;
+  try {
+    await Promise.all([
+      deleteDoc(doc(cloud.db, 'teams', cloud.teamId, 'sessions', sessionId)),
+      deleteDoc(doc(cloud.db, 'teams', cloud.teamId, 'stats', sessionId)),
+    ]);
+    ranks.list = ranks.list.filter((r) => r.sessionId !== sessionId);
+    if (sessionId === state.sessionId) { state.archived = false; saveSession(); }
+    showToast('已刪除這次球局的長期紀錄');
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+  render();
+}
+
+function renderArchiveList() {
+  if (!cloudReady()) return '';
+  if (ranks.status === 'idle') setTimeout(() => loadRanks(), 0);
+  const list = ranks.list.slice().sort((a, b) => (b.date || 0) - (a.date || 0));
+  const fmt = (t) => { const d = new Date(t); return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${formatTime(t)}`; };
+  return `<h5 class="member-h">長期紀錄（${list.length} 次球局）</h5>
+    ${list.length ? `<ul class="member-list">${list.map((r) => `
+      <li class="member-row">
+        <span class="member-info"><b class="num">${fmt(r.date)}</b><small>${r.matchCount} 場・${r.players.length} 人</small></span>
+        <button class="${ui.archiveArmed === r.sessionId ? 'btn-danger' : 'btn-ghost'}" data-action="archive-delete" data-id="${escapeHtml(r.sessionId)}">
+          ${ui.archiveArmed === r.sessionId ? '確認刪除' : '刪除'}</button>
+      </li>`).join('')}</ul>` : '<p class="sub set-note">還沒有存入任何球局。打完後在「紀錄」分頁按「結束今日打球」→「存入長期紀錄」。</p>'}`;
 }
 
 function mergeRows(target, rows) {
@@ -2558,6 +2804,7 @@ function updatePairs(teamA, teamB, delta) {
  */
 function commitMatch(courtIndex, teamA, teamB, isManual, countWait = true) {
   state.dayEnded = false;
+  state.archived = false;
   const ids = teamA.concat(teamB);
   const idle = countWait ? availablePlayers().filter((p) => !ids.includes(p.id)) : [];
   const prevWait = {};
@@ -3223,7 +3470,7 @@ function renderCourt(court, index) {
       ? `<button class="paused-tag" data-action="resume-court" data-court="${index}" aria-label="繼續第 ${index + 1} 場地的比賽">暫停中</button>`
       : `${court.match.isManual ? '手動' : '自動'}・已打 <span class="num" data-elapsed-court="${index}">${playedMinutes(court.match)}</span> 分
          <button class="pause-btn" data-action="pause-court" data-court="${index}" aria-label="暫停第 ${index + 1} 場地">暫停</button>`;
-  const speak = court.match && voiceActive()
+  const speak = court.match && voiceActive() && !cloud.viewer   // 唸名只給管理者用
     ? `<button class="speak-btn ${speech.court === index ? 'speaking' : ''}" data-action="speak-court" data-court="${index}"
          aria-pressed="${speech.court === index}" aria-label="唸出第 ${index + 1} 場地的名字，唸的時候再按一次停止">${SPEAKER_SVG}<span>${speech.court === index ? '停止' : '唸名'}</span></button>`
     : '';
@@ -4118,10 +4365,23 @@ function renderTitleModal() {
 
 function renderEndDay() {
   const live = state.courts.filter((c) => c.match).length;
+  const canSave = cloudReady() && state.history.length > 0;
   if (state.dayEnded) {
+    const saveHint = !canSave ? ''
+      : state.archived ? '<p class="sub" style="margin:0">✓ 已存入長期紀錄</p>'
+        : '<button class="btn-ghost" data-action="archive-now">補存入長期紀錄</button>';
     return `<div class="end-day">
       <p class="sub">今日已結束，共完成 ${state.history.length} 場。</p>
       <button class="btn-tape" data-action="report-open">查看戰報</button>
+      ${cloud.viewer ? '' : saveHint}
+    </div>`;
+  }
+  if (ui.endDayArmed && canSave) {
+    return `<div class="end-day end-day-choice">
+      <p class="sub">${live ? `場上 ${live} 場會直接取消、不列入紀錄。` : ''}今天的紀錄要存進長期排行榜嗎？</p>
+      <button class="btn-tape" data-action="end-day-save">存入長期紀錄並結束</button>
+      <button class="btn-ghost" data-action="end-day-test">只是測試，結束但不存</button>
+      <button class="btn-ghost" data-action="end-day-cancel">先不要結束</button>
     </div>`;
   }
   return `<div class="end-day">
@@ -4284,7 +4544,7 @@ function renderMain() {
         ${syncChip()}
       </div>
       <div class="top-actions">
-        ${speechSupported()
+        ${speechSupported() && !cloud.viewer
           ? `<button class="btn-voice" data-action="toggle-voice" aria-pressed="${prefs.voice.enabled}"
                aria-label="${prefs.voice.enabled ? '關閉' : '開啟'}語音唸名">${prefs.voice.enabled ? SPEAKER_SVG : SPEAKER_OFF_SVG}</button>`
           : ''}
@@ -4514,6 +4774,7 @@ function renderSettingsModal() {
     ${renderLookSettings()}
 
     ${settingsGroupHead('data', '資料')}
+      ${renderArchiveList()}
       <div class="set-actions">
         <button class="btn-ghost" data-action="settings-end-day">結束今日打球、產生戰報</button>
         <button class="btn-ghost" data-action="backup-open">備份與還原</button>
@@ -4693,7 +4954,7 @@ function renderModal() {
 
 function render() {
   const app = document.getElementById('app');
-  if (state.players.length) app.innerHTML = renderMain();
+  if (state.players.length) app.innerHTML = renderMain() + renderTurnAlert();
   else app.innerHTML = cloud.viewer ? renderViewerWaiting() : renderSetup();
   renderModal();
   animateTabIndicator();
@@ -5010,11 +5271,11 @@ async function shareReport() {
 }
 
 /* 結束今日打球：取消場上未完成的比賽（不列入紀錄），保留所有資料並產生戰報 */
-function endDay() {
+function endDay(save) {
   state.courts.forEach((court, i) => { if (court.match) cancelMatch(i); });
   state.dayEnded = true;
   state.updatedAt = Date.now();
-  archiveSession('end-day');
+  if (save) archiveSession('end-day');
 }
 
 /* ===================== 複製排場 ===================== */
@@ -5563,7 +5824,6 @@ function startSession() {
  * 上一局的名單與設定會帶入開始畫面，方便同一批人再開一局。
  */
 function startNewDay() {
-  archiveSession('new-day');   // 清除前先把這一局封存到雲端
   const lastNames = state.players.map((p) => p.name);
   ui.setupMode = state.mode;
   ui.setupCourts = state.courts.length;
@@ -5841,15 +6101,40 @@ function handleAction(el) {
       if (!ui.endDayArmed) {
         ui.endDayArmed = true;
         sessionChanged = false;
-        setTimeout(() => { if (ui.endDayArmed) { ui.endDayArmed = false; render(); } }, 4000);
+        // 有「存／不存」選項時給比較多時間考慮
+        const wait = cloudReady() && state.history.length ? 15000 : 4000;
+        setTimeout(() => { if (ui.endDayArmed) { ui.endDayArmed = false; render(); } }, wait);
         break;
       }
       ui.endDayArmed = false;
-      endDay();
+      endDay(false);
       saveSession();
       render();
       openReport();
       return;
+    case 'end-day-save':
+    case 'end-day-test':
+      ui.endDayArmed = false;
+      endDay(action === 'end-day-save');
+      saveSession();
+      render();
+      openReport();
+      return;
+    case 'end-day-cancel': ui.endDayArmed = false; sessionChanged = false; break;
+    case 'archive-now': archiveSession('end-day'); return;
+    case 'archive-delete': {
+      const id = el.dataset.id;
+      if (ui.archiveArmed !== id) {
+        ui.archiveArmed = id;
+        sessionChanged = false;
+        modalOnly = true;
+        setTimeout(() => { if (ui.archiveArmed === id) { ui.archiveArmed = null; if (ui.settings) renderModal(); } }, 3000);
+        break;
+      }
+      ui.archiveArmed = null;
+      deleteArchive(id);
+      return;
+    }
     case 'settings-end-day':
       ui.settings = false;
       ui.tab = 'records';
@@ -5952,6 +6237,9 @@ function handleAction(el) {
       claimPlayer(ui.claimName);
       return;
     case 'claim-cancel': cancelClaim(); return;
+    case 'push-on': enablePush(); return;
+    case 'push-off': disablePush(); return;
+    case 'turn-dismiss': ui.turnAlert = null; sessionChanged = false; break;
     case 'member-approve': setMemberStatus(el.dataset.uid, true); return;
     case 'member-remove': setMemberStatus(el.dataset.uid, false); return;
     case 'rank-board': ui.rankBoard = el.dataset.value; sessionChanged = false; break;
