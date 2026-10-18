@@ -71,6 +71,48 @@
   .top h1 { font-size: 22px; }
   .top .sub { margin: 0; }
   .top-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .top { align-items: flex-start; }
+  .top-title { flex: 1; min-width: 0; }
+  .menu-btn {
+    position: relative; flex-shrink: 0; width: 40px; height: 40px; padding: 0; margin: 0 -2px 0 -6px;
+    display: inline-flex; align-items: center; justify-content: center; background: transparent; color: var(--ink);
+  }
+  .menu-btn .d-ico { width: 26px; height: 26px; }
+  .menu-dot { position: absolute; top: 7px; right: 6px; width: 9px; height: 9px; border-radius: 50%; background: #E5484D; }
+  .d-ico { width: 22px; height: 22px; flex-shrink: 0; }
+  .drawer-bg {
+    position: fixed; inset: 0; z-index: 12; background: rgba(0, 0, 0, 0.45); opacity: 0; transition: opacity 0.2s ease;
+  }
+  .drawer-bg.open { opacity: 1; }
+  .drawer {
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 13; width: min(320px, 86vw); overflow-y: auto;
+    background: var(--surface); color: var(--ink); border-radius: 0 18px 18px 0; box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
+    padding: max(14px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    transform: translateX(-104%); transition: transform 0.2s ease; display: flex; flex-direction: column; gap: 6px;
+  }
+  .drawer.open { transform: translateX(0); }
+  @media (prefers-reduced-motion: reduce) { .drawer, .drawer-bg { transition: none; } }
+  body.drawer-open { overflow: hidden; }
+  .d-head { display: flex; justify-content: space-between; align-items: center; }
+  .d-avatar {
+    width: 48px; height: 48px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+    background: var(--court); color: var(--line); font-weight: 800; font-size: 20px;
+  }
+  .d-close { background: transparent; color: var(--muted); font-size: 20px; width: 40px; height: 40px; padding: 0; }
+  .d-account { display: flex; flex-direction: column; gap: 1px; padding: 6px 4px 10px; border-bottom: 1px solid var(--floor); }
+  .d-account b { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .d-account small { color: var(--muted); font-size: 13px; }
+  .d-group { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid var(--floor); }
+  .d-group:last-of-type { border-bottom: 0; }
+  .d-item {
+    display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 8px; border-radius: 10px;
+    background: transparent; color: var(--ink); font-size: 16px; font-weight: 500; text-align: left;
+  }
+  .d-item:active, .d-item:hover { background: var(--floor); }
+  .d-item span { flex: 1; }
+  .d-badge { flex: 0 !important; background: #E5484D; color: #fff; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 1px 7px; }
+  .d-version { margin: auto 0 0; padding: 10px 4px 0; font-size: 12px; color: var(--muted); }
+  .settings-only .set-group { margin-top: 10px; }
   .top-actions button { padding: 8px 12px; font-size: 14px; font-weight: 600; border: 2px solid var(--court-dark); }
   .top-actions .btn-copy { background: var(--tape); border-color: var(--tape); }
   .top-actions .btn-voice { padding: 6px 9px; display: inline-flex; align-items: center; }
@@ -752,6 +794,7 @@
 </head>
 <body>
 <div class="page"><div class="wrap" id="app">載入中…</div></div>
+<div id="drawer-root"></div>
 <div id="modal-root"></div>
 <div id="toast-root"></div>
 
@@ -771,7 +814,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '5.3';
+const APP_VERSION = '5.4';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1204,7 +1247,7 @@ const CLOUD_UPLOAD_DELAY_MS = 500;   // 操作停手多久後上傳：越短球�
 const CLOUD_TEAM_KEY = 'badminton-cloud-team';
 // 觀看者可以用的操作：只看、切換分頁、調整自己手機的外觀與語音
 const VIEWER_ACTIONS = new Set([
-  'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'set-appearance', 'set-theme', 'set-awake',
+  'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
   'title-open', 'player-open', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear',
@@ -1675,8 +1718,8 @@ function renderViewerWaiting() {
 // 觀看模式：拿掉會改資料的按鈕；名字所在的半場只保留顯示
 function applyViewerLock() {
   if (!cloud.viewer) return;
-  document.querySelectorAll('#app [data-action], #modal-root [data-action]').forEach((el) => {
-    if (VIEWER_ACTIONS.has(el.dataset.action) || el.classList.contains('modal-bg')) return;
+  document.querySelectorAll('#app [data-action], #modal-root [data-action], #drawer-root [data-action]').forEach((el) => {
+    if (VIEWER_ACTIONS.has(el.dataset.action) || el.classList.contains('modal-bg') || el.classList.contains('drawer-bg')) return;
     if (el.matches('.half, .paused-tag, .drag-chip')) {
       el.removeAttribute('data-action');
       el.classList.add('view-only');
@@ -2158,6 +2201,183 @@ function renderTurnAlert() {
         <button class="btn-tape" data-action="turn-dismiss">知道了</button>
       </div>
     </div>`;
+}
+
+/* ===================== 側邊選單 ===================== */
+/**
+ * 左上角 ☰ 打開側邊選單：上方是帳號資訊，下面是各項設定的入口。
+ * 點設定項目會開出只有那一區的設定視窗，不用在長長的設定頁裡找。
+ */
+const ICONS = {
+  cloud: '<path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.1 9.2 4.5 4.5 0 0 0 7 18z"/>',
+  qr: '<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2"/>',
+  court: '<path d="M4 5h16v14H4zM12 5v14M4 9h16M4 15h16"/>',
+  speaker: '<path d="M4 9h4l5-4v14l-5-4H4zM16 9a4 4 0 0 1 0 6"/>',
+  palette: '<path d="M12 3a9 9 0 1 0 0 18c1 0 1.5-.7 1.5-1.5 0-1.2-1-1.5-1-2.5s.8-1.5 2-1.5H17a4 4 0 0 0 4-4c0-4.4-4-8.5-9-8.5z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/>',
+  box: '<path d="M4 7l8-4 8 4v10l-8 4-8-4zM4 7l8 4 8-4M12 11v10"/>',
+  flag: '<path d="M5 21V4M5 4h11l-2 4 2 4H5"/>',
+  save: '<path d="M12 4v11M7 10l5 5 5-5M5 20h14"/>',
+  trophy: '<path d="M8 4h8v5a4 4 0 0 1-8 0zM8 6H5a3 3 0 0 0 3 4M16 6h3a3 3 0 0 1-3 4M12 13v4M8 20h8"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 20a8 8 0 0 1 16 0"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1"/>',
+  bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4zM10 20a2 2 0 0 0 4 0"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+};
+function icon(name) {
+  return `<svg class="d-ico" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
+}
+
+const SETTINGS_SECTIONS = {
+  cloud: '雲端同步',
+  play: '排場',
+  voice: '語音唸名',
+  look: '畫面',
+  data: '資料',
+  account: '我的帳號',
+};
+
+function drawerAccount() {
+  if (cloud.viewer) {
+    if (cloud.user) {
+      const claim = cloud.claim;
+      return {
+        initial: (claim && claim.name ? claim.name : cloud.user.displayName || '球').slice(0, 1),
+        title: cloud.user.displayName || cloud.user.email || '球友',
+        lines: [claim ? `${claim.name}・${claim.status === 'approved' ? '已確認' : '等待確認'}` : '還沒認領球員',
+          cloud.teamName ? `觀看 ${cloud.teamName}` : '觀看模式'],
+      };
+    }
+    return { initial: '訪', title: '訪客', lines: [cloud.teamName ? `觀看 ${cloud.teamName}` : '觀看模式', '登入後可以看自己的戰績、收上場通知'] };
+  }
+  if (cloud.user && cloudReady()) {
+    return {
+      initial: '管',
+      title: cloud.user.email || '管理者',
+      lines: [`管理者・${cloud.teamName || '球團'}`, SYNC_LABEL[cloud.sync] || '已連線'],
+    };
+  }
+  if (cloud.user) return { initial: '管', title: cloud.user.email || '管理者', lines: ['已登入，還沒建立球團'] };
+  return { initial: '羽', title: '管理者', lines: [cloudConfigured() ? '還沒登入雲端同步' : '單機模式'] };
+}
+
+function renderDrawer() {
+  if (!ui.drawer) return '';
+  const acc = drawerAccount();
+  const item = (target, ico, label, extra = '') => `
+    <button class="d-item" data-action="drawer-go" data-target="${target}">${icon(ico)}<span>${label}</span>${extra}</button>`;
+  const badge = (n) => (n ? `<span class="d-badge">${n}</span>` : '');
+  const admin = !cloud.viewer;
+  const pending = admin ? pendingMembers().length : 0;
+  const groups = admin
+    ? [
+      [
+        item('cloud', 'cloud', cloudReady() ? '雲端同步・球友帳號' : '雲端同步', badge(pending)),
+        cloudReady() ? item('invite', 'qr', '邀請球友（QR Code）') : '',
+      ],
+      [
+        item('play', 'court', '排場設定'),
+        item('voice', 'speaker', '語音唸名'),
+        item('look', 'palette', '畫面'),
+      ],
+      [
+        item('end-day', 'flag', '結束今日打球'),
+        item('data', 'box', '長期紀錄與資料'),
+        item('backup', 'save', '備份與還原'),
+      ],
+      [item('all', 'gear', '所有設定')],
+    ]
+    : [
+      [
+        item('account', 'user', cloud.user ? '我的帳號・上場通知' : '登入 / 認領球員'),
+        item('ranks', 'trophy', '我的戰績・排行榜'),
+      ],
+      [item('look', 'palette', '畫面')],
+    ];
+  return `
+    <div class="drawer-bg ${ui.drawerAnim || ''}" data-action="drawer-close"></div>
+    <nav class="drawer ${ui.drawerAnim || ''}" aria-label="選單">
+      <div class="d-head">
+        <span class="d-avatar">${escapeHtml(acc.initial)}</span>
+        <button class="d-close" data-action="drawer-close" aria-label="關閉選單">✕</button>
+      </div>
+      <div class="d-account">
+        <b>${escapeHtml(acc.title)}</b>
+        ${acc.lines.map((l) => `<small>${escapeHtml(l)}</small>`).join('')}
+      </div>
+      ${groups.map((g) => `<div class="d-group">${g.join('')}</div>`).join('')}
+      <p class="d-version num">羽球輪轉排場 v${APP_VERSION}</p>
+    </nav>`;
+}
+
+function openDrawer() {
+  ui.drawer = true;
+  ui.drawerAnim = '';
+  renderDrawerRoot();
+  requestAnimationFrame(() => {
+    ui.drawerAnim = 'open';
+    document.querySelectorAll('#drawer-root .drawer, #drawer-root .drawer-bg').forEach((el) => el.classList.add('open'));
+  });
+}
+
+function closeDrawer(after) {
+  if (!ui.drawer) { if (after) after(); return; }
+  document.querySelectorAll('#drawer-root .drawer, #drawer-root .drawer-bg').forEach((el) => el.classList.remove('open'));
+  const done = () => {
+    ui.drawer = false;
+    ui.drawerAnim = '';
+    renderDrawerRoot();
+    if (after) after();
+  };
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) done();
+  else setTimeout(done, 200);
+}
+
+function renderDrawerRoot() {
+  const root = document.getElementById('drawer-root');
+  if (!root) return;
+  root.innerHTML = renderDrawer();
+  document.body.classList.toggle('drawer-open', Boolean(ui.drawer));
+  applyViewerLock();
+}
+
+function drawerGo(target) {
+  closeDrawer(() => {
+    if (SETTINGS_SECTIONS[target]) {
+      ui.settings = true;
+      ui.settingsOnly = target;
+    } else if (target === 'all') {
+      ui.settings = true;
+      ui.settingsOnly = null;
+    } else if (target === 'invite') {
+      ui.settings = true;
+      ui.settingsOnly = 'cloud';
+      openInvite();
+    } else if (target === 'end-day') {
+      ui.tab = 'records';
+      ui.endDayArmed = !state.dayEnded;
+      window.scrollTo(0, 0);
+    } else if (target === 'ranks') {
+      ui.tab = 'ranks';
+      window.scrollTo(0, 0);
+    }
+    render();
+  });
+}
+
+// 只顯示某一區的設定（從側邊選單進來）
+function renderSettingsSection(key) {
+  const body = {
+    cloud: () => renderCloudSettings(),
+    play: () => renderPlaySettings(),
+    voice: () => renderVoiceSettings(),
+    look: () => renderLookSettings(),
+    data: () => renderDataSettings(),
+    account: () => `<section class="set-group"><div class="set-body" style="padding-top:12px">${renderAccountCard(aggregateRanks()) || '<p class="sub set-note">這個頁面沒有連上雲端。</p>'}</div></section>`,
+  }[key];
+  return `
+    <h3>${SETTINGS_SECTIONS[key]}</h3>
+    <div class="settings-only">${body ? body() : ''}</div>
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">完成</button>`;
 }
 
 /* ===================== 長期排行榜 ===================== */
@@ -4538,7 +4758,9 @@ function renderMain() {
   const body = renderTabBody();
   return `
     <header class="top">
-      <div>
+      <button class="menu-btn" data-action="drawer-open" aria-label="打開選單">${icon('menu')}
+        ${!cloud.viewer && pendingMembers().length ? '<span class="menu-dot" aria-hidden="true"></span>' : ''}</button>
+      <div class="top-title">
         <h1>羽球輪轉排場</h1>
         <p class="sub num">${cloud.viewer ? `<span class="live-dot" aria-hidden="true"></span>觀看中${cloud.teamName ? `・${escapeHtml(cloud.teamName)}` : ''}・<span id="viewer-stamp">${viewerStampText()}</span><br>` : ''}${state.players.filter((p) => p.active).length} 人在場館，已完成 ${state.history.length} 場</p>
         ${syncChip()}
@@ -4549,7 +4771,6 @@ function renderMain() {
                aria-label="${prefs.voice.enabled ? '關閉' : '開啟'}語音唸名">${prefs.voice.enabled ? SPEAKER_SVG : SPEAKER_OFF_SVG}</button>`
           : ''}
         <button class="btn-copy" data-action="copy-lineup">複製排場</button>
-        <button data-action="settings-open">設定</button>
       </div>
     </header>
     ${renderStorageBanner()}
@@ -4661,6 +4882,7 @@ function wakeLockSupported() {
 
 /* 設定頁區塊收合：展開狀態記在這支手機；收起時標題下方顯示目前設定的摘要 */
 function settingsGroupOpen(key) {
+  if (ui.settingsOnly) return true;   // 從側邊選單進來：只有這一區，直接展開
   const saved = prefs.settingsOpen && prefs.settingsOpen[key];
   if (typeof saved === 'boolean') return saved;
   if (key === 'cloud') return cloudConfigured() && !cloud.viewer && cloud.phase !== 'ready';   // 還沒登入時預設展開
@@ -4694,6 +4916,9 @@ function settingsGroupSummary(key) {
 }
 
 function settingsGroupHead(key, title) {
+  if (ui.settingsOnly) {
+    return `<section class="set-group is-open"><div class="set-body" id="set-body-${key}" style="padding-top:12px">`;
+  }
   const open = settingsGroupOpen(key);
   return `<section class="set-group ${open ? 'is-open' : ''}">
       <button class="set-toggle" data-action="set-group-toggle" data-group="${key}" aria-expanded="${open}" aria-controls="set-body-${key}">
@@ -4735,11 +4960,8 @@ function renderLookSettings() {
     ${SETTINGS_GROUP_END}`;
 }
 
-function renderSettingsModal() {
-  if (cloud.viewer) return renderViewerSettings();
+function renderPlaySettings() {
   return `
-    <h3>設定</h3>
-    ${renderCloudSettings()}
     ${settingsGroupHead('play', '排場')}
       <div class="row">
         <span class="label">賽制</span>
@@ -4767,12 +4989,11 @@ function renderSettingsModal() {
           <button data-action="set-auto" data-value="0" aria-pressed="${!state.autoFill}">留空</button>
         </div>
       </div>
-    ${SETTINGS_GROUP_END}
+    ${SETTINGS_GROUP_END}`;
+}
 
-    ${renderVoiceSettings()}
-
-    ${renderLookSettings()}
-
+function renderDataSettings() {
+  return `
     ${settingsGroupHead('data', '資料')}
       ${renderArchiveList()}
       <div class="set-actions">
@@ -4782,7 +5003,19 @@ function renderSettingsModal() {
           ${ui.resetArmed ? '再按一次確認（常用球員會保留）' : '清除排場紀錄，開新球局'}
         </button>
       </div>
-    ${SETTINGS_GROUP_END}
+    ${SETTINGS_GROUP_END}`;
+}
+
+function renderSettingsModal() {
+  if (ui.settingsOnly) return renderSettingsSection(ui.settingsOnly);
+  if (cloud.viewer) return renderViewerSettings();
+  return `
+    <h3>設定</h3>
+    ${renderCloudSettings()}
+    ${renderPlaySettings()}
+    ${renderVoiceSettings()}
+    ${renderLookSettings()}
+    ${renderDataSettings()}
     ${renderUpdateFooter()}
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">完成</button>`;
 }
@@ -4957,6 +5190,7 @@ function render() {
   if (state.players.length) app.innerHTML = renderMain() + renderTurnAlert();
   else app.innerHTML = cloud.viewer ? renderViewerWaiting() : renderSetup();
   renderModal();
+  renderDrawerRoot();
   animateTabIndicator();
   applyViewerLock();
 }
@@ -6150,7 +6384,7 @@ function handleAction(el) {
       sessionChanged = false;
       break;
     case 'title-open': ui.titleIndex = Number(el.dataset.index); sessionChanged = false; break;
-    case 'settings-open': ui.settings = true; sessionChanged = false; break;
+    case 'settings-open': ui.settings = true; ui.settingsOnly = null; sessionChanged = false; break;
     case 'set-appearance':
       prefs.appearance = el.dataset.value;
       applyAppearance();
@@ -6219,6 +6453,7 @@ function handleAction(el) {
         break;
       }
       ui.manual = null;
+      ui.settingsOnly = null;
       ui.rankProfile = null;
       ui.backup = null;
       ui.result = null;
@@ -6230,6 +6465,12 @@ function handleAction(el) {
       sessionChanged = false;
       break;
 
+    case 'drawer-open': openDrawer(); return;
+    case 'drawer-close': closeDrawer(); return;
+    case 'drawer-go':
+      if (el.dataset.target === 'backup') { closeDrawer(() => { ui.backup = { text: buildBackup() }; render(); }); return; }
+      drawerGo(el.dataset.target);
+      return;
     case 'google-login': googleLogin(); return;
     case 'google-logout': viewerLogout(); return;
     case 'claim-submit':
