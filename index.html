@@ -167,6 +167,10 @@
     padding: 28px 16px; border: 2px dashed var(--floor); border-radius: var(--radius-l);
   }
   .view-only { cursor: default; }
+  .join-panel { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .invite-code { text-align: center; margin: 4px 0; font-size: 14px; word-break: break-all; }
+  .invite-code b { user-select: all; -webkit-user-select: all; }
+  .invite-code .btn-ghost { padding: 2px 8px; font-size: 13px; }
   .rank-seg { margin: 4px 0 0; }
   .ranks-sheet h2:first-child { margin-top: 0; }
   .ranks-sheet .long-card, .ranks-sheet .rank-list, .ranks-sheet .me-pick, .ranks-sheet .account-card { border: 1px solid var(--floor); }
@@ -816,7 +820,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '5.6';
+const APP_VERSION = '5.7';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1256,7 +1260,11 @@ const VIEWER_TEAM_KEY = 'badminton-viewer-team';
   if (VIEW_TEAM) {
     try { window.localStorage.setItem(VIEWER_TEAM_KEY, VIEW_TEAM); } catch (err) { /* 無法儲存就略過 */ }
     const link = document.querySelector('link[rel="manifest"]');
-    if (link && /^https?:/.test(window.location.protocol)) {
+    const ios = /iPhone|iPad|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    if (link && ios) {
+      // iPhone 沒有 manifest 時，「加入主畫面」會直接記住目前的網址（含球團代碼）
+      link.remove();
+    } else if (link && /^https?:/.test(window.location.protocol)) {
       const url = `${base}?team=${VIEW_TEAM}`;
       const icon = (src, size, purpose) => ({ src: new URL(src, base).href, sizes: `${size}x${size}`, type: 'image/png', purpose });
       const manifest = {
@@ -1815,6 +1823,9 @@ function renderInviteModal() {
     <p class="sub">掃描或點開連結就能即時看排場，不用登入，也不能更改任何資料。</p>
     ${qr}
     <p class="invite-link num" id="invite-link">${escapeHtml(link)}</p>
+    <p class="invite-code">球團代碼：<b class="num">${escapeHtml(cloud.teamId)}</b>
+      <button class="btn-ghost" data-action="invite-copy-code">複製代碼</button></p>
+    <p class="sub" style="margin:0 0 8px;text-align:center;font-size:13px">從主畫面打開看不到球團時，在開始畫面輸入這組代碼就能加入。</p>
     <div class="court-actions" style="justify-content:center">
       <button class="btn-primary" data-action="invite-copy">複製連結</button>
       ${navigator.share ? '<button class="btn-ghost" data-action="invite-share">分享</button>' : ''}
@@ -1886,6 +1897,7 @@ function renderViewerSettings() {
     <section class="set-group"><div class="set-body" style="padding-top:12px">
       <h4 class="set-head">觀看模式</h4>
       <p class="sub set-note">${cloud.teamName ? `正在看「${escapeHtml(cloud.teamName)}」的排場。` : ''}這裡只能看，排場由管理者操作，會自動即時更新。</p>
+      <p class="sub set-note">球團代碼：<span class="num" style="user-select:all;-webkit-user-select:all">${escapeHtml(VIEW_TEAM || '')}</span></p>
       ${cloud.user ? `<p class="sub set-note">已用 Google 登入：${escapeHtml(cloud.user.email || '')}${cloud.claim ? `（${escapeHtml(cloud.claim.name)}）` : ''}</p>
         <button class="btn-ghost" data-action="google-logout" style="align-self:flex-start">登出</button>` : ''}
     </div></section>
@@ -2337,6 +2349,7 @@ function renderDrawer() {
         item('ranks', 'trophy', '長期排行榜・我的戰績'),
       ],
       [item('look', 'palette', '畫面')],
+      [item('leave', 'flag', '離開這個球團')],
     ];
   return `
     <div class="drawer-bg ${ui.drawerAnim || ''}" data-action="drawer-close"></div>
@@ -2403,6 +2416,9 @@ function drawerGo(target) {
       window.scrollTo(0, 0);
     } else if (target === 'ranks') {
       ui.ranksOpen = true;
+    } else if (target === 'leave') {
+      leaveTeam();
+      return;
     }
     render();
   });
@@ -3615,10 +3631,38 @@ function renderSetup() {
         開始排場（<span id="setup-total" class="num">${total}</span> 人）
       </button>
     </div>
+    ${cloudConfigured() ? `
+    <div class="panel join-panel">
+      <b>我是球友，要看球團排場</b>
+      <p class="sub" style="margin:0">貼上管理者給的連結，或輸入球團代碼。</p>
+      <div class="row">
+        <input type="text" id="join-code" autocomplete="off" autocapitalize="off" spellcheck="false"
+          placeholder="球團代碼或連結" value="${escapeHtml(ui.joinCode || '')}" style="flex:1">
+        <button class="btn-primary" data-action="join-team">加入</button>
+      </div>
+    </div>` : ''}
     <div style="margin-top:20px;text-align:center">
       <button class="btn-ghost" data-action="backup-open">備份與還原</button>
     </div>
     ${renderUpdateFooter()}`;
+}
+
+// 從貼上的文字找出球團代碼：可以是整串連結，也可以只有代碼
+function parseTeamCode(text) {
+  const raw = String(text || '').trim();
+  const fromLink = raw.match(/[?&]team=([A-Za-z0-9]{12,40})/);
+  if (fromLink) return fromLink[1];
+  return /^[A-Za-z0-9]{12,40}$/.test(raw) ? raw : null;
+}
+
+function joinTeam(code) {
+  try { window.localStorage.setItem(VIEWER_TEAM_KEY, code); } catch (err) { /* 略過 */ }
+  window.location.href = `${window.location.origin}${window.location.pathname}?team=${code}`;
+}
+
+function leaveTeam() {
+  try { window.localStorage.removeItem(VIEWER_TEAM_KEY); } catch (err) { /* 略過 */ }
+  window.location.href = `${window.location.origin}${window.location.pathname}`;
 }
 
 /* ===================== 畫面：排場中 ===================== */
@@ -6565,6 +6609,17 @@ function handleAction(el) {
     case 'cloud-create-team': cloudCreateTeam(); return;
     case 'cloud-invite': openInvite(); sessionChanged = false; break;
     case 'invite-copy': copyInviteLink(); return;
+    case 'invite-copy-code':
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(cloud.teamId).then(() => showToast('已複製球團代碼'), () => showToast('無法自動複製，請長按代碼複製'));
+      } else showToast('無法自動複製，請長按代碼複製');
+      return;
+    case 'join-team': {
+      const code = parseTeamCode(ui.joinCode);
+      if (!code) { showToast('看不懂這個代碼，請貼上管理者給的整串連結'); return; }
+      joinTeam(code);
+      return;
+    }
     case 'invite-share':
       navigator.share({ title: '羽球排場', text: '點開就能即時看排場', url: viewerLink() }).catch(() => {});
       return;
@@ -6613,7 +6668,8 @@ document.addEventListener('click', (event) => {
 // 輸入框內容存進 ui，避免重新渲染時被清掉
 document.addEventListener('input', (event) => {
   const { id, value } = event.target;
-  if (id === 'cloud-email') ui.cloudEmail = value;
+  if (id === 'join-code') ui.joinCode = value;
+  else if (id === 'cloud-email') ui.cloudEmail = value;
   else if (id === 'cloud-pass') ui.cloudPass = value;
   else if (id === 'cloud-team-name') ui.cloudTeamName = value;
   if (id === 'names') {
