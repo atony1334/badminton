@@ -816,7 +816,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '5.5';
+const APP_VERSION = '5.6';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1245,6 +1245,48 @@ const VIEW_TEAM = (() => {
   const id = new URLSearchParams(window.location.search).get('team');
   return id && /^[A-Za-z0-9]{12,40}$/.test(id) ? id : null;
 })();
+const VIEWER_TEAM_KEY = 'badminton-viewer-team';
+
+/**
+ * 球友把觀看頁「加入主畫面」：主畫面圖示要記得是哪個球團。
+ * 預設的 manifest 會從首頁（管理者畫面）打開，所以觀看頁換成一份帶著球團代碼的 manifest。
+ */
+(function setupViewerHomeScreen() {
+  const base = `${window.location.origin}${window.location.pathname}`;
+  if (VIEW_TEAM) {
+    try { window.localStorage.setItem(VIEWER_TEAM_KEY, VIEW_TEAM); } catch (err) { /* 無法儲存就略過 */ }
+    const link = document.querySelector('link[rel="manifest"]');
+    if (link && /^https?:/.test(window.location.protocol)) {
+      const url = `${base}?team=${VIEW_TEAM}`;
+      const icon = (src, size, purpose) => ({ src: new URL(src, base).href, sizes: `${size}x${size}`, type: 'image/png', purpose });
+      const manifest = {
+        id: url,
+        name: '羽球排場（球友）',
+        short_name: '羽球排場',
+        start_url: url,
+        scope: base,
+        display: 'standalone',
+        orientation: 'any',
+        background_color: '#1B4F42',
+        theme_color: '#1B4F42',
+        lang: 'zh-Hant-TW',
+        icons: [icon('icon-192.png', 192, 'any'), icon('icon-512.png', 512, 'any'),
+          icon('icon-maskable-192.png', 192, 'maskable'), icon('icon-maskable-512.png', 512, 'maskable')],
+      };
+      link.href = `data:application/manifest+json,${encodeURIComponent(JSON.stringify(manifest))}`;
+    }
+    return;
+  }
+  // 從主畫面打開卻沒有球團代碼（例如舊的捷徑）：這支手機不是管理者、又看過某個球團，就直接帶過去
+  const standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+  if (!standalone) return;
+  try {
+    const ls = window.localStorage;
+    const team = ls.getItem(VIEWER_TEAM_KEY);
+    const isAdminPhone = ls.getItem('badminton-session') || ls.getItem('badminton-cloud-team');
+    if (team && /^[A-Za-z0-9]{12,40}$/.test(team) && !isAdminPhone) window.location.replace(`${base}?team=${team}`);
+  } catch (err) { /* 無法讀取就停在首頁 */ }
+}());
 const CLOUD_UPLOAD_DELAY_MS = 500;   // 操作停手多久後上傳：越短球友越即時，連續操作仍會合併成一次
 const CLOUD_TEAM_KEY = 'badminton-cloud-team';
 // 觀看者可以用的操作：只看、切換分頁、調整自己手機的外觀與語音
