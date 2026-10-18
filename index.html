@@ -168,6 +168,8 @@
   }
   .view-only { cursor: default; }
   .rank-seg { margin: 4px 0 0; }
+  .ranks-sheet h2:first-child { margin-top: 0; }
+  .ranks-sheet .long-card, .ranks-sheet .rank-list, .ranks-sheet .me-pick, .ranks-sheet .account-card { border: 1px solid var(--floor); }
   .account-card {
     background: var(--surface); border-radius: var(--radius-l); padding: 12px 14px; margin-bottom: 10px;
     display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
@@ -260,7 +262,7 @@
   .tabbar-inner { position: relative; }
   .tab-indicator {
     position: absolute; top: 0; left: 0; height: 3px; background: var(--tape);
-    width: calc(100% / 4); transition: transform 0.25s ease;
+    width: calc(100% / 3); transition: transform 0.25s ease;
   }
   .tabbar button[aria-selected="true"] { border-top-color: transparent; }
   /* 在分頁列上左右滑動：指示條跟著手指，手指所在的分頁先亮起來 */
@@ -814,7 +816,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '5.4';
+const APP_VERSION = '5.5';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2279,6 +2281,7 @@ function renderDrawer() {
         item('voice', 'speaker', '語音唸名'),
         item('look', 'palette', '畫面'),
       ],
+      [item('ranks', 'trophy', '長期排行榜・戰績')],
       [
         item('end-day', 'flag', '結束今日打球'),
         item('data', 'box', '長期紀錄與資料'),
@@ -2289,7 +2292,7 @@ function renderDrawer() {
     : [
       [
         item('account', 'user', cloud.user ? '我的帳號・上場通知' : '登入 / 認領球員'),
-        item('ranks', 'trophy', '我的戰績・排行榜'),
+        item('ranks', 'trophy', '長期排行榜・我的戰績'),
       ],
       [item('look', 'palette', '畫面')],
     ];
@@ -2357,8 +2360,7 @@ function drawerGo(target) {
       ui.endDayArmed = !state.dayEnded;
       window.scrollTo(0, 0);
     } else if (target === 'ranks') {
-      ui.tab = 'ranks';
-      window.scrollTo(0, 0);
+      ui.ranksOpen = true;
     }
     render();
   });
@@ -2485,7 +2487,7 @@ async function loadRanks(force = false) {
     ranks.status = 'error';
     ranks.error = cloudErrorText(err);
   }
-  if (ui.tab === 'ranks' || ui.rankProfile) render();
+  if (ui.ranksOpen || ui.rankProfile) render();
   else if (ui.settings) renderModal();
 }
 
@@ -2678,6 +2680,12 @@ function renderLongProfile(p, all, compact) {
     </div>`;
 }
 
+function renderRanksModal() {
+  return `
+    <div class="ranks-sheet">${renderRanksTab()}</div>
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
+}
+
 function renderRankProfileModal() {
   const all = aggregateRanks();
   const p = all.find((r) => r.n === ui.rankProfile);
@@ -2688,7 +2696,7 @@ function renderRankProfileModal() {
     <p class="sub" style="margin:0 0 4px">長期累計${p.last ? `・最近一次 ${new Date(p.last).getMonth() + 1}/${new Date(p.last).getDate()}` : ''}</p>
     ${renderLongProfile(p, all, false)}
     ${myName() === p.n || (cloud.viewer && cloud.user) ? '' : `<button class="btn-ghost btn-block" data-action="me-set" data-name="${escapeHtml(p.n)}">這是我（在這支手機記住）</button>`}
-    <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">關閉</button>`;
+    <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">${ui.ranksOpen ? '返回排行榜' : '關閉'}</button>`;
 }
 
 /* ===================== 工具函式 ===================== */
@@ -4731,7 +4739,7 @@ function renderRecordsTab() {
     ${renderHistory()}`;
 }
 
-const TAB_ORDER = ['courts', 'players', 'records', 'ranks'];
+const TAB_ORDER = ['courts', 'players', 'records'];
 
 function renderTabBar() {
   const waiting = availablePlayers().length;
@@ -4739,7 +4747,6 @@ function renderTabBar() {
     { key: 'courts', label: '場地', note: `${waiting} 人等待` },
     { key: 'players', label: '球員', note: `${state.players.filter((p) => p.active).length} 人` },
     { key: 'records', label: '紀錄', note: `${state.history.length} 場` },
-    { key: 'ranks', label: '排行', note: '長期' },
   ];
   // 指示條先停在上一個分頁的位置，畫面更新後再滑到目前分頁（見 animateTabIndicator）
   const from = TAB_ORDER.indexOf(ui.prevTab || ui.tab);
@@ -4751,7 +4758,7 @@ function renderTabBar() {
 }
 
 function renderTabBody() {
-  return { courts: renderCourtsTab, players: renderPlayersTab, records: renderRecordsTab, ranks: renderRanksTab }[ui.tab]();
+  return { courts: renderCourtsTab, players: renderPlayersTab, records: renderRecordsTab }[ui.tab]();
 }
 
 function renderMain() {
@@ -5170,6 +5177,7 @@ function renderModal() {
   else if (ui.profileName) content = renderProfileModal();
   else if (ui.invite) content = renderInviteModal();
   else if (ui.rankProfile) content = renderRankProfileModal();
+  else if (ui.ranksOpen) content = renderRanksModal();
   else if (ui.settings) content = renderSettingsModal();
 
   // 只有第一次開啟才播放進場動畫，之後的更新不重播
@@ -6452,9 +6460,15 @@ function handleAction(el) {
         sessionChanged = false;
         break;
       }
+      if (ui.rankProfile && ui.ranksOpen) {   // 看完個人戰績，回到排行榜
+        ui.rankProfile = null;
+        sessionChanged = false;
+        break;
+      }
       ui.manual = null;
       ui.settingsOnly = null;
       ui.rankProfile = null;
+      ui.ranksOpen = false;
       ui.backup = null;
       ui.result = null;
       ui.settings = false;
@@ -6483,8 +6497,8 @@ function handleAction(el) {
     case 'turn-dismiss': ui.turnAlert = null; sessionChanged = false; break;
     case 'member-approve': setMemberStatus(el.dataset.uid, true); return;
     case 'member-remove': setMemberStatus(el.dataset.uid, false); return;
-    case 'rank-board': ui.rankBoard = el.dataset.value; sessionChanged = false; break;
-    case 'rank-open': ui.rankProfile = el.dataset.name; sessionChanged = false; break;
+    case 'rank-board': ui.rankBoard = el.dataset.value; sessionChanged = false; modalOnly = true; break;
+    case 'rank-open': ui.rankProfile = el.dataset.name; sessionChanged = false; modalOnly = true; break;
     case 'me-set':
       prefs.me = el.dataset.name;
       savePrefs();
