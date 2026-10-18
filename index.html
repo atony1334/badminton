@@ -172,6 +172,9 @@
   .invite-code b { user-select: all; -webkit-user-select: all; }
   .invite-code .btn-ghost { padding: 2px 8px; font-size: 13px; }
   .rank-seg { margin: 4px 0 0; }
+  .profile-seg { margin: 6px 0 10px; }
+  .profile-seg button { min-width: 4.5em; }
+  .profile-body { min-height: 60px; }
   .ranks-sheet h2:first-child { margin-top: 0; }
   .ranks-sheet .long-card, .ranks-sheet .rank-list, .ranks-sheet .me-pick, .ranks-sheet .account-card { border: 1px solid var(--floor); }
   .account-card {
@@ -820,7 +823,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '5.7';
+const APP_VERSION = '5.10';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1297,12 +1300,13 @@ const VIEWER_TEAM_KEY = 'badminton-viewer-team';
 }());
 const CLOUD_UPLOAD_DELAY_MS = 500;   // 操作停手多久後上傳：越短球友越即時，連續操作仍會合併成一次
 const CLOUD_TEAM_KEY = 'badminton-cloud-team';
+const SESSION_BEFORE_CLOUD_KEY = 'badminton-session-before-cloud';   // 被雲端資料取代前的本機排場
 // 觀看者可以用的操作：只看、切換分頁、調整自己手機的外觀與語音
 const VIEWER_ACTIONS = new Set([
   'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
   'title-open', 'player-open', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
-  'rank-board', 'rank-open', 'me-set', 'me-clear',
+  'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view',
   'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
 ]);
 
@@ -1386,15 +1390,9 @@ async function initCloud() {
     const app = appMod.initializeApp(cloud.config);
     cloud.app = app;
     // 管理者用離線快取：網路斷掉時先存在手機，恢復後自動補傳；觀看者不需要
-    try {
-      cloud.db = cloud.viewer
-        ? fsMod.getFirestore(app)
-        : fsMod.initializeFirestore(app, {
-          localCache: fsMod.persistentLocalCache({ tabManager: fsMod.persistentMultipleTabManager() }),
-        });
-    } catch (err) {
-      cloud.db = fsMod.getFirestore(app);
-    }
+    // 不用 Firestore 的離線快取：iPhone 上主畫面 App 和 Safari 同時開著時會互搶而出錯（failed-precondition）。
+    // 排場資料本來就存在手機（localStorage），網路恢復或下次打開時會自動補傳，不需要這層快取。
+    cloud.db = fsMod.getFirestore(app);
     cloud.auth = authMod.getAuth(app);
     if (cloud.viewer) {
       startViewer();
@@ -1461,6 +1459,7 @@ async function attachTeam(id, data) {
     if (live.exists()) {
       const d = live.data();
       if (d.stateJson && (d.updatedAt || 0) > (state.updatedAt || 0)) {
+        if (state.history.length) storageSet(SESSION_BEFORE_CLOUD_KEY, state);
         state = normalizeState(JSON.parse(d.stateJson));
         scheduleSave(STORAGE_KEYS.session, () => state);
         cloud.lastLive = d.stateJson;
@@ -2537,7 +2536,11 @@ async function loadRanks(force = false) {
   ranks.status = 'loading';
   const { collection, getDocs } = cloud.fb;
   try {
-    const snap = await getDocs(collection(cloud.db, 'teams', rankTeamId(), 'stats'));
+    const ref = collection(cloud.db, 'teams', rankTeamId(), 'stats');
+    const snap = await getDocs(ref).catch((err) => {
+      if (cloud.fb.getDocsFromServer) return cloud.fb.getDocsFromServer(ref);
+      throw err;
+    });
     ranks.list = snap.docs.map((d) => d.data());
     ranks.status = 'ready';
     ranks.loadedAt = Date.now();
@@ -2545,7 +2548,7 @@ async function loadRanks(force = false) {
     ranks.status = 'error';
     ranks.error = cloudErrorText(err);
   }
-  if (ui.ranksOpen || ui.rankProfile) render();
+  if (ui.ranksOpen || ui.rankProfile || ui.profileName) render();
   else if (ui.settings) renderModal();
 }
 
@@ -2656,7 +2659,9 @@ function renderRanksTab() {
     setTimeout(() => loadRanks(), 0);
   }
   const all = aggregateRanks();
-  const board = RANK_BOARDS[ui.rankBoard] ? ui.rankBoard : 'rate';
+  // 還沒有人達到勝率榜門檻時（剛開始使用），預設改看場數榜，避免看起來像沒有紀錄
+  const rateReady = all.some((p) => p.rec >= RANK_MIN_RECORDED);
+  const board = RANK_BOARDS[ui.rankBoard] ? ui.rankBoard : (rateReady ? 'rate' : 'games');
   const rows = boardRows(all, board);
   const myself = myName();
   const me = myself && all.find((p) => p.n === myself);
@@ -2687,9 +2692,9 @@ function renderRanksTab() {
   return `
     <h2>我的戰績</h2>
     ${renderAccountCard(all)}
-    ${me ? renderLongProfile(me, all, true) : pick || (cloud.viewer && cloud.user ? '' : '<p class="sub">還沒有紀錄</p>')}
+    ${myself ? renderMyStats(myself) : pick || (cloud.viewer && cloud.user ? '' : '<p class="sub">還沒有紀錄</p>')}
     <h2>長期排行榜</h2>
-    <p class="sub" style="margin-top:-4px">累計 ${sessions.length} 次球局、${sessions.reduce((n, s) => n + s.matchCount, 0)} 場比賽${ranks.status === 'error' ? `・<span class="cloud-error" style="display:inline">${escapeHtml(ranks.error)}</span>` : ''}</p>
+    <p class="sub" style="margin-top:-4px">累計 ${sessions.length} 次球局、${sessions.reduce((n, s) => n + s.matchCount, 0)} 場比賽${sessions.length ? `・最近存入 ${(() => { const d = new Date(Math.max(...sessions.map((x) => x.date || 0))); return `${d.getMonth() + 1}/${d.getDate()}`; })()}` : ''}${ranks.status === 'error' ? `・<span class="cloud-error" style="display:inline">${escapeHtml(ranks.error)}</span>` : ''}</p>
     <div class="seg rank-seg" role="group" aria-label="排行榜種類">
       ${Object.entries(RANK_BOARDS).map(([key, b]) => `
         <button data-action="rank-board" data-value="${key}" aria-pressed="${board === key}">${b.label}</button>`).join('')}
@@ -2738,23 +2743,21 @@ function renderLongProfile(p, all, compact) {
     </div>`;
 }
 
+function renderMyStats(name) {
+  const playedToday = state.history.some((h) => h.teamA.includes(name) || h.teamB.includes(name));
+  const view = ui.myView || (playedToday ? 'today' : 'long');
+  return `<div class="long-card">
+      <div class="long-head"><b>${escapeHtml(name)}</b>
+        ${cloud.viewer && cloud.claim ? '' : '<button class="btn-ghost" data-action="me-clear">不是我</button>'}</div>
+      ${profileViewSeg(view, 'my-view')}
+      <div class="profile-body">${view === 'today' ? renderTodayProfileBody(name) : renderLongProfileBody(name)}</div>
+    </div>`;
+}
+
 function renderRanksModal() {
   return `
     <div class="ranks-sheet">${renderRanksTab()}</div>
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
-}
-
-function renderRankProfileModal() {
-  const all = aggregateRanks();
-  const p = all.find((r) => r.n === ui.rankProfile);
-  if (!p) return `<h3>${escapeHtml(ui.rankProfile)}</h3><p class="sub">還沒有紀錄</p>
-    <button class="btn-primary btn-block" data-action="modal-close">關閉</button>`;
-  return `
-    <h3>${escapeHtml(p.n)}</h3>
-    <p class="sub" style="margin:0 0 4px">長期累計${p.last ? `・最近一次 ${new Date(p.last).getMonth() + 1}/${new Date(p.last).getDate()}` : ''}</p>
-    ${renderLongProfile(p, all, false)}
-    ${myName() === p.n || (cloud.viewer && cloud.user) ? '' : `<button class="btn-ghost btn-block" data-action="me-set" data-name="${escapeHtml(p.n)}">這是我（在這支手機記住）</button>`}
-    <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">${ui.ranksOpen ? '返回排行榜' : '關閉'}</button>`;
 }
 
 /* ===================== 工具函式 ===================== */
@@ -5086,9 +5089,15 @@ function renderPlaySettings() {
 }
 
 function renderDataSettings() {
+  const before = storageGet(SESSION_BEFORE_CLOUD_KEY);
+  const restore = before && Array.isArray(before.history) && before.history.length
+    ? `<p class="sub set-note">換手機或重新登入時，這支手機原本的排場（${before.history.length} 場）被雲端上較新的資料取代了。</p>
+       <button class="btn-ghost" data-action="restore-before-cloud">還原這支手機原本的排場</button>`
+    : '';
   return `
     ${settingsGroupHead('data', '資料')}
       ${renderArchiveList()}
+      ${restore}
       <div class="set-actions">
         <button class="btn-ghost" data-action="settings-end-day">結束今日打球、產生戰報</button>
         <button class="btn-ghost" data-action="backup-open">備份與還原</button>
@@ -5178,10 +5187,10 @@ function titleHolders(t) {
   return String(t.who).split(/、| vs | 剋 /);
 }
 
-function renderProfileModal() {
-  const name = ui.profileName;
+function renderTodayProfileBody(name) {
   const player = state.players.find((p) => p.name === name);
   const chrono = state.history.slice().reverse().filter((h) => h.teamA.includes(name) || h.teamB.includes(name));
+  if (!player && !chrono.length) return '<p class="sub" style="margin:8px 0">今天沒有出場紀錄。</p>';
   const recorded = chrono.filter((h) => h.winners);
   const wins = recorded.filter((h) => h.winners.includes(name)).length;
   const losses = recorded.length - wins;
@@ -5230,8 +5239,7 @@ function renderProfileModal() {
   ].join('');
 
   return `
-    <h3>${escapeHtml(name)}</h3>
-    <p class="sub" style="margin:0">${player && !player.active ? '休息中' : (player && onCourtIds().has(player.id) ? '場上' : '等待中')}
+    <p class="sub" style="margin:0">${!player ? '今天已離場' : !player.active ? '休息中' : (onCourtIds().has(player.id) ? '場上' : '等待中')}
       ${hp !== null ? `・體力 ${hp}` : ''}</p>
     <div class="profile-stats">
       <div><b class="num">${chrono.length}</b><small>完成場數</small></div>
@@ -5244,8 +5252,42 @@ function renderProfileModal() {
       <div class="chips" style="margin-bottom:12px">${titles.map((t) => `<span class="chip">${t.icon} ${t.title}</span>`).join('')}</div>` : ''}
     ${relation ? `<h4 class="profile-h">關係</h4><ul class="profile-list">${relation}</ul>` : ''}
     <h4 class="profile-h">最常搭檔</h4>
-    ${list(topPartners, (r) => `${r.games} 次・${record(r)}`)}
-    <button class="btn-primary btn-block" data-action="modal-close">關閉</button>`;
+    ${list(topPartners, (r) => `${r.games} 次・${record(r)}`)}`;
+}
+
+// 長期個人：只回傳內容（排行榜資料還沒載入時先去載）
+function renderLongProfileBody(name) {
+  if (!ranksAvailable()) {
+    return '<p class="sub" style="margin:8px 0">長期戰績需要雲端同步：管理者登入並「存入長期紀錄」後才會累積。</p>';
+  }
+  if (ranks.status === 'idle' || ranks.status === 'error') setTimeout(() => loadRanks(), 0);
+  if (ranks.status === 'loading' && !ranks.list.length) return '<p class="sub" style="margin:8px 0">載入中…</p>';
+  const all = aggregateRanks();
+  const p = all.find((r) => r.n === name);
+  if (!p) return '<p class="sub" style="margin:8px 0">還沒有存入的長期紀錄。</p>';
+  return `
+    <p class="sub" style="margin:0 0 4px">長期累計${p.last ? `・最近一次 ${new Date(p.last).getMonth() + 1}/${new Date(p.last).getDate()}` : ''}</p>
+    ${renderLongProfile(p, all, false)}`;
+}
+
+function profileViewSeg(view, action) {
+  return `<div class="seg profile-seg" role="group" aria-label="戰績範圍">
+      <button data-action="${action}" data-value="today" aria-pressed="${view === 'today'}">今日</button>
+      <button data-action="${action}" data-value="long" aria-pressed="${view === 'long'}">長期</button>
+    </div>`;
+}
+
+// 個人戰績視窗：今日／長期切換
+function renderPlayerModal() {
+  const name = ui.rankProfile || ui.profileName;
+  const view = ui.profileView || (ui.rankProfile ? 'long' : 'today');
+  const showMeSet = myName() !== name && !(cloud.viewer && cloud.user);
+  return `
+    <h3>${escapeHtml(name)}</h3>
+    ${profileViewSeg(view, 'profile-view')}
+    <div class="profile-body">${view === 'today' ? renderTodayProfileBody(name) : renderLongProfileBody(name)}</div>
+    ${showMeSet && ui.rankProfile ? `<button class="btn-ghost btn-block" data-action="me-set" data-name="${escapeHtml(name)}">這是我（在這支手機記住）</button>` : ''}
+    <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">${ui.rankProfile && ui.ranksOpen ? '返回排行榜' : '關閉'}</button>`;
 }
 
 function renderModal() {
@@ -5260,9 +5302,9 @@ function renderModal() {
   else if (ui.copyText) content = renderCopyModal();
   else if (ui.titleIndex !== null && ui.titleIndex !== undefined) content = renderTitleModal();
   else if (ui.report) content = renderReportModal();
-  else if (ui.profileName) content = renderProfileModal();
+  else if (ui.profileName) content = renderPlayerModal();
   else if (ui.invite) content = renderInviteModal();
-  else if (ui.rankProfile) content = renderRankProfileModal();
+  else if (ui.rankProfile) content = renderPlayerModal();
   else if (ui.ranksOpen) content = renderRanksModal();
   else if (ui.settings) content = renderSettingsModal();
 
@@ -6450,6 +6492,16 @@ function handleAction(el) {
       return;
     case 'end-day-cancel': ui.endDayArmed = false; sessionChanged = false; break;
     case 'archive-now': archiveSession('end-day'); return;
+    case 'restore-before-cloud': {
+      const before = storageGet(SESSION_BEFORE_CLOUD_KEY);
+      if (!before) return;
+      storageSet(SESSION_BEFORE_CLOUD_KEY, null);
+      state = normalizeState(before);
+      ui.settings = false;
+      ui.settingsOnly = null;
+      showToast(`已還原 ${state.history.length} 場紀錄`);
+      break;   // 之後 saveSession 會更新時間並上傳到雲端
+    }
     case 'archive-delete': {
       const id = el.dataset.id;
       if (ui.archiveArmed !== id) {
@@ -6471,7 +6523,9 @@ function handleAction(el) {
       break;
     case 'report-open': openReport(); return;
     case 'report-share': shareReport(); return;
-    case 'player-open': ui.profileName = el.dataset.name; sessionChanged = false; break;
+    case 'player-open': ui.profileName = el.dataset.name; ui.profileView = null; sessionChanged = false; break;
+    case 'profile-view': ui.profileView = el.dataset.value; sessionChanged = false; modalOnly = true; break;
+    case 'my-view': ui.myView = el.dataset.value; sessionChanged = false; modalOnly = true; break;
     case 'network-mode': ui.networkMode = el.dataset.value; sessionChanged = false; break;
     case 'network-focus':
       ui.networkFocus = ui.networkFocus === el.dataset.name ? null : el.dataset.name;
@@ -6584,7 +6638,7 @@ function handleAction(el) {
     case 'member-approve': setMemberStatus(el.dataset.uid, true); return;
     case 'member-remove': setMemberStatus(el.dataset.uid, false); return;
     case 'rank-board': ui.rankBoard = el.dataset.value; sessionChanged = false; modalOnly = true; break;
-    case 'rank-open': ui.rankProfile = el.dataset.name; sessionChanged = false; modalOnly = true; break;
+    case 'rank-open': ui.rankProfile = el.dataset.name; ui.profileView = null; sessionChanged = false; modalOnly = true; break;
     case 'me-set':
       prefs.me = el.dataset.name;
       savePrefs();
