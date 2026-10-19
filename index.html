@@ -976,7 +976,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.8';
+const APP_VERSION = '6.9';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -993,7 +993,9 @@ const QR_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qr
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
-const PARTNER_WEIGHT = 4;    // 重複同隊的懲罰（取次數平方：第 2 次 16、第 3 次 36，避免同一對一再搭檔）
+// 重複同隊的懲罰，依「已經同隊幾次」查表：第 2 次同隊 8、第 3 次以上 200（幾乎禁止）。
+// 200 遠大於放寬公平性一級的成本（20），所以只要還有別的組合，就不會出現第 3 次同隊。
+const PARTNER_REPEAT_PENALTY = [0, 8, 200];
 const GROUP_COUNT_WEIGHT = 40; // 同一批 4 人今晚每打過一次的懲罰（不限近期）
 const OPPONENT_WEIGHT = 1;   // 重複對戰的懲罰
 const WAIT_WEIGHT = 1;       // 連續等待的加分（取平方）；主要防呆由連等上限負責
@@ -1642,6 +1644,7 @@ async function attachTeam(id, data) {
   }
   watchMembers();
   watchEvents();
+  loadRanks().then(() => refreshSignupUi());   // 賽前勝率要用長期紀錄
 }
 
 function scheduleCloudUpload(immediate = false) {
@@ -1868,6 +1871,7 @@ function startViewer() {
   });
   subscribeViewer();
   watchEvents();
+  loadRanks().then(() => refreshSignupUi());   // 賽前勝率要用長期紀錄
   if (VIEW_EVENT) openSignupEvent(VIEW_EVENT);
   clearInterval(viewerSync.timer);
   viewerSync.timer = setInterval(() => {
@@ -3658,7 +3662,7 @@ function pastDateText(t) {
 
 function openPastList() {
   ui.pastList = true;
-  if (ranks.status !== 'ready') loadRanks(true);
+  if (ranks.status !== 'ready' || ranksStale()) loadRanks(true);
 }
 
 async function openPastSession(id) {
@@ -3907,6 +3911,11 @@ function ranksAvailable() {
   return Boolean(cloud.fb && rankTeamId() && (cloud.viewer || cloudReady()));
 }
 
+// 還沒讀過，或讀過超過 1 分鐘／剛存了新球局（loadedAt 被歸零）
+function ranksStale() {
+  return ranks.status === 'idle' || (ranks.status === 'ready' && Date.now() - ranks.loadedAt > 60000);
+}
+
 async function loadRanks(force = false) {
   if (!ranksAvailable() || ranks.status === 'loading') return;
   if (!force && ranks.status === 'ready' && Date.now() - ranks.loadedAt < 60000) return;
@@ -3954,7 +3963,7 @@ async function deleteArchive(sessionId) {
 
 function renderArchiveList() {
   if (!cloudReady()) return '';
-  if (ranks.status === 'idle') setTimeout(() => loadRanks(), 0);
+  if (ranksStale()) setTimeout(() => loadRanks(), 0);
   const list = ranks.list.slice().sort((a, b) => (b.date || 0) - (a.date || 0));
   const fmt = (t) => { const d = new Date(t); return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${formatTime(t)}`; };
   return `<h5 class="member-h">長期紀錄（${list.length} 次球局）</h5>
@@ -4032,7 +4041,7 @@ function renderRanksTab() {
     return `<h2>長期排行榜</h2>
       <div class="viewer-wait" style="margin-top:0">長期排行榜需要雲端同步。<br>到「設定 → 雲端同步」登入並建立球團後，每天的紀錄會自動累積在這裡。</div>`;
   }
-  if (ranks.status === 'idle' || (ranks.status === 'ready' && Date.now() - ranks.loadedAt > 60000)) {
+  if (ranksStale()) {
     setTimeout(() => loadRanks(), 0);
   }
   const all = aggregateRanks();
@@ -4369,7 +4378,7 @@ function matchPenalty(teamA, teamB) {
   penalty += GROUP_COUNT_WEIGHT * (groupCounts()[groupKey(teamA.concat(teamB))] || 0);
   withinPairs(teamA).concat(withinPairs(teamB)).forEach(([a, b]) => {
     const times = pairStat(a, b).partner;
-    penalty += PARTNER_WEIGHT * times * times;
+    penalty += PARTNER_REPEAT_PENALTY[Math.min(times, PARTNER_REPEAT_PENALTY.length - 1)] * Math.max(1, times - 1);
   });
   crossPairs(teamA, teamB).forEach(([a, b]) => {
     penalty += OPPONENT_WEIGHT * pairStat(a, b).opponent;
@@ -4591,15 +4600,42 @@ function displayNo(entry) {
 }
 
 /* ===================== 賽前勝率預測 =====================
- * 只用「這場開打前已經結束、且有記勝負」的紀錄，避免用未來的結果預測過去。
- * 個人實力 = (勝 + 2) / (場 + 4)：資料少時接近 50%，打越多越貼近實際勝率。
- * 隊伍實力取平均，勝率以 logistic 換算；實力差 0.1 約等於 62% 對 38%。 */
-const PREDICT_K = 5;
-const UPSET_LINE = 0.4;   // 勝方賽前預測勝率不超過 40% 即為爆冷
+ * 個人實力 = (勝 + 2) / (場 + 4)，場和勝 = 長期紀錄（這一天之前、最多算 PREDICT_PRIOR_MAX 場）＋這場開打前的今日紀錄。
+ *   只看今天的話，開場前幾場每人才 1～2 場，數字很不穩（實測比猜 50/50 還不準）。
+ * 隊伍實力取平均，勝率以 logistic 換算：實力差 0.1 ≈ 60% 對 40%。
+ * 4 個人都至少有 PREDICT_MIN_GAMES 場紀錄才預測，避免資料太少亂猜。 */
+const PREDICT_SLOPE = 4;
+const PREDICT_PRIOR_MAX = 20;   // 長期紀錄最多當作幾場：讓今天的表現仍然有影響
+const PREDICT_MIN_GAMES = 3;
+const UPSET_LINE = 0.35;   // 勝方賽前預測勝率不超過 35% 即為爆冷
+
+// 長期紀錄（只算這一天之前的球局）：{名字: {w, g}}，依目前畫面的球局快取
+let priorCache = { key: '', value: {} };
+
+function predictionPrior() {
+  const firstStart = Math.min(...state.history.map((h) => h.startedAt).filter(Boolean), Date.now());
+  const key = `${state.sessionId}|${ranks.loadedAt}|${ranks.list.length}|${new Date(firstStart).toDateString()}`;
+  if (priorCache.key === key) return priorCache.value;
+  const value = {};
+  rankSessions().forEach((s) => {
+    if (s.sessionId === state.sessionId || (s.date || 0) >= firstStart) return;
+    (s.players || []).forEach((p) => {
+      const r = value[p.n] || (value[p.n] = { w: 0, g: 0 });
+      r.w += p.w || 0;
+      r.g += p.rec || 0;
+    });
+  });
+  Object.values(value).forEach((r) => {   // 長期場數太多時等比例縮小
+    if (r.g > PREDICT_PRIOR_MAX) { r.w = (r.w * PREDICT_PRIOR_MAX) / r.g; r.g = PREDICT_PRIOR_MAX; }
+  });
+  priorCache = { key, value };
+  return value;
+}
 
 function playerRecordBefore(name, time) {
-  let wins = 0;
-  let games = 0;
+  const prior = predictionPrior()[name] || { w: 0, g: 0 };
+  let wins = prior.w;
+  let games = prior.g;
   state.history.forEach((h) => {
     if (!h.winners || !h.endedAt || h.endedAt > time) return;
     if (!h.teamA.includes(name) && !h.teamB.includes(name)) return;
@@ -4610,20 +4646,14 @@ function playerRecordBefore(name, time) {
 }
 
 function predictMatch(namesA, namesB, time) {
-  const strength = (names) => {
-    let total = 0;
-    let games = 0;
-    names.forEach((n) => {
-      const r = playerRecordBefore(n, time);
-      total += (r.wins + 2) / (r.games + 4);
-      games += r.games;
-    });
-    return { value: total / names.length, games };
-  };
-  const a = strength(namesA);
-  const b = strength(namesB);
-  const pA = 1 / (1 + Math.exp(-PREDICT_K * (a.value - b.value) * 2));
-  return { pA, pB: 1 - pA, enough: a.games + b.games >= 3 };
+  let enough = true;
+  const strength = (names) => names.reduce((sum, n) => {
+    const r = playerRecordBefore(n, time);
+    if (r.games < PREDICT_MIN_GAMES) enough = false;
+    return sum + (r.wins + 2) / (r.games + 4);
+  }, 0) / names.length;
+  const pA = 1 / (1 + Math.exp(-PREDICT_SLOPE * (strength(namesA) - strength(namesB))));
+  return { pA, pB: 1 - pA, enough };
 }
 
 // 一筆紀錄的賽前預測與是否爆冷
@@ -5873,7 +5903,7 @@ function todayTitles() {
   });
   if (firstOut) add('🪫', '第一個沒電', firstOut.name, `${formatTime(firstOut.at)} 體力歸零`);
 
-  // 🎲 爆冷王：賽前預測不被看好（≤ 40%）卻贏球最多次
+  // 🎲 爆冷王：賽前預測不被看好（≤ 35%）卻贏球最多次
   const upsetWins = {};
   const upsetLowest = {};
   recorded.forEach((h) => {
@@ -6006,10 +6036,10 @@ const TITLE_RULES = {
   全員搭檔: '隱藏成就：今天和每一位出場的球員都當過搭檔，而且都一起贏過（至少 5 人出場）。',
   雙面人生: '隱藏成就：兩人連續四場都碰在一起，依序是：輸給他 → 和他搭檔贏 → 打敗他 → 再和他搭檔贏。',
   完美復仇: '隱藏成就：輸給某一組對手後，自己的下一場就遇到完全相同的對手，並且贏回來。',
-  逆天改命: '隱藏成就：同一場同時是爆冷（賽前勝率 40% 以下）和體力劣勢，還是贏了。',
-  屠龍者: '隱藏成就：以爆冷（賽前勝率 40% 以下）終結別人 7 連勝以上，而且對方是當時的勝率王。',
+  逆天改命: '隱藏成就：同一場同時是爆冷（賽前勝率 35% 以下）和體力劣勢，還是贏了。',
+  屠龍者: '隱藏成就：以爆冷（賽前勝率 35% 以下）終結別人 7 連勝以上，而且對方是當時的勝率王。',
   一路長紅: '隱藏成就：今天前 7 場有記勝負的比賽全部獲勝。',
-  爆冷王: '依當下戰績預測勝率，賽前勝率 40% 以下卻贏球，就是爆冷；爆冷贏最多次的人。',
+  爆冷王: '依長期＋當天戰績預測勝率，賽前勝率 35% 以下卻贏球，就是爆冷；爆冷贏最多次的人。',
   開門紅: '贏下今天第一場有記勝負的比賽。',
   連勝王: '今天最長連勝的人，至少連勝 3 場。沒記勝負的場次不會中斷連勝。',
   不敗金身: '至少記錄 3 場勝負，而且一場都沒輸過。一輸就會失去這個稱號。',
@@ -6653,7 +6683,7 @@ function renderLongProfileBody(name) {
   if (!ranksAvailable()) {
     return '<p class="sub" style="margin:8px 0">長期戰績需要雲端同步：管理者登入並「存入長期紀錄」後才會累積。</p>';
   }
-  if (ranks.status === 'idle' || ranks.status === 'error') setTimeout(() => loadRanks(), 0);
+  if (ranksStale() || ranks.status === 'error') setTimeout(() => loadRanks(), 0);
   if (ranks.status === 'loading' && !ranks.list.length) return '<p class="sub" style="margin:8px 0">載入中…</p>';
   const all = aggregateRanks();
   const p = all.find((r) => r.n === name);
