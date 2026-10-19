@@ -13,7 +13,7 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
 const { newlyOnCourt, messageText } = require('./oncourt');
 const {
-  sortSignups, eventCap, promotedAfterRemoval, promotedAfterCapChange, promotionText,
+  sortSignups, eventCap, promotedAfterRemoval, promotedAfterCapChange, promotionText, notifyTarget,
 } = require('./signup');
 
 initializeApp();
@@ -102,7 +102,7 @@ exports.notifyOnCourt = onDocumentWritten(
 /**
  * 報名者的文件 id 就是他的 Google uid；有認領球員、開過通知的人，
  * teams/{teamId}/members/{uid} 裡有推播憑證，就送「你已經轉正取」。
- * 管理者代報的（m 開頭）沒有帳號，不會收到。
+ * 球友幫朋友報名的（uid_g1）送給代報的人；管理者代報的（m 開頭）沒有帳號，不會收到。
  */
 async function notifyPromoted(db, teamId, eventId, ev, promoted) {
   if (!promoted.length) return;
@@ -110,11 +110,12 @@ async function notifyPromoted(db, teamId, eventId, ev, promoted) {
   const appUrl = (team.exists && team.data().appUrl) || DEFAULT_APP_URL;
   const link = `${appUrl}?team=${teamId}&event=${eventId}`;
   const jobs = promoted.map(async (p) => {
-    const ref = db.doc(`teams/${teamId}/members/${p.id}`);
+    const target = notifyTarget(p);
+    const ref = db.doc(`teams/${teamId}/members/${target.uid}`);
     const member = await ref.get();
     const tokens = member.exists ? member.data().fcmTokens : null;
     if (!Array.isArray(tokens) || !tokens.length) return null;
-    const { title, body } = promotionText(ev, p.name || '');
+    const { title, body } = promotionText(ev, p.name || '', target.guest);
     return sendToMember(ref, tokens, { title, body, url: link, tag: `signup-${eventId}` });
   });
   const results = await Promise.allSettled(jobs);

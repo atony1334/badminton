@@ -49,12 +49,27 @@ function eventDateText(ev) {
   return `${m}/${d}（${'日一二三四五六'[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}）`;
 }
 
-function promotionText(ev, name) {
+/** 通知要送給誰：自己報名的送本人；幫朋友報名的（id = uid_g1）送代報的人 */
+function notifyTarget(signup) {
+  const m = /^(.+)_g\d+$/.exec(signup.id);
+  if (m) return { uid: signup.by || m[1], guest: true };
+  return { uid: signup.id, guest: false };
+}
+
+function promotionText(ev, name, guest = false) {
   const time = ev.start ? ` ${ev.start}${ev.end ? `–${ev.end}` : ''}` : '';
+  if (guest) {
+    return {
+      title: `🏸 你幫 ${name} 報名的場次轉正取了！`,
+      body: `${eventDateText(ev)}${time}${ev.venue ? `｜${ev.venue}` : ''}，記得通知 ${name}。不能來的話請到報名頁取消。`,
+    };
+  }
   return {
     title: `🏸 ${name}，你已經從候補轉為正取！`,
     body: `${eventDateText(ev)}${time}${ev.venue ? `｜${ev.venue}` : ''}，記得準時到。不能來的話請到報名頁取消。`,
   };
 }
 
-module.exports = { stampMs, sortSignups, eventCap, promotedAfterRemoval, promotedAfterCapChange, promotionText };
+module.exports = {
+  stampMs, sortSignups, eventCap, promotedAfterRemoval, promotedAfterCapChange, promotionText, notifyTarget,
+};
