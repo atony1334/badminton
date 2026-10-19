@@ -993,7 +993,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.13';
+const APP_VERSION = '6.14';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -5214,7 +5214,10 @@ function leaveTeam() {
 /* ===================== 首頁（不是管理者的手機） =====================
  * 三個入口：已加入的球團、輸入球團代碼、臨時開場。管理者的手機直接進選人畫面。 */
 function isAdminDevice() {
-  return Boolean(storageGet(CLOUD_TEAM_KEY)) || cloud.phase === 'ready' || cloud.phase === 'no-team';
+  if (storageGet(CLOUD_TEAM_KEY) || cloud.phase === 'ready') return true;
+  // 已登入但還沒有球團：只有用信箱密碼登入的才是管理者；用 Google 登入的是球友（在球團頁登入後，首頁也會是登入狀態）
+  const providers = (cloud.user && cloud.user.providerData) || [];
+  return cloud.phase === 'no-team' && providers.some((p) => p && p.providerId === 'password');
 }
 
 function showHome() {
