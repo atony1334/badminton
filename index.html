@@ -993,7 +993,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.14';
+const APP_VERSION = '6.16';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1519,7 +1519,7 @@ const VIEWER_ACTIONS = new Set([
   'title-open', 'player-open', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
-  'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
+  'invite-copy-code', 'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
   'signup-view', 'signup-month', 'signup-day',
 ]);
@@ -2180,7 +2180,9 @@ function renderViewerSettings() {
     <section class="set-group"><div class="set-body" style="padding-top:12px">
       <h4 class="set-head">觀看模式</h4>
       <p class="sub set-note">${cloud.teamName ? `正在看「${escapeHtml(cloud.teamName)}」的排場。` : ''}這裡只能看，排場由管理者操作，會自動即時更新。</p>
-      <p class="sub set-note">球團代碼：<span class="num" style="user-select:all;-webkit-user-select:all">${escapeHtml(VIEW_TEAM || '')}</span></p>
+      <p class="sub set-note">球團代碼（給別人加入，或在主畫面 App 裡輸入）：</p>
+      <p class="invite-code"><b class="num">${escapeHtml(VIEW_TEAM || '')}</b>
+        <button class="btn-ghost" data-action="invite-copy-code">複製</button></p>
       ${cloud.user ? `<p class="sub set-note">已用 Google 登入：${escapeHtml(cloud.user.email || '')}${cloud.claim ? `（${escapeHtml(cloud.claim.name)}）` : ''}</p>
         <button class="btn-ghost" data-action="google-logout" style="align-self:flex-start">登出</button>` : ''}
     </div></section>
@@ -2345,6 +2347,14 @@ function renderAccountCard(all) {
     </div>`;
   }
   const who = escapeHtml(cloud.user.displayName || cloud.user.email || '');
+  if (isPasswordUser()) {
+    return `<div class="account-card">
+      <p>${who} 是<b>管理者帳號</b>，不用認領球員。想用球友身分報名、收上場通知，請用自己的 Google 帳號登入。</p>
+      <span class="member-btns">
+        <button class="btn-primary" data-action="drawer-go" data-target="home">回到管理畫面</button>
+      </span>
+    </div>`;
+  }
   if (!cloud.claim) {
     return `<div class="account-card">
       <p>${who} 你好！你是名單裡的哪一位？</p>
@@ -3613,6 +3623,9 @@ const SETTINGS_SECTIONS = {
 
 function drawerAccount() {
   if (cloud.viewer) {
+    if (isPasswordUser()) {   // 同一個瀏覽器登入過管理者：球友頁也會是這個帳號
+      return { initial: '管', title: cloud.user.email || '管理者', lines: ['管理者帳號・目前在看球友畫面', cloud.teamName ? `觀看 ${cloud.teamName}` : '觀看模式'] };
+    }
     if (cloud.user) {
       const claim = cloud.claim;
       return {
@@ -3669,13 +3682,18 @@ function renderDrawer() {
     ]
     : [
       [
+        isPasswordUser() ? item('home', 'court', '回到管理畫面') : '',
         item('signup', 'calendar', '報名場次', badge(openSignupCount())),
-        item('account', 'user', cloud.user ? '我的帳號・上場通知' : '登入 / 認領球員'),
+        isPasswordUser() ? '' : item('account', 'user', cloud.user ? '我的帳號・上場通知' : '登入 / 認領球員'),
         item('ranks', 'trophy', '長期排行榜・我的戰績'),
         item('past', 'box', '歷史球局'),
       ],
       [item('look', 'palette', '畫面'), updateItem],
-      [item('home', 'box', '切換球團・回首頁'), item('leave', 'flag', '離開這個球團')],
+      [
+        item('all', 'qr', '球團代碼・資訊'),
+        item('home', 'box', '切換球團・回首頁'),
+        item('leave', 'flag', '離開這個球團'),
+      ],
     ];
   return `
     <div class="drawer-bg ${ui.drawerAnim || ''}" data-action="drawer-close"></div>
@@ -5213,6 +5231,11 @@ function leaveTeam() {
 
 /* ===================== 首頁（不是管理者的手機） =====================
  * 三個入口：已加入的球團、輸入球團代碼、臨時開場。管理者的手機直接進選人畫面。 */
+// 用信箱密碼登入的是管理者帳號；Google 登入的是球友
+function isPasswordUser(user = cloud.user) {
+  return Boolean(user && (user.providerData || []).some((p) => p && p.providerId === 'password'));
+}
+
 function isAdminDevice() {
   if (storageGet(CLOUD_TEAM_KEY) || cloud.phase === 'ready') return true;
   // 已登入但還沒有球團：只有用信箱密碼登入的才是管理者；用 Google 登入的是球友（在球團頁登入後，首頁也會是登入狀態）
@@ -8519,7 +8542,7 @@ function handleAction(el) {
     case 'invite-copy': copyInviteLink(); return;
     case 'invite-copy-code':
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(cloud.teamId).then(() => showToast('已複製球團代碼'), () => showToast('無法自動複製，請長按代碼複製'));
+        navigator.clipboard.writeText(cloud.viewer ? VIEW_TEAM : cloud.teamId).then(() => showToast('已複製球團代碼'), () => showToast('無法自動複製，請長按代碼複製'));
       } else showToast('無法自動複製，請長按代碼複製');
       return;
     case 'home-local': ui.homeLocal = true; sessionChanged = false; break;
