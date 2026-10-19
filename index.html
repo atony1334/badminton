@@ -162,6 +162,54 @@
     vertical-align: 1px; animation: live-pulse 1.6s ease-in-out infinite;
   }
   @keyframes live-pulse { 50% { opacity: 0.35; } }
+
+  /* 報名 */
+  .ev-section { margin-top: 20px; }
+  .ev-h { font-size: 16px; margin: 0 0 8px; }
+  .ev-cards { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .ev-cards.past { opacity: .7; }
+  .ev-card { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; padding: 12px 14px;
+    background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-l); color: var(--ink); text-align: left; }
+  .ev-section .ev-card + .ev-card { margin-top: 8px; }
+  .ev-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .ev-main small { color: var(--muted); font-size: 13px; }
+  .ev-main .ev-mine { color: #8A5A00; font-weight: 600; }
+  .ev-main .ev-mine.ok { color: #1F7A45; }
+  .ev-side { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+  .ev-side small { color: var(--muted); font-size: 12px; }
+  .ev-count { font-size: 18px; font-weight: 700; }
+  .ev-tag { font-size: 12px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+  .ev-tag.open { background: #DDF3E4; color: #1F7A45; }
+  .ev-tag.full { background: #FFF1D6; color: #8A5A00; }
+  .ev-tag.closed { background: var(--floor); color: var(--muted); }
+  .ev-empty { margin: 8px 0; }
+  .ev-note { white-space: pre-wrap; background: var(--floor); border-radius: 10px; padding: 10px 12px; margin: 8px 0; font-size: 14px; }
+  .ev-tools { display: flex; flex-wrap: wrap; gap: 8px; margin: 12px 0 8px; }
+  .ev-add { padding: 0; background: none; margin-bottom: 4px; display: flex; flex-direction: row; gap: 8px; align-items: center; }
+  .ev-add input { flex: 1; min-width: 0; margin: 0; }
+  .ev-add button { flex-shrink: 0; }
+  .ev-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--border); border-radius: var(--radius-l); overflow: hidden; }
+  .ev-list li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; min-height: 44px; }
+  .ev-list li + li { border-top: 1px solid var(--border); }
+  .ev-list li.mine { background: var(--soft-yellow); font-weight: 700; }
+  .ev-list.wait .ev-no { background: var(--floor); color: var(--muted); }
+  .ev-no { width: 26px; height: 26px; border-radius: 50%; background: #DDF3E4; color: #1F7A45; font-size: 13px; font-weight: 700;
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .ev-name { flex: 1; min-width: 0; }
+  .ev-name small { margin-left: 6px; font-size: 11px; color: var(--muted); font-weight: 400; }
+  .ev-remove { padding: 4px 10px; font-size: 13px; }
+  .ev-me p { margin: 0 0 6px; }
+  .ev-form { display: flex; flex-direction: column; gap: 6px; }
+  .ev-form textarea { min-height: 70px; }
+  .ev-times { display: flex; gap: 10px; }
+  .ev-times label { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+  .ev-today { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+  .ev-today span { display: flex; flex-direction: column; }
+  .ev-today small { color: var(--muted); font-size: 13px; }
+  :root[data-appearance="dark"] .ev-tag.open, :root[data-appearance="dark"] .ev-no { background: rgba(80, 200, 120, .18); color: #7FD9A0; }
+  :root[data-appearance="dark"] .ev-tag.full, :root[data-appearance="dark"] .ev-main .ev-mine { background: transparent; color: #F2C46B; }
+  :root[data-appearance="dark"] .ev-tag.full { background: rgba(255, 200, 80, .15); }
+  :root[data-appearance="dark"] .ev-main .ev-mine.ok { color: #7FD9A0; }
   .notify-off-chip { margin-left: 6px; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #FFF1D6; color: #8A5A00; font-weight: 600; }
   .d-state { flex: 0 !important; font-size: 13px; font-weight: 700; color: var(--muted); }
   .d-state.on { color: var(--accent, #2E9E5B); }
@@ -838,7 +886,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '5.12';
+const APP_VERSION = '6.0';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -933,6 +981,12 @@ const ui = {
   deleteArmedNo: null,
   clearHistoryArmed: false,
   storageFailed: false,
+  signupOpen: false,    // 報名場次列表
+  signupId: null,       // 正在看的報名場次
+  signupForm: null,     // 管理者開／編輯場次的表單
+  signupName: null,     // 球友報名時輸入的名字
+  signupAdd: '',        // 管理者幫人報名的名字
+  signupArmed: null,    // 等待第二次確認的取消／刪除
 };
 
 /* ===================== 儲存層（localStorage） ===================== */
@@ -1323,6 +1377,7 @@ const VIEWER_ACTIONS = new Set([
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
+  'signup-event', 'signup-back', 'signup-submit', 'signup-cancel',
 ]);
 
 const cloud = {
@@ -1495,6 +1550,7 @@ async function attachTeam(id, data) {
     cloud.fb.updateDoc(teamRef(id), { appUrl }).catch(() => {});
   }
   watchMembers();
+  watchEvents();
 }
 
 function scheduleCloudUpload(immediate = false) {
@@ -1689,6 +1745,7 @@ async function cloudLogout() {
   cloud.lastLive = '';
   cloud.lastRegs = '';
   stopWatchMembers();
+  stopWatchEvents();
   storageSet(CLOUD_TEAM_KEY, null);
   showToast('已登出，本機資料仍保留');
 }
@@ -1719,6 +1776,8 @@ function startViewer() {
     render();
   });
   subscribeViewer();
+  watchEvents();
+  if (VIEW_EVENT) openSignupEvent(VIEW_EVENT);
   clearInterval(viewerSync.timer);
   viewerSync.timer = setInterval(() => {
     if (document.visibilityState === 'visible') checkViewerFresh();
@@ -1808,6 +1867,7 @@ function renderViewerWaiting() {
       </div>
     </header>
     <div class="viewer-wait">${escapeHtml(text)}</div>
+    ${renderEventCards()}
     ${['empty', 'live'].includes(cloud.viewerStatus) ? `
     <div class="wait-links">
       <button class="btn-ghost" data-action="drawer-go" data-target="${cloud.user ? 'account' : 'ranks'}">${icon('user')}${cloud.user ? '我的戰績' : '長期排行榜'}</button>
@@ -2143,6 +2203,517 @@ function renderAccountCard(all) {
   </div>`;
 }
 
+/* ===================== 報名 ===================== */
+/**
+ * 管理者開場次，任何拿到連結、用 Google 登入的人都能報名。
+ *   teams/{teamId}/events/{eventId}                { date, start, end, venue, note, courts, cap, status: 'open' | 'closed', createdAt }
+ *   teams/{teamId}/events/{eventId}/signups/{id}   { name, at }
+ *     id = 報名者的 Google uid（只能報自己）；管理者代報的是 m 開頭的亂數
+ * 正取／候補不存在資料庫：依報名時間（伺服器時間）排序，前 cap 位是正取。
+ * 有人取消或管理者加開場地，候補自然往前遞補；兩個人同時搶最後一個名額也不會算錯。
+ */
+const SIGNUP_PER_COURT = 8;
+const SIGNUP_NAME_MAX = 12;
+const SIGNUP_PAST_SHOWN = 5;
+const VIEW_EVENT = (() => {
+  const id = new URLSearchParams(window.location.search).get('event');
+  return id && /^[A-Za-z0-9-]{6,40}$/.test(id) ? id : null;
+})();
+const signup = { events: [], ready: false, unsub: null, lists: {}, listUnsubs: {}, dirty: false, busy: false };
+
+function signupTeamId() {
+  return cloud.viewer ? VIEW_TEAM : cloud.teamId;
+}
+
+function eventRef(id) {
+  return cloud.fb.doc(cloud.db, 'teams', signupTeamId(), 'events', id);
+}
+
+function signupRef(eventId, id) {
+  return cloud.fb.doc(cloud.db, 'teams', signupTeamId(), 'events', eventId, 'signups', id);
+}
+
+function localDateKey(t = Date.now()) {
+  const d = new Date(t);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+function eventDateText(ev) {
+  const [y, m, d] = String(ev.date || '').split('-').map(Number);
+  if (!y || !m || !d) return '日期未定';
+  return `${m}/${d}（${'日一二三四五六'[new Date(y, m - 1, d).getDay()]}）`;
+}
+
+function eventTitle(ev) {
+  const time = ev.start ? `${ev.start}${ev.end ? `–${ev.end}` : ''}` : '';
+  return [eventDateText(ev), time].filter(Boolean).join(' ');
+}
+
+function eventCap(ev) {
+  return Math.max(1, Number(ev.cap) || (Number(ev.courts) || 1) * SIGNUP_PER_COURT);
+}
+
+function eventUpcoming(ev) {
+  return String(ev.date || '') >= localDateKey();
+}
+
+// 伺服器時間：正式版是 Timestamp，測試版是數字；還沒寫進伺服器的（null）排最後
+function stampMs(v) {
+  if (v === null || v === undefined) return Number.MAX_SAFE_INTEGER;
+  if (typeof v === 'number') return v;
+  if (typeof v.toMillis === 'function') return v.toMillis();
+  if (typeof v.seconds === 'number') return v.seconds * 1000;
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function signupRanked(ev) {
+  const list = (signup.lists[ev.id] || []).slice()
+    .sort((a, b) => (stampMs(a.at) - stampMs(b.at)) || (a.id < b.id ? -1 : 1));
+  const cap = eventCap(ev);
+  return { list, cap, main: list.slice(0, cap), wait: list.slice(cap) };
+}
+
+function myPlace(ev, ranked = signupRanked(ev)) {
+  if (!cloud.viewer || !cloud.user) return null;
+  const index = ranked.list.findIndex((s) => s.id === cloud.user.uid);
+  if (index < 0) return null;
+  const main = index < ranked.cap;
+  return {
+    main,
+    no: main ? index + 1 : index - ranked.cap + 1,
+    text: main ? `正取第 ${index + 1} 位` : `候補第 ${index - ranked.cap + 1} 位`,
+    entry: ranked.list[index],
+  };
+}
+
+function upcomingEvents() {
+  return signup.events.filter(eventUpcoming)
+    .sort((a, b) => `${a.date} ${a.start || ''}`.localeCompare(`${b.date} ${b.start || ''}`));
+}
+
+function openSignupCount() {
+  return upcomingEvents().filter((ev) => ev.status === 'open').length;
+}
+
+/* ---------- 即時資料 ---------- */
+function watchEvents() {
+  if (signup.unsub || !cloud.fb || !signupTeamId()) return;
+  const { collection, onSnapshot } = cloud.fb;
+  signup.unsub = onSnapshot(collection(cloud.db, 'teams', signupTeamId(), 'events'), (snap) => {
+    signup.events = snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+    signup.ready = true;
+    syncSignupLists();
+    refreshSignupUi();
+  }, (err) => console.warn('讀取報名場次失敗:', err));
+}
+
+function stopWatchEvents() {
+  if (signup.unsub) signup.unsub();
+  Object.values(signup.listUnsubs).forEach((unsub) => unsub());
+  Object.assign(signup, { unsub: null, listUnsubs: {}, lists: {}, events: [], ready: false });
+}
+
+// 只即時追蹤還沒過的場次＋正在看的那一場，舊場次不佔連線
+function syncSignupLists() {
+  if (!signup.unsub) return;
+  const want = new Set(upcomingEvents().map((ev) => ev.id));
+  if (ui.signupId) want.add(ui.signupId);
+  Object.keys(signup.listUnsubs).forEach((id) => {
+    if (want.has(id)) return;
+    signup.listUnsubs[id]();
+    delete signup.listUnsubs[id];
+    delete signup.lists[id];
+  });
+  const { collection, onSnapshot } = cloud.fb;
+  want.forEach((id) => {
+    if (signup.listUnsubs[id]) return;
+    signup.listUnsubs[id] = onSnapshot(collection(cloud.db, 'teams', signupTeamId(), 'events', id, 'signups'), (snap) => {
+      signup.lists[id] = snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+      refreshSignupUi();
+    }, (err) => console.warn('讀取報名名單失敗:', err));
+  });
+}
+
+function isTyping() {
+  const el = document.activeElement;
+  return Boolean(el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName));
+}
+
+// 正在打字時先不重畫（會打斷輸入），離開輸入框再補畫
+function refreshSignupUi() {
+  if (isTyping() || drag.active) {
+    signup.dirty = true;
+    return;
+  }
+  signup.dirty = false;
+  render();
+}
+
+document.addEventListener('focusout', () => {
+  if (signup.dirty) setTimeout(() => { if (signup.dirty && !isTyping()) refreshSignupUi(); }, 0);
+});
+
+/* ---------- 開啟／關閉 ---------- */
+function openSignupList() {
+  ui.signupOpen = true;
+  watchEvents();
+}
+
+function openSignupEvent(id) {
+  ui.signupOpen = true;
+  ui.signupId = id;
+  ui.signupName = null;
+  ui.signupArmed = null;
+  watchEvents();
+  syncSignupLists();
+}
+
+function closeSignupEvent() {
+  ui.signupId = null;
+  ui.signupArmed = null;
+  syncSignupLists();
+}
+
+/* ---------- 管理者：開場次 ---------- */
+function newEventForm(ev) {
+  if (ev) {
+    ui.signupForm = {
+      editId: ev.id, date: ev.date || localDateKey(), start: ev.start || '', end: ev.end || '',
+      venue: ev.venue || '', note: ev.note || '', courts: Number(ev.courts) || 1,
+    };
+    return;
+  }
+  // 沿用上一次的時間、地點、場地數，通常每次都一樣
+  const last = signup.events.slice().sort((a, b) => stampMs(b.createdAt) - stampMs(a.createdAt))[0] || {};
+  ui.signupForm = {
+    editId: null, date: localDateKey(), start: last.start || '19:00', end: last.end || '22:00',
+    venue: last.venue || '', note: '', courts: Number(last.courts) || 2,
+  };
+}
+
+async function saveEventForm() {
+  const f = ui.signupForm;
+  if (!f || signup.busy) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(f.date || '')) { showToast('請選擇日期'); return; }
+  const { setDoc, updateDoc, serverTimestamp } = cloud.fb;
+  const courts = Math.max(1, Math.min(MAX_COURTS, Number(f.courts) || 1));
+  const data = {
+    date: f.date,
+    start: f.start || '',
+    end: f.end || '',
+    venue: String(f.venue || '').trim().slice(0, 40),
+    note: String(f.note || '').trim().slice(0, 200),
+    courts,
+    cap: courts * SIGNUP_PER_COURT,
+    updatedAt: serverTimestamp(),
+  };
+  signup.busy = true;
+  try {
+    if (f.editId) {
+      await updateDoc(eventRef(f.editId), data);
+      ui.signupId = f.editId;
+      showToast('已更新場次');
+    } else {
+      const id = `${f.date.replace(/-/g, '')}-${randomId(6)}`;
+      await setDoc(eventRef(id), Object.assign(data, { status: 'open', createdAt: serverTimestamp() }));
+      ui.signupId = id;
+      showToast('已開放報名，按「分享報名連結」貼到 LINE 群組');
+    }
+    ui.signupForm = null;
+    syncSignupLists();
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+  signup.busy = false;
+  render();
+}
+
+async function setEventStatus(ev, status) {
+  try {
+    await cloud.fb.updateDoc(eventRef(ev.id), { status, updatedAt: cloud.fb.serverTimestamp() });
+    showToast(status === 'open' ? '已重新開放報名' : '已截止報名，已報名的人仍可取消');
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+}
+
+// 先刪場次本身（雲端程式看到場次不在了就不會發遞補通知），再清掉名單
+async function deleteEvent(ev) {
+  const { deleteDoc } = cloud.fb;
+  try {
+    const list = signup.lists[ev.id] || [];
+    await deleteDoc(eventRef(ev.id));
+    await Promise.all(list.map((s) => deleteDoc(signupRef(ev.id, s.id)).catch(() => {})));
+    ui.signupId = null;
+    showToast('已刪除場次');
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+  render();
+}
+
+async function adminAddSignup(ev) {
+  const name = String(ui.signupAdd || '').trim().slice(0, SIGNUP_NAME_MAX);
+  if (!name) { showToast('請輸入名字'); return; }
+  if ((signup.lists[ev.id] || []).some((s) => s.name === name)) { showToast(`${name} 已經在名單上`); return; }
+  try {
+    await cloud.fb.setDoc(signupRef(ev.id, `m${randomId(10)}`), { name, at: cloud.fb.serverTimestamp(), by: 'admin' });
+    ui.signupAdd = '';
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+  render();
+}
+
+function eventLink(ev) {
+  return `${viewerLink()}&event=${encodeURIComponent(ev.id)}`;
+}
+
+function shareEvent(ev) {
+  const text = [
+    `🏸 羽球報名｜${eventTitle(ev)}`,
+    `📍 ${ev.venue || '地點未定'}（${ev.courts} 面場，上限 ${eventCap(ev)} 人，額滿排候補）`,
+    ev.note || '',
+    `報名：${eventLink(ev)}`,
+  ].filter(Boolean).join('\n');
+  const fallback = () => { ui.copyText = text; render(); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(() => showToast('已複製報名訊息，貼到 LINE 群組就可以'), fallback);
+  } else {
+    fallback();
+  }
+}
+
+// 把正取名單帶進排場：還沒開始就預先勾好，已經在打就直接加進今天名單
+function applySignupToSession(ev) {
+  const names = signupRanked(ev).main.map((s) => s.name);
+  if (!names.length) { showToast('這個場次還沒有人報名'); return false; }
+  ui.signupOpen = false;
+  closeSignupEvent();
+  if (state.players.length) {
+    const added = addPlayers(names);
+    showToast(added ? `已把 ${added} 位正取加入今天名單` : '正取的人都已經在名單上');
+    return added > 0;
+  }
+  const known = new Set(regulars);
+  ui.setupSelected = new Set(names.filter((n) => known.has(n)));
+  const typed = parseNames(ui.setupText).filter((n) => !names.includes(n));
+  ui.setupText = typed.concat(names.filter((n) => !known.has(n))).join('\n');
+  ui.setupCourts = Math.max(1, Math.min(MAX_COURTS, Number(ev.courts) || ui.setupCourts));
+  showToast(`已帶入 ${names.length} 位正取，確認後按「開始排場」`);
+  return false;
+}
+
+/* ---------- 球友：報名／取消 ---------- */
+function defaultSignupName() {
+  if (cloud.claim && cloud.claim.name) return cloud.claim.name;
+  if (prefs.me) return prefs.me;
+  return String((cloud.user && cloud.user.displayName) || '').slice(0, SIGNUP_NAME_MAX);
+}
+
+async function submitSignup(ev) {
+  if (!cloud.user) { googleLogin(); return; }
+  if (ev.status !== 'open') { showToast('報名已截止'); return; }
+  const name = String(ui.signupName === null || ui.signupName === undefined ? defaultSignupName() : ui.signupName)
+    .trim().slice(0, SIGNUP_NAME_MAX);
+  if (!name) { showToast('請輸入名字'); return; }
+  if ((signup.lists[ev.id] || []).some((s) => s.name === name && s.id !== cloud.user.uid)) {
+    showToast('這個名字已經有人報名了，請加上姓氏或暱稱');
+    return;
+  }
+  signup.busy = true;
+  render();
+  try {
+    await cloud.fb.setDoc(signupRef(ev.id, cloud.user.uid), { name, at: cloud.fb.serverTimestamp() });
+    showToast('報名成功！');
+  } catch (err) {
+    showToast(err && err.code === 'permission-denied' ? '報名失敗：可能已經截止，或你已經報名過了' : cloudErrorText(err));
+  }
+  signup.busy = false;
+  render();
+}
+
+async function cancelSignup(ev, id) {
+  try {
+    await cloud.fb.deleteDoc(signupRef(ev.id, id));
+    showToast(cloud.viewer ? '已取消報名' : '已從名單移除');
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+  ui.signupArmed = null;
+  render();
+}
+
+/* ---------- 畫面 ---------- */
+function eventStatusTag(ev, ranked) {
+  if (ev.status !== 'open') return '<span class="ev-tag closed">已截止</span>';
+  if (ranked.main.length >= ranked.cap) return '<span class="ev-tag full">額滿・可候補</span>';
+  return '<span class="ev-tag open">報名中</span>';
+}
+
+function renderEventCard(ev) {
+  const ranked = signupRanked(ev);
+  const place = myPlace(ev, ranked);
+  return `<button class="ev-card" data-action="signup-event" data-id="${escapeHtml(ev.id)}">
+      <span class="ev-main"><b>${escapeHtml(eventTitle(ev))}</b><small>${escapeHtml(ev.venue || '地點未定')}</small>
+        ${place ? `<small class="ev-mine ${place.main ? 'ok' : ''}">你是${escapeHtml(place.text)}</small>` : ''}</span>
+      <span class="ev-side"><span class="ev-count num">${ranked.main.length}/${ranked.cap}</span>${eventStatusTag(ev, ranked)}
+        ${ranked.wait.length ? `<small class="num">候補 ${ranked.wait.length}</small>` : ''}</span>
+    </button>`;
+}
+
+// 等待開場畫面：直接列出可以報名的場次
+function renderEventCards() {
+  const list = upcomingEvents();
+  if (!list.length) return '';
+  return `<section class="ev-section"><h2 class="ev-h">報名場次</h2>${list.map(renderEventCard).join('')}</section>`;
+}
+
+function renderSignupListModal() {
+  const admin = !cloud.viewer;
+  const upcoming = upcomingEvents();
+  const past = admin
+    ? signup.events.filter((ev) => !eventUpcoming(ev)).sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, SIGNUP_PAST_SHOWN)
+    : [];
+  const body = !signup.ready
+    ? '<p class="sub">讀取中…</p>'
+    : upcoming.length
+      ? upcoming.map(renderEventCard).join('')
+      : `<p class="sub ev-empty">${admin ? '還沒有場次。按上面的按鈕開一場，再把報名連結貼到 LINE 群組。' : '目前沒有開放報名的場次。'}</p>`;
+  return `
+    <h3>報名場次</h3>
+    ${admin ? '<button class="btn-primary btn-block" data-action="event-new">＋ 開新場次</button>' : ''}
+    <div class="ev-cards">${body}</div>
+    ${past.length ? `<h4 class="profile-h">已經過去的場次</h4><div class="ev-cards past">${past.map(renderEventCard).join('')}</div>` : ''}
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
+}
+
+function renderSignupMine(ev, ranked) {
+  if (!cloud.user) {
+    return `<div class="account-card">
+      <p>用 Google 登入後就能報名，取消也只要按一下。</p>
+      ${IN_APP_BROWSER ? '<p class="cloud-error">LINE 裡無法用 Google 登入：請按右上角「⋯」選「用瀏覽器開啟」。</p>' : ''}
+      <button class="btn-primary" data-action="google-login" ${cloud.busy ? 'disabled' : ''}>${cloud.busy ? '登入中…' : '用 Google 登入'}</button>
+    </div>`;
+  }
+  const place = myPlace(ev, ranked);
+  if (place) {
+    const armed = ui.signupArmed === place.entry.id;
+    return `<div class="account-card ev-me">
+      <p>你以 <b>${escapeHtml(place.entry.name)}</b> 報名・<span class="claim-badge ${place.main ? 'ok' : ''}">${escapeHtml(place.text)}</span></p>
+      ${place.main ? '' : '<p class="sub">前面有人取消就會自動遞補。</p>'}
+      <button class="${armed ? 'btn-danger' : 'btn-ghost'}" data-action="signup-cancel" data-id="${escapeHtml(place.entry.id)}">
+        ${armed ? '再按一次確認取消（名額會讓給下一位）' : '取消報名'}</button>
+    </div>`;
+  }
+  if (ev.status !== 'open') {
+    return '<div class="account-card"><p>這個場次已經截止報名。</p></div>';
+  }
+  const full = ranked.main.length >= ranked.cap;
+  const value = ui.signupName === null || ui.signupName === undefined ? defaultSignupName() : ui.signupName;
+  return `<div class="account-card">
+    <label class="label" for="signup-name">報名名字（大家看得到，請用球場上的稱呼）</label>
+    <input type="text" id="signup-name" maxlength="${SIGNUP_NAME_MAX}" value="${escapeHtml(value)}" placeholder="例如：小明">
+    <button class="btn-primary" data-action="signup-submit" ${signup.busy ? 'disabled' : ''}>
+      ${signup.busy ? '送出中…' : full ? '報名候補' : '報名'}</button>
+    ${full ? `<p class="sub">正取已滿，現在報名會排在候補第 ${ranked.wait.length + 1} 位。</p>` : ''}
+  </div>`;
+}
+
+function renderSignupAdminTools(ev) {
+  const armedDelete = ui.signupArmed === `delete:${ev.id}`;
+  return `
+    <div class="ev-tools">
+      <button class="btn-primary" data-action="event-share">分享報名連結</button>
+      <button class="btn-ghost" data-action="event-apply">帶入排場名單</button>
+      <button class="btn-ghost" data-action="event-edit">編輯</button>
+      <button class="btn-ghost" data-action="event-status" data-value="${ev.status === 'open' ? 'closed' : 'open'}">
+        ${ev.status === 'open' ? '截止報名' : '重新開放'}</button>
+      <button class="${armedDelete ? 'btn-danger' : 'btn-ghost'}" data-action="event-delete">${armedDelete ? '再按一次確認刪除' : '刪除場次'}</button>
+    </div>
+    <div class="me-pick ev-add">
+      <input type="text" id="signup-add" maxlength="${SIGNUP_NAME_MAX}" placeholder="幫人報名：輸入名字" value="${escapeHtml(ui.signupAdd || '')}">
+      <button class="btn-ghost" data-action="signup-admin-add">加入</button>
+    </div>`;
+}
+
+function renderSignupRows(rows, start, ev) {
+  const mine = cloud.viewer && cloud.user ? cloud.user.uid : null;
+  return rows.map((s, i) => {
+    const armed = ui.signupArmed === s.id;
+    const remove = cloud.viewer ? ''
+      : `<button class="${armed ? 'btn-danger' : 'btn-ghost'} ev-remove" data-action="signup-cancel" data-id="${escapeHtml(s.id)}">${armed ? '確認移除' : '移除'}</button>`;
+    return `<li class="${s.id === mine ? 'mine' : ''}"><span class="num ev-no">${start + i}</span>
+      <span class="ev-name">${escapeHtml(s.name || '')}${s.by === 'admin' && !cloud.viewer ? '<small>代報</small>' : ''}</span>${remove}</li>`;
+  }).join('');
+}
+
+function renderSignupEventModal() {
+  const ev = signup.events.find((e) => e.id === ui.signupId);
+  if (!ev) {
+    return `
+      <button class="btn-ghost past-back" data-action="signup-back">← 所有場次</button>
+      <p class="sub">${signup.ready ? '找不到這個場次，可能已經被刪除。' : '讀取中…'}</p>
+      <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
+  }
+  const ranked = signupRanked(ev);
+  return `
+    <button class="btn-ghost past-back" data-action="signup-back">← 所有場次</button>
+    <h3>${escapeHtml(eventTitle(ev))}</h3>
+    <p class="sub">${escapeHtml(ev.venue || '地點未定')}・${ev.courts} 面場・上限 ${ranked.cap} 人 ${eventStatusTag(ev, ranked)}</p>
+    ${ev.note ? `<p class="ev-note">${escapeHtml(ev.note)}</p>` : ''}
+    ${cloud.viewer ? renderSignupMine(ev, ranked) : renderSignupAdminTools(ev)}
+    <h4 class="profile-h">正取 <span class="num">${ranked.main.length}/${ranked.cap}</span></h4>
+    ${ranked.main.length ? `<ol class="ev-list">${renderSignupRows(ranked.main, 1, ev)}</ol>` : '<p class="sub">還沒有人報名。</p>'}
+    ${ranked.wait.length ? `<h4 class="profile-h">候補 <span class="num">${ranked.wait.length}</span></h4>
+      <ol class="ev-list wait">${renderSignupRows(ranked.wait, 1, ev)}</ol>` : ''}
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
+}
+
+function renderEventFormModal() {
+  const f = ui.signupForm;
+  return `
+    <h3>${f.editId ? '編輯場次' : '開新場次'}</h3>
+    <div class="ev-form">
+      <label class="label" for="ev-date">日期</label>
+      <input type="date" id="ev-date" value="${escapeHtml(f.date)}">
+      <div class="ev-times">
+        <label><span class="label">開始</span><input type="time" id="ev-start" value="${escapeHtml(f.start)}"></label>
+        <label><span class="label">結束</span><input type="time" id="ev-end" value="${escapeHtml(f.end)}"></label>
+      </div>
+      <label class="label" for="ev-venue">地點</label>
+      <input type="text" id="ev-venue" maxlength="40" placeholder="例如：XX 國小體育館" value="${escapeHtml(f.venue)}">
+      <div class="row">
+        <span class="label">場地數</span>
+        <div class="stepper">
+          <button data-action="ev-courts" data-value="-1" aria-label="減少場地">−</button>
+          <span class="num">${f.courts}</span>
+          <button data-action="ev-courts" data-value="1" aria-label="增加場地">＋</button>
+        </div>
+      </div>
+      <p class="sub">名額上限 <b class="num">${f.courts * SIGNUP_PER_COURT}</b> 人（每面場 ${SIGNUP_PER_COURT} 人），額滿後報名的人排候補。</p>
+      <label class="label" for="ev-note">備註（選填）</label>
+      <textarea id="ev-note" maxlength="200" placeholder="例如：場地費 150 元，請自備球">${escapeHtml(f.note)}</textarea>
+    </div>
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="event-save" ${signup.busy ? 'disabled' : ''}>
+      ${f.editId ? '儲存' : '建立並開放報名'}</button>
+    <button class="btn-ghost btn-block" data-action="event-form-cancel">取消</button>`;
+}
+
+// 管理者選人畫面：今天有報名場次就提示帶入
+function renderTodaySignupPanel() {
+  if (cloud.viewer || !cloudReady()) return '';
+  const today = upcomingEvents().filter((ev) => ev.date === localDateKey());
+  if (!today.length) return '';
+  return today.map((ev) => {
+    const ranked = signupRanked(ev);
+    return `<div class="panel ev-today">
+      <span><b>今天的報名</b><small>${escapeHtml(eventTitle(ev))}・正取 ${ranked.main.length} 人${ranked.wait.length ? `・候補 ${ranked.wait.length}` : ''}</small></span>
+      <button class="btn-primary" data-action="event-apply" data-id="${escapeHtml(ev.id)}">帶入名單</button>
+    </div>`;
+  }).join('');
+}
+
 /* ===================== 上場通知 ===================== */
 /**
  * 兩層提醒：
@@ -2322,6 +2893,7 @@ function renderTurnAlert() {
  * 點設定項目會開出只有那一區的設定視窗，不用在長長的設定頁裡找。
  */
 const ICONS = {
+  calendar: '<path d="M4 6h16v14H4zM4 10h16M8 3v5M16 3v5"/>',
   cloud: '<path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.1 9.2 4.5 4.5 0 0 0 7 18z"/>',
   qr: '<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2"/>',
   court: '<path d="M4 5h16v14H4zM12 5v14M4 9h16M4 15h16"/>',
@@ -2393,6 +2965,7 @@ function renderDrawer() {
         item('voice', 'speaker', '語音唸名'),
         item('look', 'palette', '畫面'),
       ],
+      cloudReady() ? [item('signup', 'calendar', '報名場次', badge(openSignupCount()))] : [],
       [item('ranks', 'trophy', '長期排行榜・戰績'), item('past', 'box', '歷史球局')],
       [
         state.players.length ? item('end-day', 'flag', '結束今日打球') : '',
@@ -2403,6 +2976,7 @@ function renderDrawer() {
     ]
     : [
       [
+        item('signup', 'calendar', '報名場次', badge(openSignupCount())),
         item('account', 'user', cloud.user ? '我的帳號・上場通知' : '登入 / 認領球員'),
         item('ranks', 'trophy', '長期排行榜・我的戰績'),
         item('past', 'box', '歷史球局'),
@@ -2421,7 +2995,7 @@ function renderDrawer() {
         <b>${escapeHtml(acc.title)}</b>
         ${acc.lines.map((l) => `<small>${escapeHtml(l)}</small>`).join('')}
       </div>
-      ${groups.map((g) => `<div class="d-group">${g.join('')}</div>`).join('')}
+      ${groups.filter((g) => g.join('').trim()).map((g) => `<div class="d-group">${g.join('')}</div>`).join('')}
       <p class="d-version num">羽球輪轉排場 v${APP_VERSION}</p>
     </nav>`;
 }
@@ -2475,6 +3049,8 @@ function drawerGo(target) {
       window.scrollTo(0, 0);
     } else if (target === 'past') {
       openPastList();
+    } else if (target === 'signup') {
+      openSignupList();
     } else if (target === 'ranks') {
       ui.ranksOpen = true;
     } else if (target === 'leave') {
@@ -3783,6 +4359,7 @@ function renderSetup() {
       </div>
     </header>
     ${renderStorageBanner()}
+    ${renderTodaySignupPanel()}
     <div class="panel">
       ${renderRegularPicker()}
       <label for="names" class="label">其他球員（換行或逗號分隔）</label>
@@ -5481,6 +6058,9 @@ function renderModal() {
   else if (ui.report) content = renderReportModal();
   else if (ui.profileName) content = renderPlayerModal();
   else if (ui.invite) content = renderInviteModal();
+  else if (ui.signupForm) content = renderEventFormModal();
+  else if (ui.signupId) content = renderSignupEventModal();
+  else if (ui.signupOpen) content = renderSignupListModal();
   else if (ui.pastId) content = renderPastSessionModal();
   else if (ui.pastList) content = renderPastListModal();
   else if (ui.rankProfile) content = renderPlayerModal();
@@ -6795,6 +7375,14 @@ function handleAction(el) {
       return;
     case 'modal-close':
       if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
+      if (ui.copyText && ui.signupOpen) { ui.copyText = null; sessionChanged = false; break; }   // 報名訊息的手動複製視窗
+      if (ui.signupForm) { ui.signupForm = null; sessionChanged = false; break; }
+      if (ui.signupOpen) {
+        ui.signupOpen = false;
+        closeSignupEvent();
+        sessionChanged = false;
+        break;
+      }
       if (ui.invite) {   // 從設定頁打開的邀請：關閉後回到設定頁
         ui.invite = null;
         sessionChanged = false;
@@ -6833,6 +7421,79 @@ function handleAction(el) {
       if (el.dataset.target === 'backup') { closeDrawer(() => { ui.backup = { text: buildBackup() }; render(); }); return; }
       drawerGo(el.dataset.target);
       return;
+    case 'signup-event': openSignupEvent(el.dataset.id); sessionChanged = false; modalOnly = true; break;
+    case 'signup-back':
+      closeSignupEvent();
+      ui.signupOpen = true;
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    case 'signup-submit': {
+      const ev = signup.events.find((e) => e.id === ui.signupId);
+      if (ev) submitSignup(ev);
+      return;
+    }
+    case 'signup-cancel': {
+      const ev = signup.events.find((e) => e.id === ui.signupId);
+      if (!ev) return;
+      if (ui.signupArmed !== el.dataset.id) {
+        ui.signupArmed = el.dataset.id;
+        sessionChanged = false;
+        modalOnly = true;
+        break;
+      }
+      cancelSignup(ev, el.dataset.id);
+      return;
+    }
+    case 'event-new': newEventForm(null); sessionChanged = false; modalOnly = true; break;
+    case 'event-edit': {
+      const ev = signup.events.find((e) => e.id === ui.signupId);
+      if (ev) newEventForm(ev);
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    }
+    case 'event-form-cancel': ui.signupForm = null; sessionChanged = false; modalOnly = true; break;
+    case 'ev-courts':
+      ui.signupForm.courts = Math.max(1, Math.min(MAX_COURTS, ui.signupForm.courts + Number(el.dataset.value)));
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    case 'event-save': saveEventForm(); return;
+    case 'event-status': {
+      const ev = signup.events.find((e) => e.id === ui.signupId);
+      if (ev) setEventStatus(ev, el.dataset.value);
+      return;
+    }
+    case 'event-delete': {
+      const ev = signup.events.find((e) => e.id === ui.signupId);
+      if (!ev) return;
+      if (ui.signupArmed !== `delete:${ev.id}`) {
+        ui.signupArmed = `delete:${ev.id}`;
+        sessionChanged = false;
+        modalOnly = true;
+        break;
+      }
+      ui.signupArmed = null;
+      deleteEvent(ev);
+      return;
+    }
+    case 'event-share': {
+      const ev = signup.events.find((e) => e.id === ui.signupId);
+      if (ev) shareEvent(ev);
+      return;
+    }
+    case 'signup-admin-add': {
+      const ev = signup.events.find((e) => e.id === ui.signupId);
+      if (ev) adminAddSignup(ev);
+      return;
+    }
+    case 'event-apply': {
+      const ev = signup.events.find((e) => e.id === (el.dataset.id || ui.signupId));
+      if (!ev) return;
+      sessionChanged = applySignupToSession(ev);
+      break;
+    }
     case 'google-login': googleLogin(); return;
     case 'google-logout': viewerLogout(); return;
     case 'claim-submit':
@@ -6934,6 +7595,9 @@ document.addEventListener('input', (event) => {
   else if (id === 'cloud-email') ui.cloudEmail = value;
   else if (id === 'cloud-pass') ui.cloudPass = value;
   else if (id === 'cloud-team-name') ui.cloudTeamName = value;
+  else if (id === 'signup-name') ui.signupName = value;
+  else if (id === 'signup-add') ui.signupAdd = value;
+  else if (/^ev-(date|start|end|venue|note)$/.test(id) && ui.signupForm) ui.signupForm[id.slice(3)] = value;
   if (id === 'names') {
     ui.setupText = value;
     const total = new Set([...ui.setupSelected, ...parseNames(value)]).size;
