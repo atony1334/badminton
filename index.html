@@ -257,6 +257,8 @@
   .home-go { font-size: 24px; color: var(--muted); }
   .home-local { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
   .home-foot { margin-top: 16px; text-align: center; }
+  .setup-teams { margin-top: 20px; }
+  .setup-teams .home-sec { margin-top: 0; }
   .reg-add { margin-bottom: 16px; }
   .guest-list li { min-height: 48px; }
   .guest-list .ev-name small { display: block; margin: 2px 0 0; font-size: 12px; }
@@ -991,7 +993,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.12';
+const APP_VERSION = '6.13';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -5179,7 +5181,8 @@ function renderSetup() {
         開始排場（<span id="setup-total" class="num">${total}</span> 人）
       </button>
     </div>
-    ${!isAdminDevice() ? '<div class="home-foot"><button class="btn-ghost" data-action="home-back">← 回首頁（球團、輸入代碼）</button></div>' : ''}
+    ${isAdminDevice() ? `<div class="setup-teams">${renderJoinedTeams()}${renderJoinPanel()}</div>`
+      : '<div class="home-foot"><button class="btn-ghost" data-action="home-back">← 回首頁（球團、輸入代碼）</button></div>'}
     <div style="margin-top:20px;text-align:center">
       <button class="btn-ghost" data-action="backup-open">備份與還原</button>
     </div>
@@ -5218,8 +5221,10 @@ function showHome() {
   return !cloud.viewer && !state.players.length && !ui.homeLocal && !isAdminDevice();
 }
 
-function renderHome() {
+// 我加入的球團（首頁、選人畫面共用）
+function renderJoinedTeams() {
   const teams = readJoinedTeams();
+  if (!teams.length) return '';
   const dateText = (t) => {
     if (!t.at) return '';
     const d = new Date(t.at);
@@ -5233,15 +5238,12 @@ function renderHome() {
       <button class="${armed ? 'btn-danger' : 'icon-btn'}" data-action="home-forget" data-id="${escapeHtml(t.id)}" aria-label="從清單移除">${armed ? '移除' : '✕'}</button>
     </li>`;
   }).join('');
+  return `<section class="home-sec"><h2 class="ev-h">我加入的球團</h2><ul class="home-teams">${list}</ul></section>`;
+}
+
+function renderJoinPanel() {
+  if (!cloudConfigured()) return '';
   return `
-    <header class="top">
-      <div class="top-title">
-        <h1>羽球輪轉排場</h1>
-        <p class="sub">選一個開始</p>
-      </div>
-    </header>
-    ${teams.length ? `<section class="home-sec"><h2 class="ev-h">我加入的球團</h2><ul class="home-teams">${list}</ul></section>` : ''}
-    ${cloudConfigured() ? `
     <div class="panel join-panel">
       <b>我是球友，加入球團</b>
       <p class="sub" style="margin:0">貼上管理者給的連結，或輸入球團代碼。</p>
@@ -5250,7 +5252,19 @@ function renderHome() {
           placeholder="球團代碼或連結" value="${escapeHtml(ui.joinCode || '')}" style="flex:1">
         <button class="btn-primary" data-action="join-team">加入</button>
       </div>
-    </div>` : ''}
+    </div>`;
+}
+
+function renderHome() {
+  return `
+    <header class="top">
+      <div class="top-title">
+        <h1>羽球輪轉排場</h1>
+        <p class="sub">選一個開始</p>
+      </div>
+    </header>
+    ${renderJoinedTeams()}
+    ${renderJoinPanel()}
     <div class="panel home-local">
       <b>臨時開場</b>
       <p class="sub" style="margin:0">自己排場，不用登入；資料只存在這支手機。</p>
