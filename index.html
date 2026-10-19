@@ -233,8 +233,49 @@
   .ev-times input { font-size: 18px; min-height: 48px; }
   :root[data-appearance="dark"] .mg-mark.open { background: rgba(80, 200, 120, .18); color: #7FD9A0; }
   :root[data-appearance="dark"] .mg-mark.full { background: rgba(255, 200, 80, .15); color: #F2C46B; }
+
+  /* 場次頁 */
+  .btn-outline { background: transparent; border: 1.5px solid var(--border); color: var(--ink); font-weight: 600;
+    display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 12px; text-decoration: none; }
+  .btn-outline svg { width: 18px; height: 18px; }
+  .btn-outline.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
+  .danger-text { color: var(--danger) !important; }
+  .icon-btn { background: transparent; padding: 4px 8px; color: var(--muted); }
+  .link-btn { background: transparent; padding: 4px 8px; color: var(--muted); font-size: 14px; text-decoration: none; }
+  a.link-btn.strong { color: var(--court-dark); font-weight: 700; }
+  .btn-one { display: grid; }
+  .btn-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .ev-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
+  .ev-title h3 { margin: 0; }
+  .ev-info { list-style: none; margin: 0 0 12px; padding: 4px 12px; background: var(--floor); border-radius: var(--radius-l); }
+  .ev-info li { display: flex; align-items: center; gap: 10px; padding: 9px 0; min-height: 40px; }
+  .ev-info li + li { border-top: 1px solid var(--border); }
+  .ev-info li > svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--muted); }
+  .ev-info-main { flex: 1; min-width: 0; font-size: 15px; }
+  .ev-note-text { white-space: pre-wrap; }
+  .ev-info-act { display: flex; gap: 2px; flex-shrink: 0; }
+  .ev-info li.ev-info-map { padding: 0 0 10px; border-top: 0; }
+  .ev-map-frame { width: 100%; height: 180px; border: 0; border-radius: 10px; }
+  .ev-box { display: flex; flex-direction: column; gap: 10px; padding: 14px; border: 1px solid var(--border); border-radius: var(--radius-l); margin-bottom: 16px; }
+  .ev-box input { margin: 0; }
+  .ev-box .label { margin-bottom: -4px; }
+  .ev-box-text { margin: 0; }
+  .ev-me.ok { border-color: color-mix(in srgb, #1F7A45 40%, transparent); background: color-mix(in srgb, #DDF3E4 45%, transparent); }
+  .ev-me.wait { border-color: color-mix(in srgb, #8A5A00 35%, transparent); background: color-mix(in srgb, #FFF1D6 50%, transparent); }
+  .ev-me-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .ev-me-head > span:first-child { display: flex; flex-direction: column; }
+  .ev-me-head small { color: var(--muted); font-size: 12px; }
+  .ev-me-head b { font-size: 18px; }
+  .ev-me-place { font-weight: 700; font-size: 15px; padding: 4px 12px; border-radius: 999px; background: var(--court-dark); color: var(--line); white-space: nowrap; }
+  .ev-me.wait .ev-me-place { background: #8A5A00; color: #fff; }
+  .ev-list-head { display: flex; align-items: center; gap: 10px; margin: 6px 0 8px; }
+  .ev-list-head h4 { margin: 0; font-size: 15px; white-space: nowrap; }
+  .ev-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--floor); overflow: hidden; }
+  .ev-bar span { display: block; height: 100%; background: var(--court-dark); border-radius: 3px; }
+  .cal-head { display: flex; justify-content: space-between; align-items: center; }
   .rename-box { margin-top: 12px; }
-  .cal-panel { margin: 8px 0; padding: 12px; border-radius: 12px; background: var(--floor); }
+  .cal-panel { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 12px; border-radius: 12px; background: var(--floor); }
   .cal-panel.fresh { background: var(--soft-yellow); }
   .cal-panel p { margin: 0 0 8px; }
   .cal-btns { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -934,7 +975,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.4';
+const APP_VERSION = '6.6';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2574,17 +2615,10 @@ function knownVenues() {
 }
 
 function renderEventMap(ev) {
-  const open = mapOpenUrl(ev);
-  if (!open) return '';
-  const embed = mapEmbedUrl(ev);
   // 地圖預覽預設收起：名單即時更新會重畫視窗，iframe 每次都會重新載入
-  return `<div class="ev-map">
-      <div class="ev-map-btns">
-        <a class="btn-primary ev-nav" href="${escapeHtml(open)}" target="_blank" rel="noopener">📍 Google 地圖・導航</a>
-        ${embed ? `<button class="btn-ghost" data-action="map-toggle">${ui.mapOpen ? '收起地圖' : '🗺 看地圖'}</button>` : ''}
-      </div>
-      ${embed && ui.mapOpen ? `<iframe src="${escapeHtml(embed)}" title="${escapeHtml(ev.venue || '地點')}的地圖" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>` : ''}
-    </div>`;
+  const embed = mapEmbedUrl(ev);
+  if (!embed || !ui.mapOpen) return '';
+  return `<iframe class="ev-map-frame" src="${escapeHtml(embed)}" title="${escapeHtml(ev.venue || '地點')}的地圖" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>`;
 }
 
 function eventLink(ev) {
@@ -2783,19 +2817,19 @@ function renderCalPanel(ev, fresh) {
   // iPhone 不要 download 屬性：Safari 直接打開 .ics 才會出現「加入行事曆」
   const download = isIOS() ? '' : ` download="badminton-${escapeHtml(ev.date)}.ics"`;
   return `<div class="cal-panel ${fresh ? 'fresh' : ''}">
-      <p>${fresh ? '<b>報名成功！</b>要加入行事曆嗎？' : '加入哪一個行事曆？'}</p>
-      <div class="cal-btns">
-        <a class="btn-primary cal-link" href="${escapeHtml(google)}" target="_blank" rel="noopener">Google 日曆</a>
-        <a class="btn-ghost cal-link" href="${escapeHtml(icsHref(ev))}"${download}>iPhone／其他行事曆</a>
-        <button class="btn-ghost" data-action="cal-close">${fresh ? '不用了' : '收起'}</button>
+      <div class="cal-head">
+        <span>${fresh ? '<b>報名成功！</b>要加入行事曆嗎？' : '<b>加入行事曆</b>'}</span>
+        <button class="icon-btn" data-action="cal-close" aria-label="收起">✕</button>
       </div>
-      <p class="sub cal-tip">之後也可以在這裡按「📅 加入行事曆」。</p>
+      <div class="btn-pair">
+        <a class="btn-outline cal-link" href="${escapeHtml(google)}" target="_blank" rel="noopener">Google 日曆</a>
+        <a class="btn-outline cal-link" href="${escapeHtml(icsHref(ev))}"${download}>iPhone／其他</a>
+      </div>
     </div>`;
 }
 
 function renderCalButton(ev) {
-  if (ui.calFor === ev.id) return renderCalPanel(ev, ui.calFresh);
-  return `<button class="btn-ghost cal-open" data-action="cal-open">📅 加入行事曆</button>`;
+  return `<button class="btn-outline" data-action="cal-open" aria-expanded="${ui.calFor === ev.id}">${icon('calendar')}加入行事曆</button>`;
 }
 
 /* ---------- 月曆 ---------- */
@@ -2950,53 +2984,61 @@ function renderSignupListModal() {
 
 function renderSignupMine(ev, ranked) {
   if (!cloud.user) {
-    return `<div class="account-card">
-      <p>用 Google 登入後就能報名，取消也只要按一下。</p>
+    return `<div class="ev-box">
+      <p class="ev-box-text">用 Google 登入後就能報名，取消也只要按一下。</p>
       ${IN_APP_BROWSER ? '<p class="cloud-error">LINE 裡無法用 Google 登入：請按右上角「⋯」選「用瀏覽器開啟」。</p>' : ''}
-      <button class="btn-primary" data-action="google-login" ${cloud.busy ? 'disabled' : ''}>${cloud.busy ? '登入中…' : '用 Google 登入'}</button>
+      <button class="btn-primary btn-block" data-action="google-login" ${cloud.busy ? 'disabled' : ''}>${cloud.busy ? '登入中…' : '用 Google 登入報名'}</button>
     </div>`;
   }
   const place = myPlace(ev, ranked);
   if (place) {
     const armed = ui.signupArmed === place.entry.id;
-    return `<div class="account-card ev-me">
-      <p>你以 <b>${escapeHtml(place.entry.name)}</b> 報名・<span class="claim-badge ${place.main ? 'ok' : ''}">${escapeHtml(place.text)}</span></p>
-      ${place.main ? '' : '<p class="sub">前面有人取消就會自動遞補。</p>'}
-      ${renderCalButton(ev)}
-      <button class="${armed ? 'btn-danger' : 'btn-ghost'}" data-action="signup-cancel" data-id="${escapeHtml(place.entry.id)}">
-        ${armed ? '再按一次確認取消（名額會讓給下一位）' : '取消報名'}</button>
+    return `<div class="ev-box ev-me ${place.main ? 'ok' : 'wait'}">
+      <div class="ev-me-head">
+        <span><small>你已報名</small><b>${escapeHtml(place.entry.name)}</b></span>
+        <span class="ev-me-place">${escapeHtml(place.text)}</span>
+      </div>
+      ${place.main ? '' : '<p class="ev-box-text sub">前面有人取消就會自動遞補，並通知你。</p>'}
+      ${ui.calFor === ev.id ? renderCalPanel(ev, ui.calFresh) : ''}
+      <div class="${ui.calFor === ev.id ? 'btn-one' : 'btn-pair'}">
+        ${ui.calFor === ev.id ? '' : renderCalButton(ev)}
+        <button class="${armed ? 'btn-danger' : 'btn-outline danger'}" data-action="signup-cancel" data-id="${escapeHtml(place.entry.id)}">
+          ${armed ? '確定取消？' : '取消報名'}</button>
+      </div>
+      ${armed ? '<p class="ev-box-text sub">再按一次就會取消，名額會讓給下一位。</p>' : ''}
     </div>`;
   }
   if (ev.status !== 'open') {
-    return '<div class="account-card"><p>這個場次已經截止報名。</p></div>';
+    return '<div class="ev-box"><p class="ev-box-text">這個場次已經截止報名。</p></div>';
   }
   const full = ranked.main.length >= ranked.cap;
   const value = ui.signupName === null || ui.signupName === undefined ? defaultSignupName() : ui.signupName;
-  return `<div class="account-card">
-    <label class="label" for="signup-name">報名名字（大家看得到，請用球場上的稱呼）</label>
+  return `<div class="ev-box">
+    <label class="label" for="signup-name">報名名字（請用球場上的稱呼）</label>
     <input type="text" id="signup-name" maxlength="${SIGNUP_NAME_MAX}" value="${escapeHtml(value)}" placeholder="例如：小明">
-    <button class="btn-primary" data-action="signup-submit" ${signup.busy ? 'disabled' : ''}>
-      ${signup.busy ? '送出中…' : full ? '報名候補' : '報名'}</button>
-    ${full ? `<p class="sub">正取已滿，現在報名會排在候補第 ${ranked.wait.length + 1} 位。</p>` : ''}
+    <button class="btn-primary btn-block" data-action="signup-submit" ${signup.busy ? 'disabled' : ''}>
+      ${signup.busy ? '送出中…' : full ? `報名候補（第 ${ranked.wait.length + 1} 位）` : '報名'}</button>
   </div>`;
 }
 
 function renderSignupAdminTools(ev) {
   const armedDelete = ui.signupArmed === `delete:${ev.id}`;
   return `
-    <div class="ev-tools">
-      <button class="btn-primary" data-action="event-share">分享報名連結</button>
-      <button class="btn-ghost" data-action="event-apply">帶入排場名單</button>
-      <button class="btn-ghost" data-action="event-edit">編輯</button>
-      <button class="btn-ghost" data-action="cal-open">📅 行事曆</button>
-      <button class="btn-ghost" data-action="event-status" data-value="${ev.status === 'open' ? 'closed' : 'open'}">
-        ${ev.status === 'open' ? '截止報名' : '重新開放'}</button>
-      <button class="${armedDelete ? 'btn-danger' : 'btn-ghost'}" data-action="event-delete">${armedDelete ? '再按一次確認刪除' : '刪除場次'}</button>
-    </div>
-    ${ui.calFor === ev.id ? renderCalPanel(ev, false) : ''}
-    <div class="me-pick ev-add">
-      <input type="text" id="signup-add" maxlength="${SIGNUP_NAME_MAX}" placeholder="幫人報名：輸入名字" value="${escapeHtml(ui.signupAdd || '')}">
-      <button class="btn-ghost" data-action="signup-admin-add">加入</button>
+    <div class="ev-box">
+      <button class="btn-primary btn-block" data-action="event-share">分享報名連結</button>
+      <div class="btn-grid">
+        <button class="btn-outline" data-action="event-apply">帶入排場名單</button>
+        <button class="btn-outline" data-action="event-edit">編輯場次</button>
+        <button class="btn-outline" data-action="cal-open">${icon('calendar')}行事曆</button>
+        <button class="btn-outline" data-action="event-status" data-value="${ev.status === 'open' ? 'closed' : 'open'}">
+          ${ev.status === 'open' ? '截止報名' : '重新開放'}</button>
+      </div>
+      ${ui.calFor === ev.id ? renderCalPanel(ev, false) : ''}
+      <div class="ev-add">
+        <input type="text" id="signup-add" maxlength="${SIGNUP_NAME_MAX}" placeholder="幫人報名：輸入名字" value="${escapeHtml(ui.signupAdd || '')}">
+        <button class="btn-outline" data-action="signup-admin-add">加入</button>
+      </div>
+      <button class="${armedDelete ? 'btn-danger' : 'btn-ghost danger-text'} btn-block" data-action="event-delete">${armedDelete ? '再按一次確認刪除場次' : '刪除場次'}</button>
     </div>`;
 }
 
@@ -3020,18 +3062,29 @@ function renderSignupEventModal() {
       <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
   }
   const ranked = signupRanked(ev);
+  const open = mapOpenUrl(ev);
+  const pct = Math.min(100, Math.round((ranked.main.length / ranked.cap) * 100));
   return `
     <button class="btn-ghost past-back" data-action="signup-back">← 所有場次</button>
-    <h3>${escapeHtml(eventTitle(ev))}</h3>
-    <p class="sub">${escapeHtml(ev.venue || '地點未定')}・${ev.courts} 面場・上限 ${ranked.cap} 人 ${eventStatusTag(ev, ranked)}</p>
-    ${ev.note ? `<p class="ev-note">${escapeHtml(ev.note)}</p>` : ''}
-    ${renderEventMap(ev)}
+    <div class="ev-title"><h3>${escapeHtml(eventTitle(ev))}</h3>${eventStatusTag(ev, ranked)}</div>
+    <ul class="ev-info">
+      <li>${icon('pin')}<span class="ev-info-main">${escapeHtml(ev.venue || '地點未定')}</span>
+        ${open ? `<span class="ev-info-act">
+          ${mapEmbedUrl(ev) ? `<button class="link-btn" data-action="map-toggle">${ui.mapOpen ? '收起' : '地圖'}</button>` : ''}
+          <a class="link-btn strong" href="${escapeHtml(open)}" target="_blank" rel="noopener">導航</a></span>` : ''}</li>
+      ${renderEventMap(ev) ? `<li class="ev-info-map">${renderEventMap(ev)}</li>` : ''}
+      <li>${icon('court')}<span class="ev-info-main">${ev.courts} 面場・上限 ${ranked.cap} 人</span></li>
+      ${ev.note ? `<li>${icon('note')}<span class="ev-info-main ev-note-text">${escapeHtml(ev.note)}</span></li>` : ''}
+    </ul>
     ${cloud.viewer ? renderSignupMine(ev, ranked) : renderSignupAdminTools(ev)}
-    <h4 class="profile-h">正取 <span class="num">${ranked.main.length}/${ranked.cap}</span></h4>
+    <div class="ev-list-head">
+      <h4>正取 <span class="num">${ranked.main.length}/${ranked.cap}</span></h4>
+      <span class="ev-bar" aria-hidden="true"><span style="width:${pct}%"></span></span>
+    </div>
     ${ranked.main.length ? `<ol class="ev-list">${renderSignupRows(ranked.main, 1, ev)}</ol>` : '<p class="sub">還沒有人報名。</p>'}
-    ${ranked.wait.length ? `<h4 class="profile-h">候補 <span class="num">${ranked.wait.length}</span></h4>
+    ${ranked.wait.length ? `<div class="ev-list-head"><h4>候補 <span class="num">${ranked.wait.length}</span></h4></div>
       <ol class="ev-list wait">${renderSignupRows(ranked.wait, 1, ev)}</ol>` : ''}
-    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
+    <button class="btn-primary btn-block" style="margin-top:16px" data-action="modal-close">關閉</button>`;
 }
 
 function renderEventFormModal() {
@@ -3442,6 +3495,9 @@ function renderTurnAlert() {
  * 點設定項目會開出只有那一區的設定視窗，不用在長長的設定頁裡找。
  */
 const ICONS = {
+  pin: '<path d="M12 21s-6-5.6-6-11a6 6 0 0 1 12 0c0 5.4-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/>',
+  note: '<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
   calendar: '<path d="M4 6h16v14H4zM4 10h16M8 3v5M16 3v5"/>',
   cloud: '<path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.1 9.2 4.5 4.5 0 0 0 7 18z"/>',
   qr: '<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2"/>',
@@ -3502,6 +3558,9 @@ function renderDrawer() {
   const badge = (n) => (n ? `<span class="d-badge">${n}</span>` : '');
   const admin = !cloud.viewer;
   const pending = admin ? pendingMembers().length : 0;
+  // 強制更新：重新下載最新版（畫面卡住、或管理者剛更新版本時用）
+  const updateItem = isEmbedded() ? ''
+    : `<button class="d-item" data-action="force-update">${icon('refresh')}<span>強制更新</span><span class="d-state">v${APP_VERSION}</span></button>`;
   const groups = admin
     ? [
       [
@@ -3521,7 +3580,7 @@ function renderDrawer() {
         item('data', 'box', '長期紀錄與資料'),
         item('backup', 'save', '備份與還原'),
       ],
-      [item('all', 'gear', '所有設定')],
+      [item('all', 'gear', '所有設定'), updateItem],
     ]
     : [
       [
@@ -3530,7 +3589,7 @@ function renderDrawer() {
         item('ranks', 'trophy', '長期排行榜・我的戰績'),
         item('past', 'box', '歷史球局'),
       ],
-      [item('look', 'palette', '畫面')],
+      [item('look', 'palette', '畫面'), updateItem],
       [item('leave', 'flag', '離開這個球團')],
     ];
   return `
