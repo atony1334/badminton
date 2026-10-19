@@ -162,6 +162,12 @@
     vertical-align: 1px; animation: live-pulse 1.6s ease-in-out infinite;
   }
   @keyframes live-pulse { 50% { opacity: 0.35; } }
+  .notify-off-chip { margin-left: 6px; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #FFF1D6; color: #8A5A00; font-weight: 600; }
+  .d-state { flex: 0 !important; font-size: 13px; font-weight: 700; color: var(--muted); }
+  .d-state.on { color: var(--accent, #2E9E5B); }
+  .wait-links { display: flex; gap: 10px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
+  .wait-links button { display: inline-flex; align-items: center; gap: 6px; }
+  .wait-links svg { width: 18px; height: 18px; }
   .viewer-wait {
     margin-top: 40px; text-align: center; color: var(--muted); font-size: 16px; line-height: 1.7;
     padding: 28px 16px; border: 2px dashed var(--floor); border-radius: var(--radius-l);
@@ -172,6 +178,15 @@
   .invite-code b { user-select: all; -webkit-user-select: all; }
   .invite-code .btn-ghost { padding: 2px 8px; font-size: 13px; }
   .rank-seg { margin: 4px 0 0; }
+  .past-list { list-style: none; margin: 0; padding: 0; border: 1px solid var(--floor); border-radius: var(--radius-l); overflow: hidden; }
+  .past-list li + li { border-top: 1px solid var(--floor); }
+  .past-row { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 12px 14px; background: transparent; border-radius: 0; color: var(--ink); text-align: left; }
+  .past-row span:first-child { display: flex; flex-direction: column; }
+  .past-row small { color: var(--muted); font-size: 12px; }
+  .past-count { font-weight: 700; }
+  .past-back { padding: 4px 6px; margin: -4px 0 4px -6px; font-size: 14px; }
+  .past-view h2 { font-size: 16px; margin: 20px 0 8px; }
+  .past-link { background: transparent; padding: 0; text-align: left; color: var(--ink); }
   .profile-seg { margin: 6px 0 10px; }
   .profile-seg button { min-width: 4.5em; }
   .profile-body { min-height: 60px; }
@@ -823,7 +838,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '5.10';
+const APP_VERSION = '5.12';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1306,7 +1321,7 @@ const VIEWER_ACTIONS = new Set([
   'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
   'title-open', 'player-open', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
-  'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view',
+  'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
 ]);
 
@@ -1314,6 +1329,7 @@ const cloud = {
   config: (TEST_CLOUD && TEST_CLOUD.config) || FIREBASE_CONFIG,
   sdkBase: (TEST_CLOUD && TEST_CLOUD.sdk) || FIREBASE_SDK,
   viewer: Boolean(VIEW_TEAM),
+  notifyEnabled: true,   // 管理者可關閉「輪到你上場」通知（測試時用）；存在 live/current.notifyEnabled
   phase: 'off',          // off | loading | signed-out | no-team | ready | error
   sync: 'idle',          // idle | pending | synced | offline | error
   viewerStatus: 'loading',   // loading | live | empty | missing | error
@@ -1458,6 +1474,7 @@ async function attachTeam(id, data) {
     const live = await cloud.fb.getDoc(liveRef(id));
     if (live.exists()) {
       const d = live.data();
+      cloud.notifyEnabled = d.notifyEnabled !== false;
       if (d.stateJson && (d.updatedAt || 0) > (state.updatedAt || 0)) {
         if (state.history.length) storageSet(SESSION_BEFORE_CLOUD_KEY, state);
         state = normalizeState(JSON.parse(d.stateJson));
@@ -1501,6 +1518,7 @@ async function uploadLive() {
       updatedAt: state.updatedAt || Date.now(),
       savedAt: serverTimestamp(),
       appVersion: APP_VERSION,
+      notifyEnabled: cloud.notifyEnabled,
     }));
   }
   if (regsJson !== cloud.lastRegs) {
@@ -1530,21 +1548,23 @@ async function uploadLive() {
 function archiveSession(reason) {
   if (!cloudReady() || !state.history.length) return;
   const { doc, setDoc, serverTimestamp } = cloud.fb;
-  const starts = state.history.map((h) => h.startedAt).filter(Boolean);
-  setDoc(doc(cloud.db, 'teams', cloud.teamId, 'sessions', state.sessionId), {
-    sessionId: state.sessionId,
+  // 先把這一天固定下來：上傳是非同步的，期間管理者可能已經按了「開新的一天」
+  const day = normalizeState(JSON.parse(JSON.stringify(state)));
+  const starts = day.history.map((h) => h.startedAt).filter(Boolean);
+  setDoc(doc(cloud.db, 'teams', cloud.teamId, 'sessions', day.sessionId), {
+    sessionId: day.sessionId,
     reason,
     startedAt: starts.length ? Math.min(...starts) : Date.now(),
     endedAt: Date.now(),
-    matchCount: state.history.length,
-    mode: state.mode,
-    players: state.players.map((p) => p.name),
-    stateJson: JSON.stringify(state),
+    matchCount: day.history.length,
+    mode: day.mode,
+    players: day.players.map((p) => p.name),
+    stateJson: JSON.stringify(day),
     appVersion: APP_VERSION,
     savedAt: serverTimestamp(),
-  }).then(() => writeSessionStats(state)).then(() => {
+  }).then(() => writeSessionStats(day)).then(() => {
     ranks.loadedAt = 0;
-    state.archived = true;
+    if (state.sessionId === day.sessionId) state.archived = true;
     saveSession();
     showToast('已存入長期紀錄');
     render();
@@ -1563,6 +1583,28 @@ const SYNC_LABEL = {
   offline: '離線中，恢復連線後自動補傳',
   error: '同步失敗',
 };
+
+// 開關「輪到你上場」通知：只改 live/current 的 notifyEnabled，排場內容不變，所以不會誤發通知
+async function setNotifyEnabled(on) {
+  cloud.notifyEnabled = on;
+  render();
+  showToast(on ? '已開啟上場通知' : '已關閉上場通知，測試時不會吵到球友');
+  if (!cloudReady()) return;
+  try {
+    await cloud.fb.setDoc(liveRef(), { notifyEnabled: on }, { merge: true });
+  } catch (err) {
+    console.warn('更新通知設定失敗:', err);
+    cloud.notifyEnabled = !on;
+    cloud.error = cloudErrorText(err);
+    showToast('通知設定沒有存到雲端，請稍後再試');
+    render();
+  }
+}
+
+function notifyOffChip() {
+  if (cloud.viewer || !cloudReady() || cloud.notifyEnabled) return '';
+  return '<button class="notify-off-chip" data-action="set-notify" data-value="1">🔕 通知已關</button>';
+}
 
 function syncChip() {
   if (cloud.viewer || !cloudReady() || !SYNC_LABEL[cloud.sync]) return '';
@@ -1720,6 +1762,7 @@ function applyViewerSnapshot(snap) {
   const d = snap.data();
   const updatedAt = d.updatedAt || 0;
   cloud.viewerCheckedAt = Date.now();
+  cloud.notifyEnabled = d.notifyEnabled !== false;
   // 舊的資料（例如快取比伺服器晚到）或內容沒變，就不重畫
   if (updatedAt < cloud.viewerUpdatedAt) return;
   if (d.stateJson === viewerSync.lastJson && cloud.viewerStatus === 'live') {
@@ -1758,12 +1801,18 @@ function renderViewerWaiting() {
   }[cloud.viewerStatus];
   return `
     <header class="top">
-      <div>
+      ${menuButton()}
+      <div class="top-title">
         <h1>羽球輪轉排場</h1>
         <p class="sub">${cloud.teamName ? `${escapeHtml(cloud.teamName)}・` : ''}觀看模式</p>
       </div>
     </header>
-    <div class="viewer-wait">${escapeHtml(text)}</div>`;
+    <div class="viewer-wait">${escapeHtml(text)}</div>
+    ${['empty', 'live'].includes(cloud.viewerStatus) ? `
+    <div class="wait-links">
+      <button class="btn-ghost" data-action="drawer-go" data-target="${cloud.user ? 'account' : 'ranks'}">${icon('user')}${cloud.user ? '我的戰績' : '長期排行榜'}</button>
+      <button class="btn-ghost" data-action="drawer-go" data-target="past">${icon('box')}歷史球局</button>
+    </div>` : ''}`;
 }
 
 // 觀看模式：拿掉會改資料的按鈕；名字所在的半場只保留顯示
@@ -1881,6 +1930,14 @@ function renderCloudSettings() {
       <span id="cloud-sync-text">${escapeHtml(SYNC_LABEL[cloud.sync] || '已連線')}</span>
     </div>
     ${cloud.sync === 'error' ? err : ''}
+    <div class="row">
+      <span class="label">上場通知</span>
+      <div class="seg" role="group" aria-label="輪到球友上場時推播通知">
+        <button data-action="set-notify" data-value="1" aria-pressed="${cloud.notifyEnabled}">開</button>
+        <button data-action="set-notify" data-value="0" aria-pressed="${!cloud.notifyEnabled}">關</button>
+      </div>
+    </div>
+    <p class="sub set-note" style="margin-top:-4px">測試排場時先關掉，球友就不會收到「輪到你上場」。</p>
     <h5 class="member-h">球友帳號 <span class="member-badge" id="member-badge">${pendingMembers().length ? `${pendingMembers().length} 位待確認` : ''}</span></h5>
     ${renderMembersAdmin()}
     <div class="set-actions">
@@ -2231,6 +2288,7 @@ function checkMyTurn() {
   const fresh = Object.keys(seats).filter((k) => !(pushState.seen || {})[k]);
   pushState.seen = seats;
   if (first || !fresh.length) return;   // 剛打開頁面時已經在場上，不重複提醒
+  if (!cloud.notifyEnabled) return;      // 管理者關閉了上場通知（例如測試中）
   const index = seats[fresh[0]];
   const match = state.courts[index].match;
   const name = myName();
@@ -2328,15 +2386,16 @@ function renderDrawer() {
       [
         item('cloud', 'cloud', cloudReady() ? '雲端同步・球友帳號' : '雲端同步', badge(pending)),
         cloudReady() ? item('invite', 'qr', '邀請球友（QR Code）') : '',
+        cloudReady() ? `<button class="d-item" data-action="set-notify" data-value="${cloud.notifyEnabled ? 0 : 1}">${icon('bell')}<span>上場通知</span><span class="d-state ${cloud.notifyEnabled ? 'on' : ''}">${cloud.notifyEnabled ? '開' : '關'}</span></button>` : '',
       ],
       [
         item('play', 'court', '排場設定'),
         item('voice', 'speaker', '語音唸名'),
         item('look', 'palette', '畫面'),
       ],
-      [item('ranks', 'trophy', '長期排行榜・戰績')],
+      [item('ranks', 'trophy', '長期排行榜・戰績'), item('past', 'box', '歷史球局')],
       [
-        item('end-day', 'flag', '結束今日打球'),
+        state.players.length ? item('end-day', 'flag', '結束今日打球') : '',
         item('data', 'box', '長期紀錄與資料'),
         item('backup', 'save', '備份與還原'),
       ],
@@ -2346,6 +2405,7 @@ function renderDrawer() {
       [
         item('account', 'user', cloud.user ? '我的帳號・上場通知' : '登入 / 認領球員'),
         item('ranks', 'trophy', '長期排行榜・我的戰績'),
+        item('past', 'box', '歷史球局'),
       ],
       [item('look', 'palette', '畫面')],
       [item('leave', 'flag', '離開這個球團')],
@@ -2413,6 +2473,8 @@ function drawerGo(target) {
       ui.tab = 'records';
       ui.endDayArmed = !state.dayEnded;
       window.scrollTo(0, 0);
+    } else if (target === 'past') {
+      openPastList();
     } else if (target === 'ranks') {
       ui.ranksOpen = true;
     } else if (target === 'leave') {
@@ -2437,6 +2499,112 @@ function renderSettingsSection(key) {
     <h3>${SETTINGS_SECTIONS[key]}</h3>
     <div class="settings-only">${body ? body() : ''}</div>
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">完成</button>`;
+}
+
+/* ===================== 歷史球局 ===================== */
+/**
+ * 看任何一天存入的完整紀錄（稱號、戰績、關係圖、每一場）。
+ * 直接沿用「紀錄」分頁的畫面：畫的時候暫時把 state 換成那一天的資料，畫完就換回來。
+ * 畫面上會改到今天資料的按鈕（刪除紀錄、改勝負、開個人頁…）一律拿掉，只能看。
+ */
+const PAST_ALLOWED_ACTIONS = new Set(['network-mode', 'network-focus', 'history-toggle', 'modal-close', 'past-back']);
+const past = { cache: {}, loading: null, error: '' };
+
+function pastDateText(t) {
+  const d = new Date(t);
+  const week = '日一二三四五六'[d.getDay()];
+  return `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}（${week}）`;
+}
+
+function openPastList() {
+  ui.pastList = true;
+  if (ranks.status !== 'ready') loadRanks(true);
+}
+
+async function openPastSession(id) {
+  ui.pastId = id;
+  ui.historyFilter = '';
+  ui.historyExpanded = false;
+  ui.networkFocus = null;
+  if (past.cache[id]) { renderModal(); return; }
+  past.loading = id;
+  past.error = '';
+  renderModal();
+  try {
+    const snap = await cloud.fb.getDoc(cloud.fb.doc(cloud.db, 'teams', rankTeamId(), 'sessions', id));
+    if (!snap.exists()) throw Object.assign(new Error('missing'), { code: 'not-found' });
+    past.cache[id] = normalizeState(JSON.parse(snap.data().stateJson));
+  } catch (err) {
+    past.error = err.code === 'not-found' ? '找不到這一天的完整紀錄（可能已被刪除）' : cloudErrorText(err);
+  }
+  past.loading = null;
+  renderModal();
+}
+
+function renderPastListModal() {
+  const list = ranks.list.slice().sort((a, b) => (b.date || 0) - (a.date || 0));
+  const body = ranks.status === 'loading' && !list.length
+    ? '<p class="sub">載入中…</p>'
+    : ranks.status === 'error' && !list.length
+      ? `<p class="cloud-error">${escapeHtml(ranks.error)}</p>`
+      : list.length
+        ? `<ul class="past-list">${list.map((r) => `
+            <li><button class="past-row" data-action="past-open" data-id="${escapeHtml(r.sessionId)}">
+              <span><b class="num">${pastDateText(r.date)}</b><small>${r.players.length} 人</small></span>
+              <span class="num past-count">${r.matchCount} 場</span>
+            </button></li>`).join('')}</ul>`
+        : '<p class="sub">還沒有存入任何球局。打完後在「紀錄」分頁按「結束今日打球」→「存入長期紀錄」。</p>';
+  return `
+    <h3>歷史球局</h3>
+    <p class="sub" style="margin:0 0 10px">點日期可以看那天的完整紀錄。</p>
+    ${body}
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
+}
+
+function renderPastSessionModal() {
+  const id = ui.pastId;
+  const head = `<button class="btn-ghost past-back" data-action="past-back">‹ 歷史球局</button>`;
+  if (past.loading === id) return `${head}<p class="sub">載入中…</p>`;
+  if (!past.cache[id]) {
+    return `${head}<p class="cloud-error">${escapeHtml(past.error || '讀取失敗')}</p>
+      <button class="btn-primary btn-block" style="margin-top:14px" data-action="past-back">返回</button>`;
+  }
+  const day = past.cache[id];
+  const starts = day.history.map((h) => h.clockStart || h.startedAt).filter(Boolean);
+  const ends = day.history.map((h) => h.endedAt).filter(Boolean);
+  const span = starts.length && ends.length ? `${formatTime(Math.min(...starts))}–${formatTime(Math.max(...ends))}・` : '';
+  // 暫時把畫面用的資料換成那一天，畫完立刻換回來
+  const today = state;
+  let html = '';
+  try {
+    state = day;
+    html = `
+      <h2>稱號</h2>${renderTitles()}
+      <h2>戰績</h2>${renderStats()}
+      <h2>關係圖</h2>${renderNetwork()}
+      <h2>每一場</h2>${renderHistory()}`;
+  } finally {
+    state = today;
+  }
+  return `
+    ${head}
+    <h3>${pastDateText(starts.length ? Math.min(...starts) : Date.now())}</h3>
+    <p class="sub" style="margin:0">${span}${day.players.length} 人・${day.history.length} 場・${MODE_LABEL[day.mode] || ''}</p>
+    <div class="past-view">${html}</div>
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="past-back">返回歷史球局</button>`;
+}
+
+// 歷史畫面只能看：拿掉會改到資料或開別的視窗的按鈕
+function lockPastView() {
+  const root = document.querySelector('#modal-root .past-view');
+  if (!root) return;
+  root.querySelectorAll('[data-action]').forEach((el) => {
+    if (PAST_ALLOWED_ACTIONS.has(el.dataset.action)) return;
+    if (el.matches('.history-delete, .history-result')) { el.remove(); return; }
+    el.removeAttribute('data-action');
+    el.classList.add('view-only');
+  });
+  root.querySelectorAll('select').forEach((el) => { el.disabled = true; el.closest('.row, div') && (el.parentElement.hidden = true); });
 }
 
 /* ===================== 長期排行榜 ===================== */
@@ -2496,9 +2664,9 @@ function writeSessionStats(st) {
     Object.assign(sessionSummary(st), { appVersion: APP_VERSION }));
 }
 
-// v4.4 以前封存的球局沒有精簡統計：管理者接上球團時補算一次
+// 有存球局但缺精簡統計的（v4.4 以前，或 v5.11 以前結束後馬上開新一天的），管理者接上球團時補算一次
 async function backfillSessionStats() {
-  const key = `badminton-stats-backfill-${cloud.teamId}`;
+  const key = `badminton-stats-backfill2-${cloud.teamId}`;
   if (storageGet(key)) return;
   const { collection, getDocs } = cloud.fb;
   try {
@@ -2548,7 +2716,7 @@ async function loadRanks(force = false) {
     ranks.status = 'error';
     ranks.error = cloudErrorText(err);
   }
-  if (ui.ranksOpen || ui.rankProfile || ui.profileName) render();
+  if (ui.ranksOpen || ui.rankProfile || ui.profileName || ui.pastList) render();
   else if (ui.settings) renderModal();
 }
 
@@ -2583,7 +2751,7 @@ function renderArchiveList() {
   return `<h5 class="member-h">長期紀錄（${list.length} 次球局）</h5>
     ${list.length ? `<ul class="member-list">${list.map((r) => `
       <li class="member-row">
-        <span class="member-info"><b class="num">${fmt(r.date)}</b><small>${r.matchCount} 場・${r.players.length} 人</small></span>
+        <button class="member-info past-link" data-action="past-open-from-settings" data-id="${escapeHtml(r.sessionId)}"><b class="num">${fmt(r.date)}</b><small>${r.matchCount} 場・${r.players.length} 人・點這裡看完整紀錄</small></button>
         <button class="${ui.archiveArmed === r.sessionId ? 'btn-danger' : 'btn-ghost'}" data-action="archive-delete" data-id="${escapeHtml(r.sessionId)}">
           ${ui.archiveArmed === r.sessionId ? '確認刪除' : '刪除'}</button>
       </li>`).join('')}</ul>` : '<p class="sub set-note">還沒有存入任何球局。打完後在「紀錄」分頁按「結束今日打球」→「存入長期紀錄」。</p>'}`;
@@ -3607,8 +3775,13 @@ function renderRegularPicker() {
 function renderSetup() {
   const total = new Set([...ui.setupSelected, ...parseNames(ui.setupText)]).size;
   return `
-    <h1>羽球輪轉排場</h1>
-    <p class="sub">選出今天來的人，系統會依場數與配對紀錄自動輪轉。</p>
+    <header class="top">
+      ${menuButton()}
+      <div class="top-title">
+        <h1>羽球輪轉排場</h1>
+        <p class="sub">選出今天來的人，系統會依場數與配對紀錄自動輪轉。</p>
+      </div>
+    </header>
     ${renderStorageBanner()}
     <div class="panel">
       ${renderRegularPicker()}
@@ -4850,16 +5023,20 @@ function renderTabBody() {
   return { courts: renderCourtsTab, players: renderPlayersTab, records: renderRecordsTab }[ui.tab]();
 }
 
+function menuButton() {
+  return `<button class="menu-btn" data-action="drawer-open" aria-label="打開選單">${icon('menu')}
+    ${!cloud.viewer && pendingMembers().length ? '<span class="menu-dot" aria-hidden="true"></span>' : ''}</button>`;
+}
+
 function renderMain() {
   const body = renderTabBody();
   return `
     <header class="top">
-      <button class="menu-btn" data-action="drawer-open" aria-label="打開選單">${icon('menu')}
-        ${!cloud.viewer && pendingMembers().length ? '<span class="menu-dot" aria-hidden="true"></span>' : ''}</button>
+      ${menuButton()}
       <div class="top-title">
         <h1>羽球輪轉排場</h1>
         <p class="sub num">${cloud.viewer ? `<span class="live-dot" aria-hidden="true"></span>觀看中${cloud.teamName ? `・${escapeHtml(cloud.teamName)}` : ''}・<span id="viewer-stamp">${viewerStampText()}</span><br>` : ''}${state.players.filter((p) => p.active).length} 人在場館，已完成 ${state.history.length} 場</p>
-        ${syncChip()}
+        ${syncChip()}${notifyOffChip()}
       </div>
       <div class="top-actions">
         ${speechSupported() && !cloud.viewer
@@ -5304,6 +5481,8 @@ function renderModal() {
   else if (ui.report) content = renderReportModal();
   else if (ui.profileName) content = renderPlayerModal();
   else if (ui.invite) content = renderInviteModal();
+  else if (ui.pastId) content = renderPastSessionModal();
+  else if (ui.pastList) content = renderPastListModal();
   else if (ui.rankProfile) content = renderPlayerModal();
   else if (ui.ranksOpen) content = renderRanksModal();
   else if (ui.settings) content = renderSettingsModal();
@@ -5318,6 +5497,7 @@ function renderModal() {
   const current = root.querySelector('.modal');
   if (current && previous) current.scrollTop = scrollTop;
   document.body.classList.toggle('modal-open', Boolean(content));
+  lockPastView();
   applyViewerLock();
 }
 
@@ -6397,7 +6577,7 @@ function handleAction(el) {
       break;
 
     /* 歷史 */
-    case 'history-toggle': ui.historyExpanded = !ui.historyExpanded; sessionChanged = false; break;
+    case 'history-toggle': ui.historyExpanded = !ui.historyExpanded; sessionChanged = false; if (ui.pastId) modalOnly = true; break;
 
     /* 手動排場 */
     case 'manual-open': ui.manual = { courtIndex: court, sides: {} }; sessionChanged = false; break;
@@ -6492,6 +6672,22 @@ function handleAction(el) {
       return;
     case 'end-day-cancel': ui.endDayArmed = false; sessionChanged = false; break;
     case 'archive-now': archiveSession('end-day'); return;
+    case 'past-open': openPastSession(el.dataset.id); return;
+    case 'past-open-from-settings':
+      ui.settings = false;
+      ui.settingsOnly = null;
+      ui.pastList = true;
+      openPastSession(el.dataset.id);
+      return;
+    case 'past-back':
+      ui.pastId = null;
+      ui.historyFilter = '';
+      ui.historyExpanded = false;
+      ui.networkFocus = null;
+      if (!ui.pastList) openPastList();
+      sessionChanged = false;
+      modalOnly = true;
+      break;
     case 'restore-before-cloud': {
       const before = storageGet(SESSION_BEFORE_CLOUD_KEY);
       if (!before) return;
@@ -6526,10 +6722,11 @@ function handleAction(el) {
     case 'player-open': ui.profileName = el.dataset.name; ui.profileView = null; sessionChanged = false; break;
     case 'profile-view': ui.profileView = el.dataset.value; sessionChanged = false; modalOnly = true; break;
     case 'my-view': ui.myView = el.dataset.value; sessionChanged = false; modalOnly = true; break;
-    case 'network-mode': ui.networkMode = el.dataset.value; sessionChanged = false; break;
+    case 'network-mode': ui.networkMode = el.dataset.value; sessionChanged = false; if (ui.pastId) modalOnly = true; break;
     case 'network-focus':
       ui.networkFocus = ui.networkFocus === el.dataset.name ? null : el.dataset.name;
       sessionChanged = false;
+      if (ui.pastId) modalOnly = true;
       break;
     case 'title-open': ui.titleIndex = Number(el.dataset.index); sessionChanged = false; break;
     case 'settings-open': ui.settings = true; ui.settingsOnly = null; sessionChanged = false; break;
@@ -6559,6 +6756,9 @@ function handleAction(el) {
       savePrefs();
       sessionChanged = false;
       break;
+    case 'set-notify':
+      setNotifyEnabled(el.dataset.value === '1');
+      return;
     case 'set-voice-auto':
       prefs.voice.auto = el.dataset.value === '1';
       savePrefs();
@@ -6600,6 +6800,14 @@ function handleAction(el) {
         sessionChanged = false;
         break;
       }
+      if (ui.pastId) {   // 從某一天的紀錄關掉：回到歷史球局列表
+        ui.pastId = null;
+        ui.historyFilter = '';
+        ui.networkFocus = null;
+        sessionChanged = false;
+        break;
+      }
+      ui.pastList = false;
       if (ui.rankProfile && ui.ranksOpen) {   // 看完個人戰績，回到排行榜
         ui.rankProfile = null;
         sessionChanged = false;
