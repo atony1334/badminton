@@ -49,7 +49,7 @@
     --soft-yellow: #3A3320;
   }
   * { box-sizing: border-box; }
-  html, body { background: var(--floor) !important; }
+  html, body { background: var(--floor) !important; overscroll-behavior-x: none; }
   /* 鎖定縮放：取消雙擊放大（捲動與點擊不受影響） */
   html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   /* 部分預覽環境（如 Claude app）會強制深色底，改由獨立容器鋪滿背景 */
@@ -248,8 +248,12 @@
   /* 首頁 */
   .home-sec { margin: 8px 0 16px; }
   .home-teams { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-  .home-team { display: flex; align-items: center; gap: 6px; }
-  .home-team-link { flex: 1; display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-radius: var(--radius-l);
+  .home-team { position: relative; overflow: hidden; border-radius: var(--radius-l); }
+  .home-team .ht-track { position: relative; z-index: 1; transition: transform 0.2s ease; touch-action: pan-y; }
+  .home-team.dragging .ht-track { transition: none; }
+  .home-team .ht-delete { position: absolute; top: 0; right: 0; bottom: 0; width: 88px; border-radius: 0 var(--radius-l) var(--radius-l) 0;
+    background: var(--danger); color: #fff; font-weight: 700; display: flex; align-items: center; justify-content: center; }
+  .home-team-link { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-radius: var(--radius-l);
     background: var(--surface); border: 1px solid var(--border); color: var(--ink); text-decoration: none; min-height: 60px; }
   .home-team-link > span:first-child { display: flex; flex-direction: column; gap: 2px; }
   .home-team-link b { font-size: 17px; }
@@ -257,6 +261,7 @@
   .home-go { font-size: 24px; color: var(--muted); }
   .home-local { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
   .home-foot { margin-top: 16px; text-align: center; }
+  .coadmin-badge { margin-left: 6px; font-size: 11px; vertical-align: middle; }
   .setup-teams { margin-top: 20px; }
   .setup-teams .home-sec { margin-top: 0; }
   .reg-add { margin-bottom: 16px; }
@@ -993,7 +998,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.16';
+const APP_VERSION = '6.17';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1519,7 +1524,7 @@ const VIEWER_ACTIONS = new Set([
   'title-open', 'player-open', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
-  'invite-copy-code', 'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
+  'invite-copy-code', 'manage-team', 'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
   'signup-view', 'signup-month', 'signup-day',
 ]);
@@ -1623,6 +1628,16 @@ async function initCloud() {
   }
 }
 
+// 球團的管理者：擁有者（adminUid）或共同管理者（adminUids）
+function teamAdminOf(data, uid) {
+  if (!data || !uid) return false;
+  return data.adminUid === uid || (Array.isArray(data.adminUids) && data.adminUids.includes(uid));
+}
+
+function isTeamOwner() {
+  return Boolean(cloud.user && cloud.ownerUid && cloud.user.uid === cloud.ownerUid);
+}
+
 async function onCloudUser(user) {
   cloud.user = user;
   if (!user) {
@@ -1641,11 +1656,12 @@ async function onCloudUser(user) {
       await attachTeam(snap.docs[0].id, snap.docs[0].data());
       return;
     }
-    // 離線時查詢可能是空的：用這支手機記住的球團代碼再試一次
+    // 離線時查詢可能是空的、或是共同管理者（不是擁有者，查不到）：
+    // 用這支手機記住的球團代碼確認（共同管理者在球友頁按「管理這個球團」時會記下）
     const savedId = storageGet(CLOUD_TEAM_KEY);
     if (savedId) {
       const team = await getDoc(teamRef(savedId)).catch(() => null);
-      if (team && team.exists() && team.data().adminUid === user.uid) {
+      if (team && team.exists() && teamAdminOf(team.data(), user.uid)) {
         await attachTeam(savedId, team.data());
         return;
       }
@@ -1662,6 +1678,8 @@ async function onCloudUser(user) {
 async function attachTeam(id, data) {
   cloud.teamId = id;
   cloud.teamName = (data && data.name) || '';
+  cloud.ownerUid = (data && data.adminUid) || null;
+  cloud.adminUids = (data && Array.isArray(data.adminUids)) ? data.adminUids.slice() : [];
   storageSet(CLOUD_TEAM_KEY, id);
   const cloudRegs = data && Array.isArray(data.regulars) ? data.regulars : [];
   const merged = Array.from(new Set([...regulars, ...cloudRegs]));
@@ -1695,7 +1713,79 @@ async function attachTeam(id, data) {
   }
   watchMembers();
   watchEvents();
+  watchAdminSync();
   loadRanks().then(() => refreshSignupUi());   // 賽前勝率要用長期紀錄
+}
+
+/* ---------- 多位管理者：即時同步 ----------
+ * 共同管理者和擁有者可能同時開著管理畫面：互相聽對方的排場和球團資料，
+ * 誰後改就以誰為準（依 updatedAt）。自己剛上傳的內容（cloud.lastLive）不會被當成別人的更新。 */
+const adminSync = { liveUnsub: null, teamUnsub: null, pending: null };
+
+function watchAdminSync() {
+  stopAdminSync();
+  const { onSnapshot } = cloud.fb;
+  adminSync.liveUnsub = onSnapshot(liveRef(), (snap) => {
+    if (!snap.exists()) return;
+    const d = snap.data();
+    cloud.notifyEnabled = d.notifyEnabled !== false;
+    if (!d.stateJson || d.stateJson === cloud.lastLive) return;
+    if ((d.updatedAt || 0) <= (state.updatedAt || 0)) return;
+    adminSync.pending = d;
+    applyRemoteLive();
+  }, (err) => console.warn('同步其他管理者的排場失敗:', err));
+  adminSync.teamUnsub = onSnapshot(teamRef(), (snap) => {
+    if (!snap.exists()) return;
+    const d = snap.data();
+    // 擁有者把自己的共同管理者身分拿掉：這支手機就不能再管理
+    if (cloud.user && !teamAdminOf(d, cloud.user.uid)) {
+      // 不登出（球友身分還要用），只是不再管理：回到首頁
+      stopAdminSync();
+      stopWatchMembers();
+      stopWatchEvents();
+      cloud.teamId = null;
+      storageSet(CLOUD_TEAM_KEY, null);
+      showToast('你已經不是這個球團的共同管理者');
+      setTimeout(goHome, 1500);
+      return;
+    }
+    cloud.teamName = d.name || '';
+    cloud.ownerUid = d.adminUid || null;
+    cloud.adminUids = Array.isArray(d.adminUids) ? d.adminUids.slice() : [];
+    const regsJson = JSON.stringify(Array.isArray(d.regulars) ? d.regulars : []);
+    if (regsJson !== cloud.lastRegs && regsJson !== JSON.stringify(regulars) && !cloud.uploadTimer) {
+      regulars = JSON.parse(regsJson);
+      cloud.lastRegs = regsJson;
+      scheduleSave(STORAGE_KEYS.regulars, () => regulars);
+    }
+    refreshSignupUi();
+  }, (err) => console.warn('同步球團資料失敗:', err));
+}
+
+function stopAdminSync() {
+  if (adminSync.liveUnsub) adminSync.liveUnsub();
+  if (adminSync.teamUnsub) adminSync.teamUnsub();
+  Object.assign(adminSync, { liveUnsub: null, teamUnsub: null, pending: null });
+}
+
+// 別人的更新：自己手上還有沒上傳的修改、正在拖曳或開著選人／結果視窗時先等一下
+function applyRemoteLive() {
+  const d = adminSync.pending;
+  if (!d) return;
+  if (cloud.uploadTimer || drag.active || ui.manual || ui.result) {
+    setTimeout(applyRemoteLive, 800);
+    return;
+  }
+  adminSync.pending = null;
+  if ((d.updatedAt || 0) <= (state.updatedAt || 0)) return;
+  try {
+    state = normalizeState(JSON.parse(d.stateJson));
+  } catch (err) {
+    return;
+  }
+  cloud.lastLive = d.stateJson;
+  scheduleSave(STORAGE_KEYS.session, () => state);
+  refreshSignupUi();
 }
 
 function scheduleCloudUpload(immediate = false) {
@@ -1891,6 +1981,7 @@ async function cloudLogout() {
   cloud.lastRegs = '';
   stopWatchMembers();
   stopWatchEvents();
+  stopAdminSync();
   storageSet(CLOUD_TEAM_KEY, null);
   showToast('已登出，本機資料仍保留');
 }
@@ -1924,6 +2015,8 @@ function startViewer() {
       return;
     }
     cloud.teamName = snap.data().name || '';
+    cloud.ownerUid = snap.data().adminUid || null;
+    cloud.adminUids = Array.isArray(snap.data().adminUids) ? snap.data().adminUids : [];
     saveJoinedTeam(VIEW_TEAM, cloud.teamName);
     render();
   }).catch((err) => {
@@ -2127,7 +2220,15 @@ function renderCloudSettings() {
       <input type="email" id="cloud-email" autocomplete="username" placeholder="信箱" value="${escapeHtml(ui.cloudEmail || '')}">
       <input type="password" id="cloud-pass" autocomplete="current-password" placeholder="密碼" value="${escapeHtml(ui.cloudPass || '')}">
       ${err}
-      <button class="btn-primary" data-action="cloud-login" ${cloud.busy ? 'disabled' : ''}>${cloud.busy ? '登入中…' : '登入'}</button>`);
+      <button class="btn-primary" data-action="cloud-login" ${cloud.busy ? 'disabled' : ''}>${cloud.busy ? '登入中…' : '登入'}</button>
+      <p class="sub set-note" style="margin-top:8px">共同管理者請用 Google 登入：</p>
+      <button class="btn-outline" data-action="google-login" ${cloud.busy ? 'disabled' : ''}>用 Google 登入</button>`);
+  }
+  if (cloud.phase === 'no-team' && !isPasswordUser()) {
+    return wrap(`
+      <p class="sub set-note">已用 Google 登入 ${escapeHtml(cloud.user.email || '')}，但還不是任何球團的管理者。</p>
+      <p class="sub set-note">請球團擁有者在「雲端同步 → 球友帳號」把你設為共同管理者，再打開球團連結，從選單按「管理這個球團」。</p>
+      <button class="btn-ghost" data-action="cloud-logout">登出</button>`);
   }
   if (cloud.phase === 'no-team') {
     return wrap(`
@@ -2141,7 +2242,7 @@ function renderCloudSettings() {
     ${ui.teamRename === null || ui.teamRename === undefined ? `
     <div class="row">
       <span class="label">球團</span>
-      <span>${escapeHtml(cloud.teamName || '未命名')}</span>
+      <span>${escapeHtml(cloud.teamName || '未命名')}${isTeamOwner() ? '' : '<span class="claim-badge ok coadmin-badge">共同管理者</span>'}</span>
       <button class="btn-ghost" data-action="team-rename-open">改名</button>
     </div>` : `
     <div class="row team-rename">
@@ -2296,10 +2397,30 @@ function pendingMembers() {
   return members.list.filter((m) => m.status !== 'approved');
 }
 
+// 只有擁有者可以設定共同管理者（球友要先用 Google 登入、認領並確認過）
+async function toggleCoAdmin(uid) {
+  if (!isTeamOwner()) return;
+  const { updateDoc, arrayUnion, arrayRemove, serverTimestamp } = cloud.fb;
+  const on = !(cloud.adminUids || []).includes(uid);
+  try {
+    await updateDoc(teamRef(), { adminUids: on ? arrayUnion(uid) : arrayRemove(uid), updatedAt: serverTimestamp() });
+    cloud.adminUids = on ? (cloud.adminUids || []).concat(uid) : (cloud.adminUids || []).filter((x) => x !== uid);
+    const m = members.list.find((x) => x.uid === uid);
+    showToast(on ? `${m ? m.name : '這位球友'} 已成為共同管理者` : '已取消共同管理者');
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+  if (ui.settings) renderModal();
+}
+
 async function setMemberStatus(uid, approve) {
-  const { doc, updateDoc, deleteDoc } = cloud.fb;
+  const { doc, updateDoc, deleteDoc, arrayRemove } = cloud.fb;
   const ref = doc(cloud.db, 'teams', cloud.teamId, 'members', uid);
   try {
+    if (!approve && (cloud.adminUids || []).includes(uid) && isTeamOwner()) {   // 移除球友時一併取消共同管理
+      await updateDoc(teamRef(), { adminUids: arrayRemove(uid) });
+      cloud.adminUids = cloud.adminUids.filter((x) => x !== uid);
+    }
     if (approve) await updateDoc(ref, { status: 'approved' });
     else await deleteDoc(ref);
   } catch (err) {
@@ -2315,12 +2436,15 @@ function renderMembersAdmin() {
   members.list.filter((m) => m.status === 'approved').forEach((m) => { taken[m.name] = m.uid; });
   const row = (m) => {
     const clash = m.status !== 'approved' && taken[m.name];
+    const coAdmin = (cloud.adminUids || []).includes(m.uid);
     return `<li class="member-row">
-      <span class="member-info"><b>${escapeHtml(m.name)}</b>
+      <span class="member-info"><b>${escapeHtml(m.name)}${coAdmin ? '<span class="claim-badge ok coadmin-badge">共同管理者</span>' : ''}</b>
         <small>${escapeHtml(m.displayName || '')} ${escapeHtml(m.email || '')}</small>
         ${clash ? '<small class="cloud-error">這個名字已經被其他帳號認領</small>' : ''}</span>
       ${m.status === 'approved'
-        ? `<button class="btn-ghost" data-action="member-remove" data-uid="${escapeHtml(m.uid)}">移除</button>`
+        ? `<span class="member-btns">
+            ${isTeamOwner() ? `<button class="${coAdmin ? 'btn-outline' : 'btn-ghost'}" data-action="coadmin-toggle" data-uid="${escapeHtml(m.uid)}">${coAdmin ? '取消共同管理' : '設為共同管理者'}</button>` : ''}
+            <button class="btn-ghost" data-action="member-remove" data-uid="${escapeHtml(m.uid)}">移除</button></span>`
         : `<span class="member-btns">
             <button class="btn-primary" data-action="member-approve" data-uid="${escapeHtml(m.uid)}">確認</button>
             <button class="btn-ghost" data-action="member-remove" data-uid="${escapeHtml(m.uid)}">拒絕</button></span>`}
@@ -3641,7 +3765,7 @@ function drawerAccount() {
     return {
       initial: '管',
       title: cloud.user.email || '管理者',
-      lines: [`管理者・${cloud.teamName || '球團'}`, SYNC_LABEL[cloud.sync] || '已連線'],
+      lines: [`${isTeamOwner() ? '管理者' : '共同管理者'}・${cloud.teamName || '球團'}`, SYNC_LABEL[cloud.sync] || '已連線'],
     };
   }
   if (cloud.user) return { initial: '管', title: cloud.user.email || '管理者', lines: ['已登入，還沒建立球團'] };
@@ -3683,6 +3807,8 @@ function renderDrawer() {
     : [
       [
         isPasswordUser() ? item('home', 'court', '回到管理畫面') : '',
+        !isPasswordUser() && cloud.user && (cloud.adminUids || []).includes(cloud.user.uid)
+          ? `<button class="d-item" data-action="manage-team">${icon('court')}<span>管理這個球團</span><span class="d-state on">共同管理者</span></button>` : '',
         item('signup', 'calendar', '報名場次', badge(openSignupCount())),
         isPasswordUser() ? '' : item('account', 'user', cloud.user ? '我的帳號・上場通知' : '登入 / 認領球員'),
         item('ranks', 'trophy', '長期排行榜・我的戰績'),
@@ -3692,7 +3818,6 @@ function renderDrawer() {
       [
         item('all', 'qr', '球團代碼・資訊'),
         item('home', 'box', '切換球團・回首頁'),
-        item('leave', 'flag', '離開這個球團'),
       ],
     ];
   return `
@@ -5256,14 +5381,14 @@ function renderJoinedTeams() {
     const d = new Date(t.at);
     return `上次 ${d.getMonth() + 1}/${d.getDate()}`;
   };
-  const list = teams.map((t) => {
-    const armed = ui.homeForget === t.id;
-    return `<li class="home-team">
-      <a class="home-team-link" href="?team=${escapeHtml(t.id)}">
-        <span><b>${escapeHtml(t.name || '球團')}</b><small>${escapeHtml(dateText(t))}</small></span><span class="home-go">›</span></a>
-      <button class="${armed ? 'btn-danger' : 'icon-btn'}" data-action="home-forget" data-id="${escapeHtml(t.id)}" aria-label="從清單移除">${armed ? '移除' : '✕'}</button>
-    </li>`;
-  }).join('');
+  // 往左滑露出紅色「刪除」，按下去會再確認一次
+  const list = teams.map((t) => `<li class="home-team" data-team="${escapeHtml(t.id)}">
+      <button class="ht-delete" data-action="home-forget" data-id="${escapeHtml(t.id)}" tabindex="-1">刪除</button>
+      <div class="ht-track">
+        <a class="home-team-link" href="?team=${escapeHtml(t.id)}">
+          <span><b>${escapeHtml(t.name || '球團')}</b><small>${escapeHtml(dateText(t))}</small></span><span class="home-go">›</span></a>
+      </div>
+    </li>`).join('');
   return `<section class="home-sec"><h2 class="ev-h">我加入的球團</h2><ul class="home-teams">${list}</ul></section>`;
 }
 
@@ -5280,6 +5405,77 @@ function renderJoinPanel() {
       </div>
     </div>`;
 }
+
+function renderForgetConfirm() {
+  const team = readJoinedTeams().find((t) => t.id === ui.forgetConfirm) || {};
+  return `
+    <h3>從清單移除「${escapeHtml(team.name || '球團')}」？</h3>
+    <p class="sub">只是從這支手機的清單拿掉，球團和你的紀錄都還在。之後用連結或球團代碼就能再加入。</p>
+    <button class="btn-danger btn-block" style="margin-top:12px" data-action="forget-confirm">移除</button>
+    <button class="btn-ghost btn-block" data-action="modal-close">取消</button>`;
+}
+
+/* 我加入的球團：往左滑露出刪除鈕 */
+const rowSwipe = { el: null, x: 0, y: 0, dx: 0, decided: false, horizontal: false, moved: false };
+const ROW_DELETE_W = 88;
+
+function closeOpenRows(except) {
+  document.querySelectorAll('.home-team.open').forEach((li) => {
+    if (li === except) return;
+    li.classList.remove('open');
+    li.querySelector('.ht-track').style.transform = '';
+  });
+}
+
+document.addEventListener('touchstart', (e) => {
+  const li = e.target.closest('.home-team');
+  if (!li || e.target.closest('.ht-delete')) { if (!e.target.closest('.ht-delete')) closeOpenRows(); return; }
+  closeOpenRows(li);
+  const t = e.touches[0];
+  Object.assign(rowSwipe, { el: li, x: t.clientX, y: t.clientY, dx: 0, decided: false, horizontal: false, moved: false });
+}, { passive: true });
+
+document.addEventListener('touchmove', (e) => {
+  if (!rowSwipe.el) return;
+  const t = e.touches[0];
+  const dx = t.clientX - rowSwipe.x;
+  const dy = t.clientY - rowSwipe.y;
+  if (!rowSwipe.decided) {
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+    rowSwipe.decided = true;
+    rowSwipe.horizontal = Math.abs(dx) > Math.abs(dy);
+    if (!rowSwipe.horizontal) { rowSwipe.el = null; return; }
+    rowSwipe.el.classList.add('dragging');
+  }
+  e.preventDefault();
+  rowSwipe.moved = true;
+  const base = rowSwipe.el.classList.contains('open') ? -ROW_DELETE_W : 0;
+  rowSwipe.dx = Math.min(0, Math.max(-ROW_DELETE_W - 20, base + dx));
+  rowSwipe.el.querySelector('.ht-track').style.transform = `translateX(${rowSwipe.dx}px)`;
+}, { passive: false });
+
+document.addEventListener('touchend', () => {
+  const li = rowSwipe.el;
+  rowSwipe.el = null;
+  if (!li || !rowSwipe.horizontal) return;
+  li.classList.remove('dragging');
+  const open = rowSwipe.dx < -ROW_DELETE_W / 2;
+  li.classList.toggle('open', open);
+  li.querySelector('.ht-track').style.transform = open ? `translateX(${-ROW_DELETE_W}px)` : '';
+});
+
+// 滑過、或刪除鈕露出來時，點到連結不要跳頁（先收起）
+document.addEventListener('click', (e) => {
+  const link = e.target.closest('.home-team-link');
+  if (!link) return;
+  const li = link.closest('.home-team');
+  if (rowSwipe.moved || (li && li.classList.contains('open'))) {
+    e.preventDefault();
+    e.stopPropagation();
+    rowSwipe.moved = false;
+    closeOpenRows();
+  }
+}, true);
 
 function renderHome() {
   return `
@@ -6933,7 +7129,8 @@ function renderModal() {
   const scrollTop = previous ? previous.scrollTop : 0;
 
   let content = '';
-  if (ui.manual) content = renderManualModal();
+  if (ui.forgetConfirm) content = renderForgetConfirm();
+  else if (ui.manual) content = renderManualModal();
   else if (ui.result) content = renderResultModal();
   else if (ui.backup) content = renderBackupModal();
   else if (ui.copyText) content = renderCopyModal();
@@ -7496,7 +7693,7 @@ function swipeBlocked(target) {
   if (ui.drawer) return false;   // 選單開著：任何地方往左滑都能收起
   return showHome() || ui.manual || ui.result || ui.backup || ui.settings || ui.copyText || ui.titleIndex !== null || ui.report
     || ui.profileName || ui.signupOpen || ui.ranksOpen || ui.pastList || ui.pastId || ui.invite || ui.rankProfile
-    || target.closest('input, textarea, select, .tabbar, .modal-bg');
+    || target.closest('input, textarea, select, .tabbar, .modal-bg, .home-team');
 }
 
 function drawerEls() {
@@ -8323,6 +8520,7 @@ function handleAction(el) {
       forceUpdate();
       return;
     case 'modal-close':
+      if (ui.forgetConfirm) { ui.forgetConfirm = null; sessionChanged = false; break; }
       if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
       if (ui.copyText && ui.signupOpen) { ui.copyText = null; sessionChanged = false; break; }   // 報名訊息的手動複製視窗
       if (ui.signupForm) { ui.signupForm = null; sessionChanged = false; break; }
@@ -8545,6 +8743,11 @@ function handleAction(el) {
         navigator.clipboard.writeText(cloud.viewer ? VIEW_TEAM : cloud.teamId).then(() => showToast('已複製球團代碼'), () => showToast('無法自動複製，請長按代碼複製'));
       } else showToast('無法自動複製，請長按代碼複製');
       return;
+    case 'coadmin-toggle': toggleCoAdmin(el.dataset.uid); return;
+    case 'manage-team':   // 共同管理者：從球友頁進入這個球團的管理畫面
+      storageSet(CLOUD_TEAM_KEY, VIEW_TEAM);
+      goHome();
+      return;
     case 'home-local': ui.homeLocal = true; sessionChanged = false; break;
     case 'home-back': ui.homeLocal = false; sessionChanged = false; break;
     case 'home-admin':
@@ -8553,14 +8756,11 @@ function handleAction(el) {
       ui.settingsOnly = 'cloud';
       sessionChanged = false;
       break;
-    case 'home-forget':
-      if (ui.homeForget !== el.dataset.id) {
-        ui.homeForget = el.dataset.id;
-        sessionChanged = false;
-        break;
-      }
-      forgetJoinedTeam(el.dataset.id);
-      ui.homeForget = null;
+    case 'home-forget': ui.forgetConfirm = el.dataset.id; sessionChanged = false; break;
+    case 'forget-confirm':
+      forgetJoinedTeam(ui.forgetConfirm);
+      showToast('已從清單移除');
+      ui.forgetConfirm = null;
       sessionChanged = false;
       break;
     case 'join-team': {
@@ -8675,6 +8875,34 @@ document.addEventListener('change', (event) => {
     render();
   }
 });
+
+/* ===================== 擋住瀏覽器的「上一頁／下一頁」滑動 =====================
+ * 1. CSS overscroll-behavior-x: none（Chrome 的左右滑回上一頁）
+ * 2. 從螢幕最邊緣開始的觸控不交給瀏覽器（iPhone Safari 的邊緣滑動）
+ * 3. 真的觸發「上一頁」時（手勢或安卓返回鍵）：有開著的選單或視窗就先關掉，並留在這一頁 */
+const EDGE_GUARD_PX = 18;
+document.addEventListener('touchstart', (e) => {
+  if (e.touches.length !== 1 || e.target.closest('input, textarea, select, a, button')) return;
+  const x = e.touches[0].clientX;
+  if (x < EDGE_GUARD_PX || x > window.innerWidth - EDGE_GUARD_PX) e.preventDefault();
+}, { passive: false });
+
+function closeTopOverlay() {
+  if (ui.drawer) { closeDrawer(); return true; }
+  const bg = document.querySelector('#modal-root .modal-bg');
+  if (bg) { handleAction(bg); return true; }
+  return false;
+}
+
+(function guardHistory() {
+  if (!window.history || !window.history.pushState) return;
+  const push = () => { try { window.history.pushState({ stay: true }, '', window.location.href); } catch (err) { /* 略過 */ } };
+  push();
+  window.addEventListener('popstate', () => {
+    closeTopOverlay();
+    push();
+  });
+}());
 
 loadAll();
 render();
