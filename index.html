@@ -261,6 +261,8 @@
   .home-go { font-size: 24px; color: var(--muted); }
   .home-local { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
   .home-foot { margin-top: 16px; text-align: center; }
+  .danger-zone { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); text-align: center; }
+  .danger-list { margin: 4px 0 8px; padding-left: 20px; }
   .coadmin-badge { margin-left: 6px; font-size: 11px; vertical-align: middle; }
   .setup-teams { margin-top: 20px; }
   .setup-teams .home-sec { margin-top: 0; }
@@ -998,7 +1000,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.17';
+const APP_VERSION = '6.18';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2272,7 +2274,73 @@ function renderCloudSettings() {
       <button class="btn-primary" data-action="cloud-invite">邀請球友（QR Code）</button>
       <button class="${ui.logoutArmed ? 'btn-danger' : 'btn-ghost'}" data-action="cloud-logout">
         ${ui.logoutArmed ? '再按一次確認登出' : `登出 ${escapeHtml(cloud.user.email || '')}`}</button>
-    </div>`);
+    </div>
+    ${isTeamOwner() ? '<div class="danger-zone"><button class="btn-ghost danger-text" data-action="team-delete-open">刪除這個球團…</button></div>' : ''}`);
+}
+
+/* ---------- 刪除球團（只有擁有者） ----------
+ * 先刪底下所有資料（排場、長期紀錄、統計、球友帳號、報名），最後刪球團本身。
+ * 球團本身要最後刪：規則靠球團資料判斷誰是管理者。 */
+async function deleteTeam() {
+  if (!isTeamOwner() || ui.teamDelete.busy) return;
+  ui.teamDelete.busy = true;
+  renderModal();
+  const { collection, getDocs, doc, deleteDoc } = cloud.fb;
+  const base = ['teams', cloud.teamId];
+  const wipe = async (...path) => {
+    const snap = await getDocs(collection(cloud.db, ...base, ...path));
+    await Promise.all(snap.docs.map((d) => deleteDoc(doc(cloud.db, ...base, ...path, d.id))));
+    return snap.docs.map((d) => d.id);
+  };
+  try {
+    stopAdminSync();
+    stopWatchEvents();
+    stopWatchMembers();
+    clearTimeout(cloud.uploadTimer);
+    cloud.uploadTimer = null;
+    const events = await getDocs(collection(cloud.db, ...base, 'events'));
+    for (const ev of events.docs) await wipe('events', ev.id, 'signups');
+    await Promise.all([wipe('events'), wipe('sessions'), wipe('stats'), wipe('members'), wipe('live')]);
+    await deleteDoc(doc(cloud.db, ...base));
+    forgetJoinedTeam(cloud.teamId);
+    cloud.teamId = null;
+    cloud.teamName = '';
+    cloud.ownerUid = null;
+    cloud.adminUids = [];
+    cloud.lastLive = '';
+    cloud.lastRegs = '';
+    storageSet(CLOUD_TEAM_KEY, null);
+    cloud.phase = 'no-team';
+    ui.teamDelete = null;
+    ui.settings = true;
+    ui.settingsOnly = 'cloud';
+    showToast('球團已刪除，這支手機上的排場仍保留');
+  } catch (err) {
+    console.warn('刪除球團失敗:', err);
+    ui.teamDelete.busy = false;
+    showToast(`刪除失敗：${cloudErrorText(err)}`);
+  }
+  render();
+}
+
+function renderTeamDeleteModal() {
+  const d = ui.teamDelete;
+  const name = cloud.teamName || '';
+  const ok = String(d.text || '').trim() === name;
+  return `
+    <h3>刪除「${escapeHtml(name)}」？</h3>
+    <p class="sub">會永久刪除這個球團的所有資料，<b>無法復原</b>：</p>
+    <ul class="sub danger-list">
+      <li>即時排場、長期排行榜、歷史球局</li>
+      <li>球友帳號與認領、共同管理者</li>
+      <li>報名場次與名單</li>
+    </ul>
+    <p class="sub">球友的連結和 QR Code 會失效。這支手機上目前的排場和常用球員會保留。</p>
+    <label class="label" for="team-delete-text">請輸入球團名稱「${escapeHtml(name)}」確認</label>
+    <input type="text" id="team-delete-text" autocomplete="off" value="${escapeHtml(d.text || '')}">
+    <button class="btn-danger btn-block" style="margin-top:12px" id="team-delete-go" data-action="team-delete-go" ${ok && !d.busy ? '' : 'disabled'}>
+      ${d.busy ? '刪除中…' : '永久刪除球團'}</button>
+    <button class="btn-ghost btn-block" data-action="modal-close">取消</button>`;
 }
 
 function renderViewerSettings() {
@@ -7130,6 +7198,7 @@ function renderModal() {
 
   let content = '';
   if (ui.forgetConfirm) content = renderForgetConfirm();
+  else if (ui.teamDelete) content = renderTeamDeleteModal();
   else if (ui.manual) content = renderManualModal();
   else if (ui.result) content = renderResultModal();
   else if (ui.backup) content = renderBackupModal();
@@ -8521,6 +8590,7 @@ function handleAction(el) {
       return;
     case 'modal-close':
       if (ui.forgetConfirm) { ui.forgetConfirm = null; sessionChanged = false; break; }
+      if (ui.teamDelete) { if (!ui.teamDelete.busy) ui.teamDelete = null; sessionChanged = false; break; }
       if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
       if (ui.copyText && ui.signupOpen) { ui.copyText = null; sessionChanged = false; break; }   // 報名訊息的手動複製視窗
       if (ui.signupForm) { ui.signupForm = null; sessionChanged = false; break; }
@@ -8744,6 +8814,8 @@ function handleAction(el) {
       } else showToast('無法自動複製，請長按代碼複製');
       return;
     case 'coadmin-toggle': toggleCoAdmin(el.dataset.uid); return;
+    case 'team-delete-open': ui.teamDelete = { text: '', busy: false }; sessionChanged = false; modalOnly = true; break;
+    case 'team-delete-go': deleteTeam(); return;
     case 'manage-team':   // 共同管理者：從球友頁進入這個球團的管理畫面
       storageSet(CLOUD_TEAM_KEY, VIEW_TEAM);
       goHome();
@@ -8829,6 +8901,11 @@ document.addEventListener('input', (event) => {
   else if (id === 'guest-name') ui.guestName = value;
   else if (id === 'team-rename') ui.teamRename = value;
   else if (id === 'regular-add') ui.regularAdd = value;
+  else if (id === 'team-delete-text' && ui.teamDelete) {
+    ui.teamDelete.text = value;
+    const go = document.getElementById('team-delete-go');
+    if (go) go.disabled = value.trim() !== (cloud.teamName || '') || ui.teamDelete.busy;
+  }
   else if (id === 'rename-to') { ui.renameTo = value; updateRenameHint(); }
   else if (id === 'past-rename-to') ui.renameTo = value;
   else if (id === 'signup-add') ui.signupAdd = value;
