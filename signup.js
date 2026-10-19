@@ -49,6 +49,17 @@ function eventDateText(ev) {
   return `${m}/${d}（${'日一二三四五六'[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}）`;
 }
 
+/**
+ * 場次開打的時間（毫秒）。時間以台灣時間（UTC+8）解讀；沒填開始時間就當作當天 23:59。
+ * 開打之後就不再送遞補通知（已經來不及了）。
+ */
+function eventStartMs(ev) {
+  const [y, m, d] = String(ev.date || '').split('-').map(Number);
+  if (!y || !m || !d) return null;
+  const [hh, mm] = ev.start ? ev.start.split(':').map(Number) : [23, 59];
+  return Date.UTC(y, m - 1, d, hh - 8, mm);
+}
+
 /** 通知要送給誰：自己報名的送本人；幫朋友報名的（id = uid_g1）送代報的人 */
 function notifyTarget(signup) {
   const m = /^(.+)_g\d+$/.exec(signup.id);
@@ -71,5 +82,5 @@ function promotionText(ev, name, guest = false) {
 }
 
 module.exports = {
-  stampMs, sortSignups, eventCap, promotedAfterRemoval, promotedAfterCapChange, promotionText, notifyTarget,
+  stampMs, sortSignups, eventCap, promotedAfterRemoval, promotedAfterCapChange, promotionText, notifyTarget, eventStartMs,
 };

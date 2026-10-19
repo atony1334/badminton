@@ -6,7 +6,7 @@ self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (event) => event.waitUntil(self.clients.claim()));
 self.addEventListener('fetch', () => {});
 
-// 推播內容由雲端程式送出（只帶 data）：{ title, body, url, tag }
+// 推播內容由雲端程式送出（只帶 data）：{ title, body, url, tag, expiresAt }
 self.addEventListener('push', (event) => {
   let payload = {};
   try {
@@ -16,15 +16,42 @@ self.addEventListener('push', (event) => {
     payload = { body: event.data ? event.data.text() : '' };
   }
   const title = payload.title || '🏸 輪到你上場！';
-  event.waitUntil(self.registration.showNotification(title, {
+  const expiresAt = Number(payload.expiresAt) || 0;
+  event.waitUntil(clearExpired().then(() => self.registration.showNotification(title, {
     body: payload.body || '',
     icon: 'icon-192.png',
     badge: 'icon-192.png',
     tag: payload.tag || 'oncourt',
     renotify: true,
     vibrate: [300, 150, 300],
-    data: { url: payload.url || './' },
-  }));
+    timestamp: Date.now(),
+    data: { url: payload.url || './', expiresAt },
+  })));
+});
+
+// 通知有時效：過期的（例如那一場早就打完了）在收到新通知時順手清掉
+function clearExpired() {
+  const now = Date.now();
+  return self.registration.getNotifications().then((list) => {
+    list.forEach((n) => {
+      const exp = n.data && n.data.expiresAt;
+      if (exp && exp < now) n.close();
+    });
+  }).catch(() => {});
+}
+
+// 網頁打開時會請 Service Worker 清掉過期或已經看過的通知
+self.addEventListener('message', (event) => {
+  const msg = event.data || {};
+  if (msg.type !== 'clear-notifications') return;
+  event.waitUntil(self.registration.getNotifications().then((list) => {
+    const now = Date.now();
+    list.forEach((n) => {
+      const exp = n.data && n.data.expiresAt;
+      const tagHit = msg.tagPrefix && String(n.tag || '').startsWith(msg.tagPrefix);
+      if (tagHit || (exp && exp < now)) n.close();
+    });
+  }).catch(() => {}));
 });
 
 // 點通知：已經開著的頁面就切過去，沒開就打開觀看頁

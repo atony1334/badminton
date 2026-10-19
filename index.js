@@ -13,7 +13,7 @@ const { getFirestore, FieldValue } = require('firebase-admin/firestore');
 const { getMessaging } = require('firebase-admin/messaging');
 const { newlyOnCourt, messageText } = require('./oncourt');
 const {
-  sortSignups, eventCap, promotedAfterRemoval, promotedAfterCapChange, promotionText, notifyTarget,
+  sortSignups, eventCap, promotedAfterRemoval, promotedAfterCapChange, promotionText, notifyTarget, eventStartMs,
 } = require('./signup');
 
 initializeApp();
@@ -26,13 +26,26 @@ const DEAD_TOKEN_CODES = new Set([
   'messaging/invalid-argument',
 ]);
 
+/**
+ * 通知的時效：
+ *  - TTL：手機離線時，推播服務最多保留多久；過了就丟掉，不會晚到才跳出來
+ *  - expiresAt：通知本身的有效期限，sw.js 和網頁會把過期的通知自動清掉
+ */
+const ONCOURT_TTL_SEC = 180;            // 上場通知 3 分鐘內沒送到就不送了
+const ONCOURT_VALID_MS = 15 * 60000;    // 上場通知 15 分鐘後視為過期（一場大約 10 分鐘）
+const SIGNUP_TTL_MAX_SEC = 7 * 86400;   // 推播服務最多保留 7 天
+
+function taipeiTime(t) {
+  return new Date(t).toLocaleTimeString('zh-TW', { timeZone: 'Asia/Taipei', hour: '2-digit', minute: '2-digit', hour12: false });
+}
+
 // 送給一位球友的所有裝置；失效的憑證順手清掉
-function sendToMember(ref, tokens, data) {
+function sendToMember(ref, tokens, data, ttlSec) {
   return getMessaging().sendEachForMulticast({
     tokens,
     // 只送 data，由網頁的 sw.js 自己顯示通知（iPhone 和安卓都一樣）
     data,
-    webpush: { headers: { Urgency: 'high', TTL: '600' } },
+    webpush: { headers: { Urgency: 'high', TTL: String(Math.round(ttlSec)) } },
   }).then((res) => {
     const dead = [];
     res.responses.forEach((r, i) => {
@@ -88,7 +101,14 @@ exports.notifyOnCourt = onDocumentWritten(
     items.forEach((item) => {
       (byName[item.name] || []).forEach(({ ref, tokens }) => {
         const { title, body } = messageText(item);
-        jobs.push(sendToMember(ref, tokens, { title, body, url: link, tag: `oncourt-${teamId}` }));
+        const now = Date.now();
+        jobs.push(sendToMember(ref, tokens, {
+          title,
+          body: `${body}（${taipeiTime(now)} 排出）`,
+          url: link,
+          tag: `oncourt-${teamId}`,
+          expiresAt: String(now + ONCOURT_VALID_MS),
+        }, ONCOURT_TTL_SEC));
       });
     });
     const results = await Promise.allSettled(jobs);
@@ -106,6 +126,14 @@ exports.notifyOnCourt = onDocumentWritten(
  */
 async function notifyPromoted(db, teamId, eventId, ev, promoted) {
   if (!promoted.length) return;
+  // 場次已經開打（或日期已過）：遞補通知沒有意義，不送
+  const start = eventStartMs(ev);
+  const left = start ? start - Date.now() : SIGNUP_TTL_MAX_SEC * 1000;
+  if (left <= 0) {
+    logger.info(`場次已開打，略過遞補通知：${promoted.map((p) => p.name).join('、')}`);
+    return;
+  }
+  const ttl = Math.max(60, Math.min(SIGNUP_TTL_MAX_SEC, left / 1000));
   const team = await db.doc(`teams/${teamId}`).get();
   const appUrl = (team.exists && team.data().appUrl) || DEFAULT_APP_URL;
   const link = `${appUrl}?team=${teamId}&event=${eventId}`;
@@ -116,7 +144,9 @@ async function notifyPromoted(db, teamId, eventId, ev, promoted) {
     const tokens = member.exists ? member.data().fcmTokens : null;
     if (!Array.isArray(tokens) || !tokens.length) return null;
     const { title, body } = promotionText(ev, p.name || '', target.guest);
-    return sendToMember(ref, tokens, { title, body, url: link, tag: `signup-${eventId}` });
+    return sendToMember(ref, tokens, {
+      title, body, url: link, tag: `signup-${eventId}`, expiresAt: String(start || Date.now() + left),
+    }, ttl);
   });
   const results = await Promise.allSettled(jobs);
   const failed = results.filter((r) => r.status === 'rejected');
