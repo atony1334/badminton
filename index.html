@@ -202,6 +202,37 @@
   .ev-form { display: flex; flex-direction: column; gap: 6px; }
   .ev-form textarea { min-height: 70px; }
   .ev-hint { margin: -2px 0 4px; font-size: 12px; }
+
+  /* 月曆 */
+  .ev-view { margin: 4px 0 12px; }
+  .mgrid-wrap { margin: 8px 0; }
+  .mg-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+  .mg-head b { font-size: 17px; }
+  .mg-nav { font-size: 26px; line-height: 1; padding: 4px 16px; text-decoration: none; }
+  .mgrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .mg-wd { text-align: center; font-size: 13px; color: var(--muted); padding: 4px 0; }
+  .mg-cell { min-height: 52px; border-radius: 10px; padding: 4px 2px; display: flex; flex-direction: column; align-items: center;
+    justify-content: flex-start; gap: 2px; background: var(--surface); color: var(--ink); position: relative; font-size: 17px; }
+  .mg-cell.blank { background: transparent; }
+  .mg-cell.disabled { opacity: .35; }
+  .mg-cell.today { box-shadow: inset 0 0 0 2px var(--court-dark); }
+  .mg-cell.selected { background: var(--court-dark); color: var(--line); }
+  .mg-cell.past { opacity: .6; }
+  .mg-cell.has-ev:not(.selected) { background: var(--floor); }
+  .mg-day { font-weight: 600; }
+  .mg-mark { font-size: 10.5px; font-weight: 700; border-radius: 6px; padding: 0 4px; white-space: nowrap; }
+  .mg-mark.open { background: #DDF3E4; color: #1F7A45; }
+  .mg-mark.full { background: #FFF1D6; color: #8A5A00; }
+  .mg-mark.closed { background: var(--floor); color: var(--muted); }
+  .mg-mine { position: absolute; top: 2px; right: 4px; font-size: 9px; color: #E5484D; }
+  .mg-below { margin-top: 12px; }
+  .date-picker { display: flex; flex-direction: column; gap: 6px; }
+  .dp-top { display: flex; align-items: baseline; gap: 10px; }
+  .dp-picked { font-size: 20px; }
+  .dp-quick { margin: 2px 0; }
+  .ev-times input { font-size: 18px; min-height: 48px; }
+  :root[data-appearance="dark"] .mg-mark.open { background: rgba(80, 200, 120, .18); color: #7FD9A0; }
+  :root[data-appearance="dark"] .mg-mark.full { background: rgba(255, 200, 80, .15); color: #F2C46B; }
   .rename-box { margin-top: 12px; }
   .cal-panel { margin: 8px 0; padding: 12px; border-radius: 12px; background: var(--floor); }
   .cal-panel.fresh { background: var(--soft-yellow); }
@@ -903,7 +934,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.3';
+const APP_VERSION = '6.4';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1395,6 +1426,7 @@ const VIEWER_ACTIONS = new Set([
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'map-toggle', 'cal-open', 'cal-close',
+  'signup-view', 'signup-month', 'signup-day',
 ]);
 
 const cloud = {
@@ -2384,6 +2416,11 @@ document.addEventListener('focusout', () => {
 /* ---------- 開啟／關閉 ---------- */
 function openSignupList() {
   ui.signupOpen = true;
+  if (!ui.signupDay) {
+    const next = upcomingEvents()[0];
+    ui.signupDay = next ? next.date : localDateKey();
+    ui.signupMonth = monthOf(ui.signupDay);
+  }
   watchEvents();
 }
 
@@ -2761,6 +2798,106 @@ function renderCalButton(ev) {
   return `<button class="btn-ghost cal-open" data-action="cal-open">📅 加入行事曆</button>`;
 }
 
+/* ---------- 月曆 ---------- */
+const WEEKDAYS = '日一二三四五六';
+
+function monthOf(dateKey) {
+  return String(dateKey || localDateKey()).slice(0, 7);
+}
+
+function shiftMonth(monthKey, delta) {
+  const [y, m] = monthKey.split('-').map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}`;
+}
+
+/**
+ * 月曆格子（開場次選日期、報名月曆共用）
+ * @param {string} monthKey 'YYYY-MM'
+ * @param {string} navAction 上下個月按鈕的 data-action
+ * @param {(dateKey: string, day: number) => {html: string, cls?: string, action?: string, disabled?: boolean}} cell
+ */
+function renderMonthGrid(monthKey, navAction, cell) {
+  const [y, m] = monthKey.split('-').map(Number);
+  const first = new Date(y, m - 1, 1).getDay();
+  const days = new Date(y, m, 0).getDate();
+  const today = localDateKey();
+  const cells = [];
+  for (let i = 0; i < first; i += 1) cells.push('<span class="mg-cell blank"></span>');
+  for (let d = 1; d <= days; d += 1) {
+    const key = `${y}-${pad2(m)}-${pad2(d)}`;
+    const c = cell(key, d);
+    const cls = ['mg-cell', c.cls || '', key === today ? 'today' : ''].join(' ').trim();
+    cells.push(c.disabled || !c.action
+      ? `<span class="${cls}${c.disabled ? ' disabled' : ''}">${c.html}</span>`
+      : `<button class="${cls}" data-action="${c.action}" data-date="${key}">${c.html}</button>`);
+  }
+  return `<div class="mgrid-wrap">
+      <div class="mg-head">
+        <button class="btn-ghost mg-nav" data-action="${navAction}" data-value="-1" aria-label="上個月">‹</button>
+        <b>${y} 年 ${m} 月</b>
+        <button class="btn-ghost mg-nav" data-action="${navAction}" data-value="1" aria-label="下個月">›</button>
+      </div>
+      <div class="mgrid">${Array.from(WEEKDAYS).map((w) => `<span class="mg-wd">${w}</span>`).join('')}${cells.join('')}</div>
+    </div>`;
+}
+
+// 開場次表單的日期：大格子點選，過去的日子不能選
+function renderDatePicker(f) {
+  const today = localDateKey();
+  const month = ui.formMonth || monthOf(f.date);
+  const quick = [[0, '今天'], [1, '明天'], [7, '下週同一天']].map(([n, label]) => {
+    const key = localDateKey(Date.now() + n * 86400000);
+    return `<button class="chip" data-action="ev-date-pick" data-date="${key}" aria-pressed="${f.date === key}">${label}</button>`;
+  }).join('');
+  const picked = f.date ? eventDateText({ date: f.date }) : '還沒選';
+  return `<div class="date-picker">
+      <div class="dp-top"><span class="label">日期</span><b class="dp-picked">${escapeHtml(picked)}</b></div>
+      <div class="chips dp-quick">${quick}</div>
+      ${renderMonthGrid(month, 'ev-form-month', (key, d) => ({
+        html: `<span class="mg-day">${d}</span>`,
+        cls: key === f.date ? 'selected' : '',
+        action: 'ev-date-pick',
+        disabled: key < today && key !== f.date,
+      }))}
+    </div>`;
+}
+
+// 報名月曆：有場次的日子標出名額，點日子看那天的場次
+function renderSignupCalendar() {
+  const month = ui.signupMonth || monthOf(localDateKey());
+  const byDate = {};
+  signup.events.forEach((ev) => { (byDate[ev.date] = byDate[ev.date] || []).push(ev); });
+  const today = localDateKey();
+  const grid = renderMonthGrid(month, 'signup-month', (key, d) => {
+    const list = byDate[key] || [];
+    if (!list.length) return { html: `<span class="mg-day">${d}</span>`, cls: key === ui.signupDay ? 'selected' : '', action: 'signup-day' };
+    const past = key < today;
+    let status = 'closed';
+    let mark = `${list.length} 場`;
+    if (list.length === 1) {
+      const ranked = signupRanked(list[0]);
+      mark = past ? '已結束' : `${ranked.main.length}/${ranked.cap}`;
+      if (!past && list[0].status === 'open') status = ranked.main.length >= ranked.cap ? 'full' : 'open';
+    } else if (!past && list.some((ev) => ev.status === 'open')) {
+      status = 'open';
+    }
+    const mine = list.some((ev) => myPlace(ev));
+    return {
+      html: `<span class="mg-day">${d}</span><span class="mg-mark ${status}">${mark}</span>${mine ? '<span class="mg-mine" aria-label="你有報名">●</span>' : ''}`,
+      cls: `has-ev ${past ? 'past' : ''} ${key === ui.signupDay ? 'selected' : ''}`,
+      action: 'signup-day',
+    };
+  });
+  const day = ui.signupDay;
+  const list = (byDate[day] || []).slice().sort((a, b) => String(a.start).localeCompare(String(b.start)));
+  const below = !day ? '<p class="sub ev-empty">點有標記的日子看場次。</p>'
+    : list.length ? `<h4 class="profile-h">${escapeHtml(eventDateText({ date: day }))}</h4>${list.map(renderEventCard).join('')}`
+      : `<p class="sub ev-empty">${escapeHtml(eventDateText({ date: day }))}沒有場次。</p>
+        ${!cloud.viewer && day >= today ? `<button class="btn-ghost" data-action="event-new" data-date="${day}">＋ 在這天開場次</button>` : ''}`;
+  return `${grid}<div class="ev-cards mg-below">${below}</div>`;
+}
+
 /* ---------- 畫面 ---------- */
 function eventStatusTag(ev, ranked) {
   if (ev.status !== 'open') return '<span class="ev-tag closed">已截止</span>';
@@ -2797,11 +2934,17 @@ function renderSignupListModal() {
     : upcoming.length
       ? upcoming.map(renderEventCard).join('')
       : `<p class="sub ev-empty">${admin ? '還沒有場次。按上面的按鈕開一場，再把報名連結貼到 LINE 群組。' : '目前沒有開放報名的場次。'}</p>`;
+  const view = prefs.signupView === 'calendar' ? 'calendar' : 'list';
   return `
     <h3>報名場次</h3>
+    <div class="seg ev-view" role="group" aria-label="顯示方式">
+      <button data-action="signup-view" data-value="list" aria-pressed="${view === 'list'}">列表</button>
+      <button data-action="signup-view" data-value="calendar" aria-pressed="${view === 'calendar'}">月曆</button>
+    </div>
     ${admin ? '<button class="btn-primary btn-block" data-action="event-new">＋ 開新場次</button>' : ''}
+    ${view === 'calendar' ? (signup.ready ? renderSignupCalendar() : '<p class="sub">讀取中…</p>') : `
     <div class="ev-cards">${body}</div>
-    ${past.length ? `<h4 class="profile-h">已經過去的場次</h4><div class="ev-cards past">${past.map(renderEventCard).join('')}</div>` : ''}
+    ${past.length ? `<h4 class="profile-h">已經過去的場次</h4><div class="ev-cards past">${past.map(renderEventCard).join('')}</div>` : ''}`}
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
 }
 
@@ -2896,8 +3039,7 @@ function renderEventFormModal() {
   return `
     <h3>${f.editId ? '編輯場次' : '開新場次'}</h3>
     <div class="ev-form">
-      <label class="label" for="ev-date">日期</label>
-      <input type="date" id="ev-date" value="${escapeHtml(f.date)}">
+      ${renderDatePicker(f)}
       <div class="ev-times">
         <label><span class="label">開始</span><input type="time" id="ev-start" value="${escapeHtml(f.start)}"></label>
         <label><span class="label">結束</span><input type="time" id="ev-end" value="${escapeHtml(f.end)}"></label>
@@ -7864,10 +8006,37 @@ function handleAction(el) {
     case 'cal-open': ui.calFor = ui.signupId; ui.calFresh = false; sessionChanged = false; modalOnly = true; break;
     case 'cal-close': ui.calFor = null; sessionChanged = false; modalOnly = true; break;
     case 'map-toggle': ui.mapOpen = !ui.mapOpen; sessionChanged = false; modalOnly = true; break;
-    case 'event-new': newEventForm(null); sessionChanged = false; modalOnly = true; break;
+    case 'event-new':
+      newEventForm(null);
+      if (el.dataset.date) ui.signupForm.date = el.dataset.date;
+      ui.formMonth = monthOf(ui.signupForm.date);
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    case 'ev-date-pick':
+      ui.signupForm.date = el.dataset.date;
+      ui.formMonth = monthOf(el.dataset.date);
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    case 'ev-form-month': ui.formMonth = shiftMonth(ui.formMonth || monthOf(ui.signupForm.date), Number(el.dataset.value)); sessionChanged = false; modalOnly = true; break;
+    case 'signup-view':
+      prefs.signupView = el.dataset.value;
+      savePrefs();
+      if (!ui.signupDay) {   // 預設選今天；今天沒有就選最近一場
+        const next = upcomingEvents()[0];
+        ui.signupDay = next ? next.date : localDateKey();
+        ui.signupMonth = monthOf(ui.signupDay);
+      }
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    case 'signup-month': ui.signupMonth = shiftMonth(ui.signupMonth || monthOf(localDateKey()), Number(el.dataset.value)); sessionChanged = false; modalOnly = true; break;
+    case 'signup-day': ui.signupDay = el.dataset.date; sessionChanged = false; modalOnly = true; break;
     case 'event-edit': {
       const ev = signup.events.find((e) => e.id === ui.signupId);
       if (ev) newEventForm(ev);
+      if (ev) ui.formMonth = monthOf(ev.date);
       sessionChanged = false;
       modalOnly = true;
       break;
