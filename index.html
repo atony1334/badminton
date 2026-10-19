@@ -245,6 +245,8 @@
   a.link-btn.strong { color: var(--court-dark); font-weight: 700; }
   .btn-one { display: grid; }
   .reg-add { margin-bottom: 16px; }
+  .guest-list li { min-height: 48px; }
+  .guest-list .ev-name small { display: block; margin: 2px 0 0; font-size: 12px; }
   .past-rename-toggle { margin-bottom: 10px; }
   .past-rename .chips { margin: 0; }
   .btn-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -976,7 +978,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.9';
+const APP_VERSION = '6.11';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1469,7 +1471,7 @@ const VIEWER_ACTIONS = new Set([
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
-  'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'map-toggle', 'cal-close',
+  'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
   'signup-view', 'signup-month', 'signup-day',
 ]);
 
@@ -2315,11 +2317,13 @@ function renderAccountCard(all) {
  *     place：Google 地圖分享連結或地址（選填）；沒填就用 venue 搜尋
  *   teams/{teamId}/events/{eventId}/signups/{id}   { name, at }
  *     id = 報名者的 Google uid（只能報自己）；管理者代報的是 m 開頭的亂數
+ *     球友幫朋友報名：id = {自己的 uid}_g1、_g2（最多 SIGNUP_GUEST_MAX 位），另存 by（代報者 uid）、byName
  * 正取／候補不存在資料庫：依報名時間（伺服器時間）排序，前 cap 位是正取。
  * 有人取消或管理者加開場地，候補自然往前遞補；兩個人同時搶最後一個名額也不會算錯。
  */
 const SIGNUP_PER_COURT = 8;
 const SIGNUP_NAME_MAX = 12;
+const SIGNUP_GUEST_MAX = 2;   // 每位球友最多幫幾位朋友報名
 const SIGNUP_PAST_SHOWN = 5;
 const VIEW_EVENT = (() => {
   const id = new URLSearchParams(window.location.search).get('event');
@@ -2696,10 +2700,41 @@ async function submitSignup(ev) {
   render();
 }
 
+// 我幫朋友報名的那幾筆
+function myGuests(ev) {
+  if (!cloud.viewer || !cloud.user) return [];
+  return (signup.lists[ev.id] || []).filter((s) => s.by === cloud.user.uid);
+}
+
+async function submitGuest(ev) {
+  if (!cloud.user) { googleLogin(); return; }
+  if (ev.status !== 'open') { showToast('報名已截止'); return; }
+  const name = String(ui.guestName || '').trim().slice(0, SIGNUP_NAME_MAX);
+  if (!name) { showToast('請輸入朋友的名字'); return; }
+  const list = signup.lists[ev.id] || [];
+  if (list.some((s) => s.name === name)) { showToast(`「${name}」已經在名單上了`); return; }
+  const used = new Set(myGuests(ev).map((s) => s.id));
+  const slot = Array.from({ length: SIGNUP_GUEST_MAX }, (_, i) => `${cloud.user.uid}_g${i + 1}`).find((id) => !used.has(id));
+  if (!slot) { showToast(`每個人最多幫 ${SIGNUP_GUEST_MAX} 位朋友報名`); return; }
+  const byName = String(myName() || cloud.user.displayName || '').slice(0, 30);
+  signup.busy = true;
+  render();
+  try {
+    await cloud.fb.setDoc(signupRef(ev.id, slot), { name, at: cloud.fb.serverTimestamp(), by: cloud.user.uid, byName });
+    ui.guestName = '';
+    showToast(`已幫「${name}」報名`);
+  } catch (err) {
+    showToast(err && err.code === 'permission-denied' ? '報名失敗：可能已經截止' : cloudErrorText(err));
+  }
+  signup.busy = false;
+  render();
+}
+
 async function cancelSignup(ev, id) {
   try {
     await cloud.fb.deleteDoc(signupRef(ev.id, id));
-    showToast(cloud.viewer ? '已取消報名' : '已從名單移除');
+    const isGuest = cloud.viewer && cloud.user && id !== cloud.user.uid;
+    showToast(!cloud.viewer ? '已從名單移除' : isGuest ? '已取消朋友的報名' : '已取消報名');
   } catch (err) {
     showToast(cloudErrorText(err));
   }
@@ -3002,6 +3037,36 @@ function renderSignupAdminTools(ev) {
     </div>`;
 }
 
+function signupByText(s) {
+  if (s.byName) return `<small>${escapeHtml(s.byName)} 代報</small>`;
+  if (s.by === 'admin' && !cloud.viewer) return '<small>代報</small>';
+  return '';
+}
+
+// 球友幫朋友報名：列出自己代報的人，可以取消；名額內還能再加
+function renderGuestBox(ev, ranked) {
+  if (!cloud.user) return '';
+  const guests = myGuests(ev);
+  if (ev.status !== 'open' && !guests.length) return '';
+  const rows = guests.map((g) => {
+    const index = ranked.list.findIndex((s) => s.id === g.id);
+    const place = index < 0 ? '' : index < ranked.cap ? `正取第 ${index + 1} 位` : `候補第 ${index - ranked.cap + 1} 位`;
+    const armed = ui.signupArmed === g.id;
+    return `<li><span class="ev-name">${escapeHtml(g.name)}<small>${place}</small></span>
+      <button class="${armed ? 'btn-danger' : 'btn-outline danger'} ev-remove" data-action="signup-cancel" data-id="${escapeHtml(g.id)}">${armed ? '確定取消？' : '取消'}</button></li>`;
+  }).join('');
+  const canAdd = ev.status === 'open' && guests.length < SIGNUP_GUEST_MAX;
+  return `<div class="ev-box guest-box">
+      <b>幫朋友報名</b>
+      ${rows ? `<ul class="ev-list guest-list">${rows}</ul>` : ''}
+      ${canAdd ? `<div class="ev-add">
+        <input type="text" id="guest-name" maxlength="${SIGNUP_NAME_MAX}" placeholder="朋友的名字" value="${escapeHtml(ui.guestName || '')}">
+        <button class="btn-outline" data-action="guest-submit" ${signup.busy ? 'disabled' : ''}>報名</button>
+      </div>
+      <p class="sub ev-box-text">最多 ${SIGNUP_GUEST_MAX} 位，照報名時間排序，跟大家一樣。朋友不能來時請記得幫他取消。</p>` : ''}
+    </div>`;
+}
+
 function renderSignupRows(rows, start, ev) {
   const mine = cloud.viewer && cloud.user ? cloud.user.uid : null;
   return rows.map((s, i) => {
@@ -3009,7 +3074,7 @@ function renderSignupRows(rows, start, ev) {
     const remove = cloud.viewer ? ''
       : `<button class="${armed ? 'btn-danger' : 'btn-ghost'} ev-remove" data-action="signup-cancel" data-id="${escapeHtml(s.id)}">${armed ? '確認移除' : '移除'}</button>`;
     return `<li class="${s.id === mine ? 'mine' : ''}"><span class="num ev-no">${start + i}</span>
-      <span class="ev-name">${escapeHtml(s.name || '')}${s.by === 'admin' && !cloud.viewer ? '<small>代報</small>' : ''}</span>${remove}</li>`;
+      <span class="ev-name">${escapeHtml(s.name || '')}${signupByText(s)}</span>${remove}</li>`;
   }).join('');
 }
 
@@ -3036,7 +3101,7 @@ function renderSignupEventModal() {
       <li>${icon('court')}<span class="ev-info-main">${ev.courts} 面場・上限 ${ranked.cap} 人</span></li>
       ${ev.note ? `<li>${icon('note')}<span class="ev-info-main ev-note-text">${escapeHtml(ev.note)}</span></li>` : ''}
     </ul>
-    ${cloud.viewer ? renderSignupMine(ev, ranked) : renderSignupAdminTools(ev)}
+    ${cloud.viewer ? renderSignupMine(ev, ranked) + renderGuestBox(ev, ranked) : renderSignupAdminTools(ev)}
     <div class="ev-list-head">
       <h4>正取 <span class="num">${ranked.main.length}/${ranked.cap}</span></h4>
       <span class="ev-bar" aria-hidden="true"><span style="width:${pct}%"></span></span>
@@ -7276,18 +7341,54 @@ document.addEventListener('touchcancel', tabScrubEnd);
  * 只在判定為水平滑動時攔截，垂直捲動不受影響。
  */
 const SWIPE_THRESHOLD = 70;
-const swipe = { active: false, decided: false, horizontal: false, x: 0, y: 0, dx: 0 };
+// mode：'tab' 切換分頁｜'drawer-open' 在最左邊的分頁再往右拉，拉出側邊選單｜'drawer-close' 選單開著時往左推回去
+const swipe = { active: false, decided: false, horizontal: false, x: 0, y: 0, dx: 0, mode: null };
 
 function swipeBlocked(target) {
-  return !state.players.length
-    || ui.manual || ui.result || ui.backup || ui.settings || ui.copyText || ui.titleIndex !== null || ui.report || ui.profileName
+  if (ui.drawer) return false;   // 選單開著：任何地方往左滑都能收起
+  return ui.manual || ui.result || ui.backup || ui.settings || ui.copyText || ui.titleIndex !== null || ui.report
+    || ui.profileName || ui.signupOpen || ui.ranksOpen || ui.pastList || ui.pastId || ui.invite || ui.rankProfile
     || target.closest('input, textarea, select, .tabbar, .modal-bg');
+}
+
+function drawerEls() {
+  return {
+    panel: document.querySelector('#drawer-root .drawer'),
+    bg: document.querySelector('#drawer-root .drawer-bg'),
+  };
+}
+
+// 選單跟著手指：offset 是選單露出的寬度（px）
+function followDrawer(offset) {
+  const { panel, bg } = drawerEls();
+  if (!panel) return;
+  const width = panel.offsetWidth || 320;
+  const shown = Math.max(0, Math.min(width, offset));
+  panel.style.transition = 'none';
+  panel.style.transform = `translateX(${shown - width}px)`;
+  if (bg) { bg.style.transition = 'none'; bg.style.opacity = String(shown / width); }
+}
+
+function releaseDrawer(open) {
+  const { panel, bg } = drawerEls();
+  [panel, bg].forEach((el) => {
+    if (!el) return;
+    el.style.transition = '';
+    el.style.transform = '';
+    el.style.opacity = '';
+  });
+  if (open) {
+    ui.drawerAnim = 'open';
+    [panel, bg].forEach((el) => el && el.classList.add('open'));
+  } else {
+    closeDrawer();
+  }
 }
 
 document.addEventListener('touchstart', (event) => {
   if (event.touches.length !== 1 || swipeBlocked(event.target)) return;
   const t = event.touches[0];
-  Object.assign(swipe, { active: true, decided: false, horizontal: false, x: t.clientX, y: t.clientY, dx: 0 });
+  Object.assign(swipe, { active: true, decided: false, horizontal: false, x: t.clientX, y: t.clientY, dx: 0, mode: null });
 }, { passive: true });
 
 document.addEventListener('touchmove', (event) => {
@@ -7299,15 +7400,29 @@ document.addEventListener('touchmove', (event) => {
     if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
     swipe.decided = true;
     swipe.horizontal = Math.abs(dx) > Math.abs(dy) * 1.2;
-    if (!swipe.horizontal) {
-      swipe.active = false;
-      return;
+    const index = TAB_ORDER.indexOf(ui.tab);
+    const hasTabs = state.players.length > 0;
+    if (!swipe.horizontal) swipe.mode = null;
+    else if (ui.drawer) swipe.mode = dx < 0 ? 'drawer-close' : null;
+    else if (dx > 0 && (!hasTabs || index === 0)) swipe.mode = 'drawer-open';
+    else swipe.mode = hasTabs ? 'tab' : null;
+    if (!swipe.mode) { swipe.active = false; return; }
+    if (swipe.mode === 'drawer-open') {   // 先把選單畫出來（在畫面外），再跟著手指拉出
+      ui.drawer = true;
+      ui.drawerAnim = '';
+      renderDrawerRoot();
     }
   }
   event.preventDefault();   // 水平滑動時阻止頁面左右晃動
   swipe.dx = dx;
+  if (swipe.mode === 'drawer-open') { followDrawer(dx); return; }
+  if (swipe.mode === 'drawer-close') {
+    const { panel } = drawerEls();
+    followDrawer((panel ? panel.offsetWidth : 320) + dx);
+    return;
+  }
   const index = TAB_ORDER.indexOf(ui.tab);
-  const atEdge = (dx > 0 && index === 0) || (dx < 0 && index === TAB_ORDER.length - 1);
+  const atEdge = dx < 0 && index === TAB_ORDER.length - 1;
   const body = document.getElementById('tab-body');
   if (body) {
     body.style.transition = 'none';
@@ -7315,10 +7430,12 @@ document.addEventListener('touchmove', (event) => {
   }
 }, { passive: false });
 
-document.addEventListener('touchend', () => {
+function swipeEnd() {
   if (!swipe.active) return;
   swipe.active = false;
-  if (!swipe.horizontal) return;
+  if (!swipe.horizontal || !swipe.mode) return;
+  if (swipe.mode === 'drawer-open') { releaseDrawer(swipe.dx >= SWIPE_THRESHOLD); return; }
+  if (swipe.mode === 'drawer-close') { releaseDrawer(swipe.dx > -SWIPE_THRESHOLD); return; }
   const index = TAB_ORDER.indexOf(ui.tab);
   const target = swipe.dx < 0 ? index + 1 : index - 1;
   if (Math.abs(swipe.dx) >= SWIPE_THRESHOLD && target >= 0 && target < TAB_ORDER.length) {
@@ -7330,7 +7447,9 @@ document.addEventListener('touchend', () => {
     body.style.transition = 'transform 0.2s ease';
     body.style.transform = 'translateX(0)';
   }
-});
+}
+document.addEventListener('touchend', swipeEnd);
+document.addEventListener('touchcancel', swipeEnd);
 
 /* ===================== 場上拖曳交換 ===================== */
 /**
@@ -8119,6 +8238,11 @@ function handleAction(el) {
       if (ev) submitSignup(ev);
       return;
     }
+    case 'guest-submit': {
+      const ev = signup.events.find((e) => e.id === ui.signupId);
+      if (ev) submitGuest(ev);
+      return;
+    }
     case 'signup-cancel': {
       const ev = signup.events.find((e) => e.id === ui.signupId);
       if (!ev) return;
@@ -8336,6 +8460,7 @@ document.addEventListener('input', (event) => {
   else if (id === 'cloud-pass') ui.cloudPass = value;
   else if (id === 'cloud-team-name') ui.cloudTeamName = value;
   else if (id === 'signup-name') ui.signupName = value;
+  else if (id === 'guest-name') ui.guestName = value;
   else if (id === 'team-rename') ui.teamRename = value;
   else if (id === 'regular-add') ui.regularAdd = value;
   else if (id === 'rename-to') { ui.renameTo = value; updateRenameHint(); }
