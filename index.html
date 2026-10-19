@@ -244,6 +244,9 @@
   .link-btn { background: transparent; padding: 4px 8px; color: var(--muted); font-size: 14px; text-decoration: none; }
   a.link-btn.strong { color: var(--court-dark); font-weight: 700; }
   .btn-one { display: grid; }
+  .reg-add { margin-bottom: 16px; }
+  .past-rename-toggle { margin-bottom: 10px; }
+  .past-rename .chips { margin: 0; }
   .btn-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .btn-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
   .ev-title { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
@@ -277,13 +280,11 @@
   .rename-box { margin-top: 12px; }
   .cal-panel { display: flex; flex-direction: column; gap: 10px; margin: 0; padding: 12px; border-radius: 12px; background: var(--floor); }
   .cal-panel.fresh { background: var(--soft-yellow); }
-  .cal-panel p { margin: 0 0 8px; }
-  .cal-btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  a.cal-link svg { width: 18px; height: 18px; }
+  a.cal-link.btn-primary { justify-content: center; gap: 6px; padding: 12px; }
   a.cal-link, a.ev-nav { display: inline-flex; align-items: center; border-radius: var(--radius-s); padding: 8px 14px; font-size: 15px; }
   a.cal-link.btn-primary, a.ev-nav.btn-primary { text-decoration: none; }
   a.cal-link.btn-ghost { padding: 8px 6px; color: inherit; }
-  .cal-tip { margin: 8px 0 0 !important; font-size: 12px; }
-  .cal-open { margin: 4px 0 8px; }
   .rename-box input { margin: 6px 0; }
   .team-rename input { flex: 1; min-width: 140px; margin: 0; }
   .ev-map { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
@@ -975,7 +976,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.6';
+const APP_VERSION = '6.8';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1466,7 +1467,7 @@ const VIEWER_ACTIONS = new Set([
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
-  'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'map-toggle', 'cal-open', 'cal-close',
+  'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'map-toggle', 'cal-close',
   'signup-view', 'signup-month', 'signup-day',
 ]);
 
@@ -2683,8 +2684,7 @@ async function submitSignup(ev) {
   try {
     await cloud.fb.setDoc(signupRef(ev.id, cloud.user.uid), { name, at: cloud.fb.serverTimestamp() });
     showToast('報名成功！');
-    ui.calFor = ev.id;     // 報名當下問要不要加入行事曆
-    ui.calFresh = true;
+    ui.calFor = ev.id;     // 報名當下問要不要加入 Google 日曆
   } catch (err) {
     showToast(err && err.code === 'permission-denied' ? '報名失敗：可能已經截止，或你已經報名過了' : cloudErrorText(err));
   }
@@ -2705,8 +2705,7 @@ async function cancelSignup(ev, id) {
 
 /* ---------- 加入行事曆 ---------- */
 /**
- * Google 日曆：開 Google 的新增活動頁（時間用台北時區）。
- * iPhone／其他：產生 .ics 檔，iPhone 的 Safari 打開後會直接問要不要加入行事曆。
+ * 加入 Google 日曆：開 Google 的新增活動頁（時間用台北時區）。
  * 沒有結束時間就當作 3 小時；結束時間比開始早（打到半夜）就算隔天。
  */
 const CAL_TZ_OFFSET_H = 8;   // 台灣時間 UTC+8
@@ -2772,64 +2771,22 @@ function googleCalUrl(ev) {
   return `https://calendar.google.com/calendar/render?${params.toString()}`;
 }
 
-// .ics 文字要跳脫逗號、分號、換行
-function icsEscape(text) {
-  return String(text || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
-}
-
-function icsText(ev) {
-  const t = eventTimes(ev);
-  if (!t) return '';
-  const lines = [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    'PRODID:-//badminton-rotation//signup//ZH',
-    'CALSCALE:GREGORIAN',
-    'METHOD:PUBLISH',
-    'BEGIN:VEVENT',
-    `UID:${ev.id}@badminton-rotation`,
-    `DTSTAMP:${calUtcStamp(Date.now())}`,
-    t.allDay ? `DTSTART;VALUE=DATE:${calDayStamp(t.y, t.m, t.d)}` : `DTSTART:${calUtcStamp(t.start)}`,
-    t.allDay ? `DTEND;VALUE=DATE:${calDayStamp(t.y, t.m, t.d + 1)}` : `DTEND:${calUtcStamp(t.end)}`,
-    `SUMMARY:${icsEscape(calTitle(ev))}`,
-    `LOCATION:${icsEscape(calLocation(ev))}`,
-    `DESCRIPTION:${icsEscape(calDetails(ev))}`,
-    'BEGIN:VALARM',
-    'ACTION:DISPLAY',
-    'DESCRIPTION:羽球快開始了',
-    'TRIGGER:-PT1H',
-    'END:VALARM',
-    'END:VEVENT',
-    'END:VCALENDAR',
-  ];
-  return lines.join('\r\n');
-}
-
-function icsHref(ev) {
-  const text = icsText(ev);
-  return text ? `data:text/calendar;charset=utf-8,${encodeURIComponent(text)}` : '';
-}
-
-// fresh：剛報名完跳出的詢問；否則是之後自己按「加入行事曆」
-function renderCalPanel(ev, fresh) {
+// 剛報名完跳出的詢問；之後也可以按「加入行事曆」
+function renderCalPanel(ev) {
   const google = googleCalUrl(ev);
   if (!google) return '';
-  // iPhone 不要 download 屬性：Safari 直接打開 .ics 才會出現「加入行事曆」
-  const download = isIOS() ? '' : ` download="badminton-${escapeHtml(ev.date)}.ics"`;
-  return `<div class="cal-panel ${fresh ? 'fresh' : ''}">
+  return `<div class="cal-panel fresh">
       <div class="cal-head">
-        <span>${fresh ? '<b>報名成功！</b>要加入行事曆嗎？' : '<b>加入行事曆</b>'}</span>
-        <button class="icon-btn" data-action="cal-close" aria-label="收起">✕</button>
+        <span><b>報名成功！</b>要加入 Google 日曆嗎？</span>
+        <button class="icon-btn" data-action="cal-close" aria-label="不用了">✕</button>
       </div>
-      <div class="btn-pair">
-        <a class="btn-outline cal-link" href="${escapeHtml(google)}" target="_blank" rel="noopener">Google 日曆</a>
-        <a class="btn-outline cal-link" href="${escapeHtml(icsHref(ev))}"${download}>iPhone／其他</a>
-      </div>
+      <a class="btn-primary cal-link" href="${escapeHtml(google)}" target="_blank" rel="noopener" data-cal-done="1">${icon('calendar')}加入 Google 日曆</a>
     </div>`;
 }
 
-function renderCalButton(ev) {
-  return `<button class="btn-outline" data-action="cal-open" aria-expanded="${ui.calFor === ev.id}">${icon('calendar')}加入行事曆</button>`;
+function renderCalButton(ev, label = '加入行事曆') {
+  const google = googleCalUrl(ev);
+  return google ? `<a class="btn-outline" href="${escapeHtml(google)}" target="_blank" rel="noopener">${icon('calendar')}${label}</a>` : '';
 }
 
 /* ---------- 月曆 ---------- */
@@ -2999,7 +2956,7 @@ function renderSignupMine(ev, ranked) {
         <span class="ev-me-place">${escapeHtml(place.text)}</span>
       </div>
       ${place.main ? '' : '<p class="ev-box-text sub">前面有人取消就會自動遞補，並通知你。</p>'}
-      ${ui.calFor === ev.id ? renderCalPanel(ev, ui.calFresh) : ''}
+      ${ui.calFor === ev.id ? renderCalPanel(ev) : ''}
       <div class="${ui.calFor === ev.id ? 'btn-one' : 'btn-pair'}">
         ${ui.calFor === ev.id ? '' : renderCalButton(ev)}
         <button class="${armed ? 'btn-danger' : 'btn-outline danger'}" data-action="signup-cancel" data-id="${escapeHtml(place.entry.id)}">
@@ -3029,11 +2986,10 @@ function renderSignupAdminTools(ev) {
       <div class="btn-grid">
         <button class="btn-outline" data-action="event-apply">帶入排場名單</button>
         <button class="btn-outline" data-action="event-edit">編輯場次</button>
-        <button class="btn-outline" data-action="cal-open">${icon('calendar')}行事曆</button>
+        ${renderCalButton(ev, '行事曆')}
         <button class="btn-outline" data-action="event-status" data-value="${ev.status === 'open' ? 'closed' : 'open'}">
           ${ev.status === 'open' ? '截止報名' : '重新開放'}</button>
       </div>
-      ${ui.calFor === ev.id ? renderCalPanel(ev, false) : ''}
       <div class="ev-add">
         <input type="text" id="signup-add" maxlength="${SIGNUP_NAME_MAX}" placeholder="幫人報名：輸入名字" value="${escapeHtml(ui.signupAdd || '')}">
         <button class="btn-outline" data-action="signup-admin-add">加入</button>
@@ -3773,9 +3729,78 @@ function renderPastSessionModal() {
   return `
     ${head}
     <h3>${pastDateText(starts.length ? Math.min(...starts) : Date.now())}</h3>
-    <p class="sub" style="margin:0">${span}${day.players.length} 人・${day.history.length} 場・${MODE_LABEL[day.mode] || ''}</p>
+    <p class="sub" style="margin:0 0 10px">${span}${day.players.length} 人・${day.history.length} 場・${MODE_LABEL[day.mode] || ''}</p>
+    ${renderPastRename(day)}
     <div class="past-view">${html}</div>
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="past-back">返回歷史球局</button>`;
+}
+
+/* ---------- 歷史球局：改名字（管理者） ---------- */
+// 只改這一天：例如那天把善茹記成星安；改完重算那一天的排行榜統計
+async function renamePlayerInSession(id, from, to) {
+  const day = past.cache[id];
+  if (!day) return;
+  if (day.players.some((p) => p.name === to)) {
+    showToast(`這一天已經有「${to}」了，要合併請選「所有紀錄一起改」`);
+    return;
+  }
+  ui.renameBusy = true;
+  renderModal();
+  try {
+    const renamed = renameInState(normalizeState(JSON.parse(JSON.stringify(day))), from, to);
+    const { doc, getDoc, setDoc } = cloud.fb;
+    const ref = doc(cloud.db, 'teams', cloud.teamId, 'sessions', id);
+    const snap = await getDoc(ref);
+    await setDoc(ref, Object.assign({}, snap.exists() ? snap.data() : {}, {
+      stateJson: JSON.stringify(renamed),
+      players: renamed.players.map((p) => p.name),
+    }));
+    await writeSessionStats(renamed);
+    past.cache[id] = renamed;
+    if (state.sessionId === id) {   // 這一天就是今天：手機上的排場也一起改
+      renameInState(state, from, to);
+      saveSession();
+    }
+    ranks.loadedAt = 0;
+    loadRanks(true);
+    ui.pastRename = null;
+    showToast(`這一天的「${from}」已改成「${to}」`);
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+  ui.renameBusy = false;
+  render();
+}
+
+async function renamePlayerEverywhereFromPast(from, to) {
+  await renamePlayer(from, to);
+  ui.pastRename = null;
+  past.cache = {};   // 每一天的紀錄都可能改到，重新讀取
+  if (ui.pastId) openPastSession(ui.pastId);
+}
+
+function renderPastRename(day) {
+  if (cloud.viewer || !cloudReady()) return '';
+  if (!ui.pastRenameOpen) {
+    return '<button class="btn-outline past-rename-toggle" data-action="past-rename-toggle">改這一天的名字</button>';
+  }
+  const names = day.players.map((p) => p.name);
+  const pick = ui.pastRename;
+  const chips = names.map((n) => `<button class="chip" data-action="past-rename-pick" data-name="${escapeHtml(n)}" aria-pressed="${pick === n}">${escapeHtml(n)}</button>`).join('');
+  const box = pick ? `
+      <label class="label" for="past-rename-to">把「${escapeHtml(pick)}」改成</label>
+      <input type="text" id="past-rename-to" maxlength="${NAME_MAX}" value="${escapeHtml(ui.renameTo || '')}">
+      <div class="btn-pair">
+        <button class="btn-primary" data-action="past-rename-day" ${ui.renameBusy ? 'disabled' : ''}>${ui.renameBusy ? '更新中…' : '只改這一天'}</button>
+        <button class="btn-outline" data-action="past-rename-all" ${ui.renameBusy ? 'disabled' : ''}>所有紀錄一起改</button>
+      </div>
+      <p class="sub ev-box-text">「只改這一天」：那天記錯人時用。<br>「所有紀錄一起改」：名字打錯字時用，今天名單、常用名單、認領、報名都會一起改；新名字已經存在的話會合併成同一個人。</p>`
+    : '<p class="sub ev-box-text">點要改的名字。</p>';
+  return `<div class="ev-box past-rename">
+      <div class="cal-head"><b>改這一天的名字</b><button class="icon-btn" data-action="past-rename-toggle" aria-label="收起">✕</button></div>
+      <div class="chips">${chips}</div>
+      ${box}
+    </div>`;
 }
 
 // 歷史畫面只能看：拿掉會改到資料或開別的視窗的按鈕
@@ -4933,8 +4958,10 @@ function renderModeSeg(current, action) {
 
 /* ===================== 畫面：開始設定 ===================== */
 function renderRegularPicker() {
-  if (!regulars.length) {
-    return '<p class="sub">還沒有常用球員。下方輸入的新名字可以一併存進常用名單。</p>';
+  if (!regulars.length && !ui.editRegulars) {
+    return `<div class="section-head"><span class="label">常用球員</span>
+      <button class="btn-ghost" data-action="regular-edit">新增</button></div>
+      <p class="sub">還沒有常用球員。可以按「新增」，或在下方輸入名字時一併存進常用名單。</p>`;
   }
   const chips = regulars.map((name) => {
     if (ui.editRegulars) {
@@ -4953,7 +4980,11 @@ function renderRegularPicker() {
         <button class="btn-ghost" data-action="regular-edit">${ui.editRegulars ? '完成' : '編輯'}</button>
       </span>
     </div>
-    <div class="chips" style="margin:6px 0 16px">${chips}</div>`;
+    <div class="chips" style="margin:6px 0 ${ui.editRegulars ? 10 : 16}px">${chips}</div>
+    ${ui.editRegulars ? `<div class="ev-add reg-add">
+      <input type="text" id="regular-add" placeholder="新增常用球員（可一次輸入多個，用逗號分隔）" value="${escapeHtml(ui.regularAdd || '')}">
+      <button class="btn-outline" data-action="regular-add">新增</button>
+    </div>` : ''}`;
 }
 
 function renderSetup() {
@@ -7608,6 +7639,16 @@ function handleAction(el) {
       break;
     case 'regular-edit': ui.editRegulars = !ui.editRegulars; sessionChanged = false; break;
     case 'regular-delete': removeRegular(name); sessionChanged = false; break;
+    case 'regular-add': {
+      const names = parseNames(ui.regularAdd || '');
+      if (!names.length) { showToast('請輸入名字'); return; }
+      const fresh = names.filter((n) => !isRegular(n));
+      addRegulars(fresh);
+      ui.regularAdd = '';
+      showToast(fresh.length ? `已新增 ${fresh.join('、')}` : '這些名字已經在常用名單裡');
+      sessionChanged = false;
+      break;
+    }
     case 'start':
       if (!startSession()) return;
       ui.tab = 'courts';
@@ -7869,6 +7910,8 @@ function handleAction(el) {
       openPastSession(el.dataset.id);
       return;
     case 'past-back':
+      ui.pastRenameOpen = false;
+      ui.pastRename = null;
       ui.pastId = null;
       ui.historyFilter = '';
       ui.historyExpanded = false;
@@ -7998,6 +8041,8 @@ function handleAction(el) {
         break;
       }
       if (ui.pastId) {   // 從某一天的紀錄關掉：回到歷史球局列表
+        ui.pastRenameOpen = false;
+        ui.pastRename = null;
         ui.pastId = null;
         ui.historyFilter = '';
         ui.networkFocus = null;
@@ -8062,8 +8107,22 @@ function handleAction(el) {
     case 'rename-open': openRename(el.dataset.name); sessionChanged = false; modalOnly = true; break;
     case 'rename-cancel': ui.renameFrom = null; sessionChanged = false; modalOnly = true; break;
     case 'rename-save': renamePlayer(ui.renameFrom, ui.renameTo); return;
-    case 'cal-open': ui.calFor = ui.signupId; ui.calFresh = false; sessionChanged = false; modalOnly = true; break;
     case 'cal-close': ui.calFor = null; sessionChanged = false; modalOnly = true; break;
+    case 'past-rename-toggle':
+      ui.pastRenameOpen = !ui.pastRenameOpen;
+      ui.pastRename = null;
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    case 'past-rename-pick': ui.pastRename = name; ui.renameTo = name; sessionChanged = false; modalOnly = true; break;
+    case 'past-rename-day':
+    case 'past-rename-all': {
+      const to = String(ui.renameTo || '').trim().slice(0, NAME_MAX);
+      if (!to || to === ui.pastRename) { showToast('請輸入新的名字'); return; }
+      if (action === 'past-rename-day') renamePlayerInSession(ui.pastId, ui.pastRename, to);
+      else renamePlayerEverywhereFromPast(ui.pastRename, to);
+      return;
+    }
     case 'map-toggle': ui.mapOpen = !ui.mapOpen; sessionChanged = false; modalOnly = true; break;
     case 'event-new':
       newEventForm(null);
@@ -8228,6 +8287,10 @@ function handleAction(el) {
 }
 
 document.addEventListener('click', (event) => {
+  if (event.target.closest('[data-cal-done]')) {   // 已經去加 Google 日曆了，收起詢問
+    setTimeout(() => { ui.calFor = null; renderModal(); }, 300);
+    return;
+  }
   const el = event.target.closest('[data-action]');
   if (!el) return;
   // 只有直接點到 modal 背景才關閉；modal 內部非按鈕區域的點擊會冒泡到背景，需略過
@@ -8244,7 +8307,9 @@ document.addEventListener('input', (event) => {
   else if (id === 'cloud-team-name') ui.cloudTeamName = value;
   else if (id === 'signup-name') ui.signupName = value;
   else if (id === 'team-rename') ui.teamRename = value;
+  else if (id === 'regular-add') ui.regularAdd = value;
   else if (id === 'rename-to') { ui.renameTo = value; updateRenameHint(); }
+  else if (id === 'past-rename-to') ui.renameTo = value;
   else if (id === 'signup-add') ui.signupAdd = value;
   else if (/^ev-(date|start|end|venue|place|note)$/.test(id) && ui.signupForm) {
     ui.signupForm[id.slice(3)] = value;
@@ -8262,6 +8327,14 @@ document.addEventListener('input', (event) => {
     if (counter) counter.textContent = total;
   } else if (id === 'add-names') {
     ui.addText = value;
+  }
+});
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && event.target.id === 'regular-add' && !event.isComposing) {
+    event.preventDefault();
+    const btn = document.querySelector('[data-action="regular-add"]');
+    if (btn) btn.click();
   }
 });
 
