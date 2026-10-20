@@ -1010,7 +1010,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.20';
+const APP_VERSION = '6.21';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3846,6 +3846,11 @@ function drawerAccount() {
       lines: [`${isTeamOwner() ? '管理者' : '共同管理者'}・${cloud.teamName || '球團'}`, SYNC_LABEL[cloud.sync] || '已連線'],
     };
   }
+  if (showHome()) {
+    return cloud.user
+      ? { initial: (cloud.user.displayName || cloud.user.email || '球').slice(0, 1), title: cloud.user.displayName || cloud.user.email || '球友', lines: ['已用 Google 登入'] }
+      : { initial: '羽', title: '羽球輪轉排場', lines: ['管理者請從「管理者登入」進入'] };
+  }
   if (cloud.user) return { initial: '管', title: cloud.user.email || '管理者', lines: ['已登入，還沒建立球團'] };
   return { initial: '羽', title: '管理者', lines: [cloudConfigured() ? '還沒登入雲端同步' : '單機模式'] };
 }
@@ -3861,7 +3866,13 @@ function renderDrawer() {
   // 強制更新：重新下載最新版（畫面卡住、或管理者剛更新版本時用）
   const updateItem = isEmbedded() ? ''
     : `<button class="d-item" data-action="force-update">${icon('refresh')}<span>強制更新</span><span class="d-state">v${APP_VERSION}</span></button>`;
-  const groups = admin
+  const groups = admin && showHome()
+    ? [
+      [item('cloud', 'cloud', '管理者登入・雲端同步')],
+      [item('look', 'palette', '畫面'), item('backup', 'save', '備份與還原')],
+      [updateItem],
+    ]
+    : admin
     ? [
       [
         item('cloud', 'cloud', cloudReady() ? '雲端同步・球友帳號' : '雲端同步', badge(pending)),
@@ -5604,6 +5615,7 @@ document.addEventListener('click', (e) => {
 function renderHome() {
   return `
     <header class="top">
+      ${menuButton()}
       <div class="top-title">
         <h1>羽球輪轉排場</h1>
         <p class="sub">選一個開始</p>
@@ -5616,7 +5628,6 @@ function renderHome() {
       <p class="sub" style="margin:0">自己排場，不用登入；資料只存在這支手機。</p>
       <button class="btn-primary btn-block" data-action="home-local">開始臨時開場</button>
     </div>
-    ${cloudConfigured() ? '<div class="home-foot"><button class="btn-ghost" data-action="home-admin">我是管理者，登入</button></div>' : ''}
     ${renderUpdateFooter()}`;
 }
 
@@ -7816,7 +7827,7 @@ const swipe = { active: false, decided: false, horizontal: false, x: 0, y: 0, dx
 
 function swipeBlocked(target) {
   if (ui.drawer) return false;   // 選單開著：任何地方往左滑都能收起
-  return showHome() || ui.manual || ui.result || ui.backup || ui.settings || ui.copyText || ui.titleIndex !== null || ui.report
+  return ui.manual || ui.result || ui.backup || ui.settings || ui.copyText || ui.titleIndex !== null || ui.report
     || ui.profileName || ui.signupOpen || ui.ranksOpen || ui.pastList || ui.pastId || ui.invite || ui.rankProfile
     || target.closest('input, textarea, select, .tabbar, .modal-bg, .home-team');
 }
@@ -8885,12 +8896,6 @@ function handleAction(el) {
       return;
     case 'home-local': ui.homeLocal = true; sessionChanged = false; break;
     case 'home-back': ui.homeLocal = false; sessionChanged = false; break;
-    case 'home-admin':
-      ui.homeLocal = true;
-      ui.settings = true;
-      ui.settingsOnly = 'cloud';
-      sessionChanged = false;
-      break;
     case 'home-forget': ui.forgetConfirm = el.dataset.id; sessionChanged = false; break;
     case 'forget-confirm':
       forgetJoinedTeam(ui.forgetConfirm);
