@@ -80,8 +80,12 @@
   .menu-btn .d-ico { width: 26px; height: 26px; }
   .menu-dot { position: absolute; top: 7px; right: 6px; width: 9px; height: 9px; border-radius: 50%; background: #E5484D; }
   .d-ico { width: 22px; height: 22px; flex-shrink: 0; }
+  /* 暗色遮罩用 box-shadow 畫，不用 background：
+     iOS Safari 會拿貼在畫面頂端的 fixed 元素「背景色」去染狀態列，
+     而且不管 opacity，拉到一半狀態列就整條變灰，看起來很怪 */
   .drawer-bg {
-    position: fixed; inset: 0; z-index: 12; background: rgba(0, 0, 0, 0.45); opacity: 0; transition: opacity 0.2s ease;
+    position: fixed; inset: 0; z-index: 12; background: transparent; box-shadow: inset 0 0 0 200vmax rgba(0, 0, 0, 0.45);
+    opacity: 0; transition: opacity 0.2s ease;
   }
   .drawer-bg.open { opacity: 1; }
   .drawer {
@@ -315,6 +319,9 @@
   a.cal-link.btn-ghost { padding: 8px 6px; color: inherit; }
   .rename-box input { margin: 6px 0; }
   .team-rename input { flex: 1; min-width: 140px; margin: 0; }
+  .team-note-edit textarea { width: 100%; min-height: 96px; margin: 0; }
+  .team-note-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 10px 12px;
+    background: var(--floor); border-radius: var(--radius-s); line-height: 1.6; }
   .ev-map { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
   .ev-map iframe { width: 100%; height: 170px; border: 1px solid var(--border); border-radius: var(--radius-l); background: var(--floor); }
   .ev-map-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -1004,7 +1011,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.19';
+const APP_VERSION = '6.20';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1684,6 +1691,7 @@ async function onCloudUser(user) {
 async function attachTeam(id, data) {
   cloud.teamId = id;
   cloud.teamName = (data && data.name) || '';
+  cloud.teamNote = (data && data.note) || '';
   cloud.ownerUid = (data && data.adminUid) || null;
   cloud.adminUids = (data && Array.isArray(data.adminUids)) ? data.adminUids.slice() : [];
   storageSet(CLOUD_TEAM_KEY, id);
@@ -1756,6 +1764,7 @@ function watchAdminSync() {
       return;
     }
     cloud.teamName = d.name || '';
+    cloud.teamNote = d.note || '';
     cloud.ownerUid = d.adminUid || null;
     cloud.adminUids = Array.isArray(d.adminUids) ? d.adminUids.slice() : [];
     const regsJson = JSON.stringify(Array.isArray(d.regulars) ? d.regulars : []);
@@ -2021,6 +2030,7 @@ function startViewer() {
       return;
     }
     cloud.teamName = snap.data().name || '';
+    cloud.teamNote = snap.data().note || '';
     cloud.ownerUid = snap.data().adminUid || null;
     cloud.adminUids = Array.isArray(snap.data().adminUids) ? snap.data().adminUids : [];
     saveJoinedTeam(VIEW_TEAM, cloud.teamName);
@@ -2259,6 +2269,7 @@ function renderCloudSettings() {
         <button class="btn-ghost" data-action="team-rename-cancel">取消</button>
       </span>
     </div>`}
+    ${renderTeamNoteEditor()}
     <div class="row">
       <span class="label">狀態</span>
       <span id="cloud-sync-text">${escapeHtml(SYNC_LABEL[cloud.sync] || '已連線')}</span>
@@ -2349,17 +2360,17 @@ function renderTeamDeleteModal() {
 
 function renderViewerSettings() {
   return `
-    <h3>設定</h3>
+    <h3>球團資訊</h3>
     <section class="set-group"><div class="set-body" style="padding-top:12px">
-      <h4 class="set-head">觀看模式</h4>
-      <p class="sub set-note">${cloud.teamName ? `正在看「${escapeHtml(cloud.teamName)}」的排場。` : ''}這裡只能看，排場由管理者操作，會自動即時更新。</p>
+      <h4 class="set-head">${escapeHtml(cloud.teamName || '球團')}</h4>
+      ${cloud.teamNote ? `<p class="sub set-note">管理員備註：</p><p class="team-note-text">${escapeHtml(cloud.teamNote)}</p>` : ''}
+      <p class="sub set-note">排場由管理者操作，這裡會自動即時更新。</p>
       <p class="sub set-note">球團代碼（給別人加入，或在主畫面 App 裡輸入）：</p>
       <p class="invite-code"><b class="num">${escapeHtml(VIEW_TEAM || '')}</b>
         <button class="btn-ghost" data-action="invite-copy-code">複製</button></p>
       ${cloud.user ? `<p class="sub set-note">已用 Google 登入：${escapeHtml(cloud.user.email || '')}${cloud.claim ? `（${escapeHtml(cloud.claim.name)}）` : ''}</p>
         <button class="btn-ghost" data-action="google-logout" style="align-self:flex-start">登出</button>` : ''}
     </div></section>
-    ${renderLookSettings()}
     ${renderUpdateFooter()}
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">完成</button>`;
 }
@@ -3423,6 +3434,46 @@ function renderTodaySignupPanel() {
       <button class="btn-primary" data-action="event-apply" data-id="${escapeHtml(ev.id)}">帶入名單</button>
     </div>`;
   }).join('');
+}
+
+/* ===================== 球團備註（管理者寫給球友看的） ===================== */
+const TEAM_NOTE_MAX = 300;
+
+// 管理者在「雲端同步」裡編輯；球友在「球團資訊」看
+function renderTeamNoteEditor() {
+  if (ui.teamNote === null || ui.teamNote === undefined) {
+    return `
+    <div class="row">
+      <span class="label">球團備註</span>
+      <span class="sub">${cloud.teamNote ? '已設定' : '還沒寫'}</span>
+      <button class="btn-ghost" data-action="team-note-open">${cloud.teamNote ? '編輯' : '新增'}</button>
+    </div>
+    ${cloud.teamNote ? `<p class="team-note-text">${escapeHtml(cloud.teamNote)}</p>` : ''}`;
+  }
+  return `
+    <div class="team-note-edit">
+      <span class="label">球團備註（球友在「球團資訊」看得到）</span>
+      <textarea id="team-note" maxlength="${TEAM_NOTE_MAX}" placeholder="例如：球費一次 200、自備球拍、停車在 B2…">${escapeHtml(ui.teamNote)}</textarea>
+      <span class="member-btns" style="margin-top:6px">
+        <button class="btn-primary" data-action="team-note-save">儲存</button>
+        <button class="btn-ghost" data-action="team-note-cancel">取消</button>
+      </span>
+    </div>`;
+}
+
+async function saveTeamNote() {
+  // 清掉前後空白；空字串＝刪除備註
+  const note = String(ui.teamNote || '').trim().slice(0, TEAM_NOTE_MAX);
+  if (!cloudReady()) return;
+  try {
+    await cloud.fb.updateDoc(teamRef(), { note, updatedAt: cloud.fb.serverTimestamp() });
+    cloud.teamNote = note;
+    ui.teamNote = null;
+    showToast(note ? '已更新球團備註' : '已清除球團備註');
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+  render();
 }
 
 /* ===================== 改名（球團、球友） ===================== */
@@ -8652,6 +8703,7 @@ function handleAction(el) {
       ui.report = null;
       ui.renameFrom = null;
       ui.teamRename = null;
+      ui.teamNote = null;
       sessionChanged = false;
       break;
 
@@ -8693,6 +8745,9 @@ function handleAction(el) {
     case 'team-rename-open': ui.teamRename = cloud.teamName || ''; sessionChanged = false; modalOnly = true; break;
     case 'team-rename-cancel': ui.teamRename = null; sessionChanged = false; modalOnly = true; break;
     case 'team-rename-save': saveTeamName(); return;
+    case 'team-note-open': ui.teamNote = cloud.teamNote || ''; sessionChanged = false; modalOnly = true; break;
+    case 'team-note-cancel': ui.teamNote = null; sessionChanged = false; modalOnly = true; break;
+    case 'team-note-save': saveTeamNote(); return;
     case 'rename-open': openRename(el.dataset.name); sessionChanged = false; modalOnly = true; break;
     case 'rename-cancel': ui.renameFrom = null; sessionChanged = false; modalOnly = true; break;
     case 'rename-save': renamePlayer(ui.renameFrom, ui.renameTo); return;
@@ -8919,6 +8974,7 @@ document.addEventListener('input', (event) => {
   else if (id === 'signup-name') ui.signupName = value;
   else if (id === 'guest-name') ui.guestName = value;
   else if (id === 'team-rename') ui.teamRename = value;
+  else if (id === 'team-note') ui.teamNote = value;
   else if (id === 'regular-add') ui.regularAdd = value;
   else if (id === 'team-delete-text' && ui.teamDelete) {
     ui.teamDelete.text = value;
