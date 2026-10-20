@@ -271,6 +271,7 @@
   .home-go { font-size: 24px; color: var(--muted); }
   .home-local { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
   .home-foot { margin-top: 16px; text-align: center; }
+  .local-tag { font-size: 0.6em; font-weight: 600; color: var(--muted); margin-left: 4px; }
   .danger-zone { margin-top: 18px; padding-top: 12px; border-top: 1px solid var(--border); text-align: center; }
   .danger-list { margin: 4px 0 8px; padding-left: 20px; }
   .coadmin-badge { margin-left: 6px; font-size: 11px; vertical-align: middle; }
@@ -1010,7 +1011,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.21';
+const APP_VERSION = '6.22';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3582,7 +3583,7 @@ function renameHint(name, toRaw) {
     label: merge ? '確認合併' : '確認改名',
     note: merge
       ? `⚠️「${escapeHtml(to)}」已經存在，改名後兩個名字的紀錄會<b>合併成同一個人</b>，無法復原。`
-      : '今天的名單、常用名單、所有長期紀錄、球友認領和報名名單都會一起改。',
+      : isLocalMode() ? '今天的名單和常用名單都會一起改。' : '今天的名單、常用名單、所有長期紀錄、球友認領和報名名單都會一起改。',
   };
 }
 
@@ -3846,6 +3847,9 @@ function drawerAccount() {
       lines: [`${isTeamOwner() ? '管理者' : '共同管理者'}・${cloud.teamName || '球團'}`, SYNC_LABEL[cloud.sync] || '已連線'],
     };
   }
+  if (isLocalMode() && !showHome()) {
+    return { initial: '臨', title: '臨時開場', lines: ['資料只存在這支手機', '不會存入長期紀錄'] };
+  }
   if (showHome()) {
     return cloud.user
       ? { initial: (cloud.user.displayName || cloud.user.email || '球').slice(0, 1), title: cloud.user.displayName || cloud.user.email || '球友', lines: ['已用 Google 登入'] }
@@ -3866,7 +3870,14 @@ function renderDrawer() {
   // 強制更新：重新下載最新版（畫面卡住、或管理者剛更新版本時用）
   const updateItem = isEmbedded() ? ''
     : `<button class="d-item" data-action="force-update">${icon('refresh')}<span>強制更新</span><span class="d-state">v${APP_VERSION}</span></button>`;
-  const groups = admin && showHome()
+  const groups = admin && isLocalMode() && !showHome()
+    ? [
+      [item('play', 'court', '排場設定'), item('voice', 'speaker', '語音唸名'), item('look', 'palette', '畫面')],
+      [state.players.length ? item('end-day', 'flag', '結束今日打球') : '', item('backup', 'save', '備份與還原')],
+      [item('home', 'box', '切換球團・回首頁')],
+      [updateItem],
+    ]
+    : admin && showHome()
     ? [
       [item('cloud', 'cloud', '管理者登入・雲端同步')],
       [item('look', 'palette', '畫面'), item('backup', 'save', '備份與還原')],
@@ -3891,7 +3902,7 @@ function renderDrawer() {
         item('data', 'box', '長期紀錄與資料'),
         item('backup', 'save', '備份與還原'),
       ],
-      [item('all', 'gear', '所有設定'), updateItem],
+      [updateItem],
     ]
     : [
       [
@@ -5414,7 +5425,7 @@ function renderSetup() {
     <header class="top">
       ${menuButton()}
       <div class="top-title">
-        <h1>羽球輪轉排場</h1>
+        <h1>${appTitle()}</h1>
         <p class="sub">選出今天來的人，系統會依場數與配對紀錄自動輪轉。</p>
       </div>
     </header>
@@ -5444,8 +5455,7 @@ function renderSetup() {
         開始排場（<span id="setup-total" class="num">${total}</span> 人）
       </button>
     </div>
-    ${isAdminDevice() ? `<div class="setup-teams">${renderJoinedTeams()}${renderJoinPanel()}</div>`
-      : '<div class="home-foot"><button class="btn-ghost" data-action="home-back">← 回首頁（球團、輸入代碼）</button></div>'}
+    ${isAdminDevice() ? `<div class="setup-teams">${renderJoinedTeams()}${renderJoinPanel()}</div>` : ''}
     <div style="margin-top:20px;text-align:center">
       <button class="btn-ghost" data-action="backup-open">備份與還原</button>
     </div>
@@ -5488,8 +5498,20 @@ function isAdminDevice() {
   return cloud.phase === 'no-team' && providers.some((p) => p && p.providerId === 'password');
 }
 
+// ?home=1：從「切換球團」回來，臨時開場進行中也先停在首頁
+const HOME_PARAM = Boolean(new URLSearchParams(window.location.search).get('home'));
+
 function showHome() {
-  return !cloud.viewer && !state.players.length && !ui.homeLocal && !isAdminDevice();
+  return !cloud.viewer && !ui.homeLocal && !isAdminDevice() && (!state.players.length || HOME_PARAM);
+}
+
+// 臨時開場：不是管理者也不是球友頁，資料只存在這支手機，沒有雲端和長期紀錄
+function isLocalMode() {
+  return !cloud.viewer && !isAdminDevice();
+}
+
+function appTitle() {
+  return `羽球輪轉排場${isLocalMode() ? '<span class="local-tag">（臨時開場）</span>' : ''}`;
 }
 
 // 我加入的球團（首頁、選人畫面共用）
@@ -5626,7 +5648,7 @@ function renderHome() {
     <div class="panel home-local">
       <b>臨時開場</b>
       <p class="sub" style="margin:0">自己排場，不用登入；資料只存在這支手機。</p>
-      <button class="btn-primary btn-block" data-action="home-local">開始臨時開場</button>
+      <button class="btn-primary btn-block" data-action="home-local">${state.players.length ? `回到臨時開場（${state.players.length} 人）` : '開始臨時開場'}</button>
     </div>
     ${renderUpdateFooter()}`;
 }
@@ -6824,7 +6846,7 @@ function renderMain() {
     <header class="top">
       ${menuButton()}
       <div class="top-title">
-        <h1>羽球輪轉排場</h1>
+        <h1>${appTitle()}</h1>
         <p class="sub num">${cloud.viewer ? `<span class="live-dot" aria-hidden="true"></span>觀看中${cloud.teamName ? `・${escapeHtml(cloud.teamName)}` : ''}・<span id="viewer-stamp">${viewerStampText()}</span><br>` : ''}${state.players.filter((p) => p.active).length} 人在場館，已完成 ${state.history.length} 場</p>
         ${syncChip()}${notifyOffChip()}
       </div>
@@ -7247,11 +7269,11 @@ function profileViewSeg(view, action) {
 // 個人戰績視窗：今日／長期切換
 function renderPlayerModal() {
   const name = ui.rankProfile || ui.profileName;
-  const view = ui.profileView || (ui.rankProfile ? 'long' : 'today');
+  const view = isLocalMode() ? 'today' : ui.profileView || (ui.rankProfile ? 'long' : 'today');
   const showMeSet = myName() !== name && !(cloud.viewer && cloud.user);
   return `
     <h3>${escapeHtml(name)}</h3>
-    ${profileViewSeg(view, 'profile-view')}
+    ${isLocalMode() ? '' : profileViewSeg(view, 'profile-view')}
     <div class="profile-body">${view === 'today' ? renderTodayProfileBody(name) : renderLongProfileBody(name)}</div>
     ${showMeSet && ui.rankProfile ? `<button class="btn-ghost btn-block" data-action="me-set" data-name="${escapeHtml(name)}">這是我（在這支手機記住）</button>` : ''}
     ${renderRenameBox(name)}
@@ -7299,8 +7321,9 @@ function renderModal() {
 
 function render() {
   const app = document.getElementById('app');
-  if (state.players.length) app.innerHTML = renderMain() + renderTurnAlert();
-  else app.innerHTML = cloud.viewer ? renderViewerWaiting() : showHome() ? renderHome() : renderSetup();
+  if (showHome()) app.innerHTML = renderHome();
+  else if (state.players.length) app.innerHTML = renderMain() + renderTurnAlert();
+  else app.innerHTML = cloud.viewer ? renderViewerWaiting() : renderSetup();
   renderModal();
   renderDrawerRoot();
   animateTabIndicator();
@@ -8895,7 +8918,6 @@ function handleAction(el) {
       goHome();
       return;
     case 'home-local': ui.homeLocal = true; sessionChanged = false; break;
-    case 'home-back': ui.homeLocal = false; sessionChanged = false; break;
     case 'home-forget': ui.forgetConfirm = el.dataset.id; sessionChanged = false; break;
     case 'forget-confirm':
       forgetJoinedTeam(ui.forgetConfirm);
