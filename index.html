@@ -80,39 +80,41 @@
   .menu-btn .d-ico { width: 26px; height: 26px; }
   .menu-dot { position: absolute; top: 7px; right: 6px; width: 9px; height: 9px; border-radius: 50%; background: #E5484D; }
   .d-ico { width: 22px; height: 22px; flex-shrink: 0; }
-  /* 暗色遮罩用 box-shadow 畫，不用 background：
-     iOS Safari 會拿貼在畫面頂端的 fixed 元素「背景色」去染狀態列，
-     而且不管 opacity，拉到一半狀態列就整條變灰，看起來很怪 */
-  .drawer-bg {
-    position: fixed; inset: 0; z-index: 12; background: transparent; box-shadow: inset 0 0 0 200vmax rgba(0, 0, 0, 0.45);
-    opacity: 0; transition: opacity 0.2s ease;
-  }
-  .drawer-bg.open { opacity: 1; }
+  /* 側邊選單：選單在底下，整個畫面往右推開並變成圓角卡片（跟 Claude App 一樣） */
+  :root { --dw: min(80vw, 340px); --menu-bg: #DCE4DD; }
+  :root[data-appearance="dark"] { --menu-bg: #080B09; }
+  .page { position: relative; z-index: 2; transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.34s ease; }
+  body.drawer-open { overflow: hidden; background: var(--menu-bg); }
+  body.drawer-open .page { position: fixed; inset: 0; overflow: hidden; box-shadow: -6px 0 30px rgba(0, 0, 0, 0.22); }
+  body.drawer-open .page.pushed { transform: translateX(var(--dw)); border-radius: 30px; }
+  .drawer-bg { position: fixed; top: 0; bottom: 0; left: var(--dw); right: 0; z-index: 12; background: transparent; }
   .drawer {
-    position: fixed; top: 0; bottom: 0; left: 0; z-index: 13; width: min(320px, 86vw); overflow-y: auto;
-    background: var(--surface); color: var(--ink); border-radius: 0 18px 18px 0; box-shadow: 4px 0 24px rgba(0, 0, 0, 0.25);
-    padding: max(14px, env(safe-area-inset-top)) 14px max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
-    transform: translateX(-104%); transition: transform 0.2s ease; display: flex; flex-direction: column; gap: 6px;
+    position: fixed; top: 0; bottom: 0; left: 0; z-index: 1; width: var(--dw); overflow-y: auto;
+    background: var(--menu-bg); color: var(--ink);
+    padding: max(14px, env(safe-area-inset-top)) 10px max(16px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+    display: flex; flex-direction: column; gap: 6px;
+    opacity: 0.4; transform: translateX(-28px);
+    transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.34s ease;
   }
-  .drawer.open { transform: translateX(0); }
-  @media (prefers-reduced-motion: reduce) { .drawer, .drawer-bg { transition: none; } }
-  body.drawer-open { overflow: hidden; }
-  .d-head { display: flex; justify-content: space-between; align-items: center; }
+  .drawer.open { opacity: 1; transform: translateX(0); }
+  @media (prefers-reduced-motion: reduce) { .page, .drawer { transition: none; } }
+  .d-head { display: flex; justify-content: space-between; align-items: center; padding: 0 10px; }
   .d-avatar {
     width: 48px; height: 48px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
     background: var(--court); color: var(--line); font-weight: 800; font-size: 20px;
   }
-  .d-close { background: transparent; color: var(--muted); font-size: 20px; width: 40px; height: 40px; padding: 0; }
-  .d-account { display: flex; flex-direction: column; gap: 1px; padding: 6px 4px 10px; border-bottom: 1px solid var(--floor); }
+  .d-close { display: none; }
+  .d-account { display: flex; flex-direction: column; gap: 1px; padding: 6px 10px 12px; border-bottom: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
   .d-account b { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .d-account small { color: var(--muted); font-size: 13px; }
-  .d-group { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid var(--floor); }
+  .d-group { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
   .d-group:last-of-type { border-bottom: 0; }
   .d-item {
-    display: flex; align-items: center; gap: 12px; width: 100%; padding: 11px 8px; border-radius: 10px;
-    background: transparent; color: var(--ink); font-size: 16px; font-weight: 500; text-align: left;
+    display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 10px; border-radius: 14px;
+    background: transparent; color: var(--ink); font-size: 17px; font-weight: 500; text-align: left;
   }
-  .d-item:active, .d-item:hover { background: var(--floor); }
+  .d-item svg { width: 22px; height: 22px; }
+  .d-item:active, .d-item:hover { background: color-mix(in srgb, var(--ink) 8%, transparent); }
   .d-item span { flex: 1; }
   .d-badge { flex: 0 !important; background: #E5484D; color: #fff; font-size: 12px; font-weight: 700; border-radius: 999px; padding: 1px 7px; }
   .d-version { margin: auto 0 0; padding: 10px 4px 0; font-size: 12px; color: var(--muted); }
@@ -319,9 +321,6 @@
   a.cal-link.btn-ghost { padding: 8px 6px; color: inherit; }
   .rename-box input { margin: 6px 0; }
   .team-rename input { flex: 1; min-width: 140px; margin: 0; }
-  .team-note-edit textarea { width: 100%; min-height: 96px; margin: 0; }
-  .team-note-text { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; padding: 10px 12px;
-    background: var(--floor); border-radius: var(--radius-s); line-height: 1.6; }
   .ev-map { margin: 8px 0; display: flex; flex-direction: column; gap: 6px; }
   .ev-map iframe { width: 100%; height: 170px; border: 1px solid var(--border); border-radius: var(--radius-l); background: var(--floor); }
   .ev-map-btns { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
@@ -1691,7 +1690,6 @@ async function onCloudUser(user) {
 async function attachTeam(id, data) {
   cloud.teamId = id;
   cloud.teamName = (data && data.name) || '';
-  cloud.teamNote = (data && data.note) || '';
   cloud.ownerUid = (data && data.adminUid) || null;
   cloud.adminUids = (data && Array.isArray(data.adminUids)) ? data.adminUids.slice() : [];
   storageSet(CLOUD_TEAM_KEY, id);
@@ -1764,7 +1762,6 @@ function watchAdminSync() {
       return;
     }
     cloud.teamName = d.name || '';
-    cloud.teamNote = d.note || '';
     cloud.ownerUid = d.adminUid || null;
     cloud.adminUids = Array.isArray(d.adminUids) ? d.adminUids.slice() : [];
     const regsJson = JSON.stringify(Array.isArray(d.regulars) ? d.regulars : []);
@@ -2030,7 +2027,6 @@ function startViewer() {
       return;
     }
     cloud.teamName = snap.data().name || '';
-    cloud.teamNote = snap.data().note || '';
     cloud.ownerUid = snap.data().adminUid || null;
     cloud.adminUids = Array.isArray(snap.data().adminUids) ? snap.data().adminUids : [];
     saveJoinedTeam(VIEW_TEAM, cloud.teamName);
@@ -2269,7 +2265,6 @@ function renderCloudSettings() {
         <button class="btn-ghost" data-action="team-rename-cancel">取消</button>
       </span>
     </div>`}
-    ${renderTeamNoteEditor()}
     <div class="row">
       <span class="label">狀態</span>
       <span id="cloud-sync-text">${escapeHtml(SYNC_LABEL[cloud.sync] || '已連線')}</span>
@@ -2360,17 +2355,17 @@ function renderTeamDeleteModal() {
 
 function renderViewerSettings() {
   return `
-    <h3>球團資訊</h3>
+    <h3>設定</h3>
     <section class="set-group"><div class="set-body" style="padding-top:12px">
-      <h4 class="set-head">${escapeHtml(cloud.teamName || '球團')}</h4>
-      ${cloud.teamNote ? `<p class="sub set-note">管理員備註：</p><p class="team-note-text">${escapeHtml(cloud.teamNote)}</p>` : ''}
-      <p class="sub set-note">排場由管理者操作，這裡會自動即時更新。</p>
+      <h4 class="set-head">觀看模式</h4>
+      <p class="sub set-note">${cloud.teamName ? `正在看「${escapeHtml(cloud.teamName)}」的排場。` : ''}這裡只能看，排場由管理者操作，會自動即時更新。</p>
       <p class="sub set-note">球團代碼（給別人加入，或在主畫面 App 裡輸入）：</p>
       <p class="invite-code"><b class="num">${escapeHtml(VIEW_TEAM || '')}</b>
         <button class="btn-ghost" data-action="invite-copy-code">複製</button></p>
       ${cloud.user ? `<p class="sub set-note">已用 Google 登入：${escapeHtml(cloud.user.email || '')}${cloud.claim ? `（${escapeHtml(cloud.claim.name)}）` : ''}</p>
         <button class="btn-ghost" data-action="google-logout" style="align-self:flex-start">登出</button>` : ''}
     </div></section>
+    ${renderLookSettings()}
     ${renderUpdateFooter()}
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">完成</button>`;
 }
@@ -3436,46 +3431,6 @@ function renderTodaySignupPanel() {
   }).join('');
 }
 
-/* ===================== 球團備註（管理者寫給球友看的） ===================== */
-const TEAM_NOTE_MAX = 300;
-
-// 管理者在「雲端同步」裡編輯；球友在「球團資訊」看
-function renderTeamNoteEditor() {
-  if (ui.teamNote === null || ui.teamNote === undefined) {
-    return `
-    <div class="row">
-      <span class="label">球團備註</span>
-      <span class="sub">${cloud.teamNote ? '已設定' : '還沒寫'}</span>
-      <button class="btn-ghost" data-action="team-note-open">${cloud.teamNote ? '編輯' : '新增'}</button>
-    </div>
-    ${cloud.teamNote ? `<p class="team-note-text">${escapeHtml(cloud.teamNote)}</p>` : ''}`;
-  }
-  return `
-    <div class="team-note-edit">
-      <span class="label">球團備註（球友在「球團資訊」看得到）</span>
-      <textarea id="team-note" maxlength="${TEAM_NOTE_MAX}" placeholder="例如：球費一次 200、自備球拍、停車在 B2…">${escapeHtml(ui.teamNote)}</textarea>
-      <span class="member-btns" style="margin-top:6px">
-        <button class="btn-primary" data-action="team-note-save">儲存</button>
-        <button class="btn-ghost" data-action="team-note-cancel">取消</button>
-      </span>
-    </div>`;
-}
-
-async function saveTeamNote() {
-  // 清掉前後空白；空字串＝刪除備註
-  const note = String(ui.teamNote || '').trim().slice(0, TEAM_NOTE_MAX);
-  if (!cloudReady()) return;
-  try {
-    await cloud.fb.updateDoc(teamRef(), { note, updatedAt: cloud.fb.serverTimestamp() });
-    cloud.teamNote = note;
-    ui.teamNote = null;
-    showToast(note ? '已更新球團備註' : '已清除球團備註');
-  } catch (err) {
-    showToast(cloudErrorText(err));
-  }
-  render();
-}
-
 /* ===================== 改名（球團、球友） ===================== */
 const NAME_MAX = 12;
 
@@ -3959,19 +3914,49 @@ function renderDrawer() {
     </nav>`;
 }
 
+function pageEl() {
+  return document.querySelector('.page');
+}
+
+// 選單打開時把畫面固定住（推開成卡片），關上時回到原本捲動的位置
+const pageLock = { locked: false, y: 0 };
+function lockPage(on) {
+  const page = pageEl();
+  if (!page || on === pageLock.locked) return;
+  if (on) {
+    pageLock.y = window.scrollY;
+    document.body.classList.add('drawer-open');
+    page.scrollTop = pageLock.y;
+  } else {
+    document.body.classList.remove('drawer-open');
+    page.classList.remove('pushed');
+    page.style.transform = '';
+    page.style.transition = '';
+    window.scrollTo(0, pageLock.y);
+  }
+  pageLock.locked = on;
+}
+
+function setDrawerOpenClass(open) {
+  const panel = document.querySelector('#drawer-root .drawer');
+  const page = pageEl();
+  if (panel) panel.classList.toggle('open', open);
+  if (page) page.classList.toggle('pushed', open);
+}
+
 function openDrawer() {
   ui.drawer = true;
   ui.drawerAnim = '';
   renderDrawerRoot();
-  requestAnimationFrame(() => {
+  requestAnimationFrame(() => requestAnimationFrame(() => {
     ui.drawerAnim = 'open';
-    document.querySelectorAll('#drawer-root .drawer, #drawer-root .drawer-bg').forEach((el) => el.classList.add('open'));
-  });
+    setDrawerOpenClass(true);
+  }));
 }
 
 function closeDrawer(after) {
   if (!ui.drawer) { if (after) after(); return; }
-  document.querySelectorAll('#drawer-root .drawer, #drawer-root .drawer-bg').forEach((el) => el.classList.remove('open'));
+  setDrawerOpenClass(false);
   const done = () => {
     ui.drawer = false;
     ui.drawerAnim = '';
@@ -3979,14 +3964,15 @@ function closeDrawer(after) {
     if (after) after();
   };
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) done();
-  else setTimeout(done, 200);
+  else setTimeout(done, 340);
 }
 
 function renderDrawerRoot() {
   const root = document.getElementById('drawer-root');
   if (!root) return;
   root.innerHTML = renderDrawer();
-  document.body.classList.toggle('drawer-open', Boolean(ui.drawer));
+  lockPage(Boolean(ui.drawer));
+  if (ui.drawer && ui.drawerAnim === 'open') setDrawerOpenClass(true);   // 選單開著時重畫：維持推開的狀態
   applyViewerLock();
 }
 
@@ -7843,27 +7829,34 @@ function drawerEls() {
 }
 
 // 選單跟著手指：offset 是選單露出的寬度（px）
+// 拖曳時：畫面跟著手指往右推，選單從底下慢慢浮現
 function followDrawer(offset) {
-  const { panel, bg } = drawerEls();
-  if (!panel) return;
+  const { panel } = drawerEls();
+  const page = pageEl();
+  if (!panel || !page) return;
   const width = panel.offsetWidth || 320;
   const shown = Math.max(0, Math.min(width, offset));
+  const p = shown / width;
+  page.style.transition = 'none';
+  page.style.transform = `translateX(${shown}px)`;
+  page.style.borderRadius = `${Math.round(30 * p)}px`;
   panel.style.transition = 'none';
-  panel.style.transform = `translateX(${shown - width}px)`;
-  if (bg) { bg.style.transition = 'none'; bg.style.opacity = String(shown / width); }
+  panel.style.opacity = String(0.4 + 0.6 * p);
+  panel.style.transform = `translateX(${-28 * (1 - p)}px)`;
 }
 
 function releaseDrawer(open) {
-  const { panel, bg } = drawerEls();
-  [panel, bg].forEach((el) => {
+  const { panel } = drawerEls();
+  [panel, pageEl()].forEach((el) => {
     if (!el) return;
     el.style.transition = '';
     el.style.transform = '';
     el.style.opacity = '';
+    el.style.borderRadius = '';
   });
   if (open) {
     ui.drawerAnim = 'open';
-    [panel, bg].forEach((el) => el && el.classList.add('open'));
+    setDrawerOpenClass(true);
   } else {
     closeDrawer();
   }
@@ -8703,7 +8696,6 @@ function handleAction(el) {
       ui.report = null;
       ui.renameFrom = null;
       ui.teamRename = null;
-      ui.teamNote = null;
       sessionChanged = false;
       break;
 
@@ -8745,9 +8737,6 @@ function handleAction(el) {
     case 'team-rename-open': ui.teamRename = cloud.teamName || ''; sessionChanged = false; modalOnly = true; break;
     case 'team-rename-cancel': ui.teamRename = null; sessionChanged = false; modalOnly = true; break;
     case 'team-rename-save': saveTeamName(); return;
-    case 'team-note-open': ui.teamNote = cloud.teamNote || ''; sessionChanged = false; modalOnly = true; break;
-    case 'team-note-cancel': ui.teamNote = null; sessionChanged = false; modalOnly = true; break;
-    case 'team-note-save': saveTeamNote(); return;
     case 'rename-open': openRename(el.dataset.name); sessionChanged = false; modalOnly = true; break;
     case 'rename-cancel': ui.renameFrom = null; sessionChanged = false; modalOnly = true; break;
     case 'rename-save': renamePlayer(ui.renameFrom, ui.renameTo); return;
@@ -8974,7 +8963,6 @@ document.addEventListener('input', (event) => {
   else if (id === 'signup-name') ui.signupName = value;
   else if (id === 'guest-name') ui.guestName = value;
   else if (id === 'team-rename') ui.teamRename = value;
-  else if (id === 'team-note') ui.teamNote = value;
   else if (id === 'regular-add') ui.regularAdd = value;
   else if (id === 'team-delete-text' && ui.teamDelete) {
     ui.teamDelete.text = value;
