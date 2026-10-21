@@ -936,6 +936,7 @@
   /* 下拉關閉：頂端的小橫條提示可以往下推 */
   .sheet-handle { width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: -8px auto 12px; }
   .modal.dragging { transition: none; }
+  .modal-page { will-change: transform; }
   .modal.sheet-release { transition: transform 0.2s ease; }
   .modal-bg.sheet-fade { transition: background 0.2s ease; }
   body.modal-open { overflow: hidden; }
@@ -963,8 +964,19 @@
     font-size: 15px; z-index: 20; max-width: 90vw;
   }
   @media (prefers-reduced-motion: no-preference) {
-    .modal.modal-enter { animation: rise 0.18s ease-out; }
-    @keyframes rise { from { transform: translateY(24px); opacity: 0; } to { transform: none; opacity: 1; } }
+    /* 彈窗動畫：iPhone 底部面板的曲線 */
+    .modal-bg.modal-bg-enter { animation: modal-bg-in 0.3s ease; }
+    .modal.modal-enter { animation: sheet-up 0.4s cubic-bezier(0.32, 0.72, 0, 1); }
+    .modal-bg.modal-leave { animation: modal-bg-out 0.26s ease forwards; pointer-events: none; }
+    .modal-bg.modal-leave .modal { animation: sheet-down 0.26s cubic-bezier(0.4, 0, 1, 1) forwards; }
+    .modal-page.page-fwd { animation: page-fwd 0.32s cubic-bezier(0.32, 0.72, 0, 1); }
+    .modal-page.page-back { animation: page-back 0.32s cubic-bezier(0.32, 0.72, 0, 1); }
+    @keyframes modal-bg-in { from { background-color: rgba(20, 38, 28, 0); } }
+    @keyframes modal-bg-out { to { background-color: rgba(20, 38, 28, 0); } }
+    @keyframes sheet-up { from { transform: translateY(100%); } to { transform: none; } }
+    @keyframes sheet-down { from { transform: none; } to { transform: translateY(100%); } }
+    @keyframes page-fwd { from { transform: translateX(36px); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes page-back { from { transform: translateX(-36px); opacity: 0; } to { transform: none; opacity: 1; } }
   }
   /* 結束今日打球 */
   .end-day { display: flex; gap: 10px; align-items: center; justify-content: space-between;
@@ -1024,6 +1036,10 @@
     /* 彈窗改為置中的對話框 */
     .modal-bg { align-items: center; padding: 24px; }
     .modal { border-radius: var(--radius-l); max-height: 86vh; }
+    .modal.modal-enter { animation-name: dialog-in; animation-duration: 0.26s; }
+    .modal-bg.modal-leave .modal { animation-name: dialog-out; }
+    @keyframes dialog-in { from { transform: scale(0.96); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes dialog-out { to { transform: scale(0.96); opacity: 0; } }
   }
   /* 平板橫式、大螢幕：場地在左、場下等待固定在右側 */
   @media (min-width: 1000px) {
@@ -1097,7 +1113,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.2';
+const APP_VERSION = '7.3';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1638,7 +1654,7 @@ const VIEWER_ACTIONS = new Set([
   'title-open', 'player-open', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
-  'invite-copy-code', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
+  'invite-copy-code', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
   'signup-view', 'signup-month', 'signup-day',
 ]);
@@ -7507,44 +7523,116 @@ function renderPlayerModal() {
     <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">${ui.rankProfile && ui.ranksOpen ? '返回排行榜' : '關閉'}</button>`;
 }
 
+/* 彈窗的「層級」：數字大的是從數字小的點進去的（例如報名列表 1 → 場次 2 → 編輯 3），
+ * 用來決定換頁動畫往右推（進入）還是往左退（返回） */
+const MODAL_PAGES = [
+  ['install', () => install.guide, () => renderInstallGuide(), 5],
+  ['logout', () => ui.logoutConfirm, () => renderLogoutConfirm(), 5],
+  ['forget', () => ui.forgetConfirm, () => renderForgetConfirm(), 5],
+  ['team-delete', () => ui.teamDelete, () => renderTeamDeleteModal(), 3],
+  ['manual', () => ui.manual, () => renderManualModal(), 1],
+  ['result', () => ui.result, () => renderResultModal(), 1],
+  ['backup', () => ui.backup, () => renderBackupModal(), 2],
+  ['copy', () => ui.copyText, () => renderCopyModal(), 4],
+  ['title', () => ui.titleIndex !== null && ui.titleIndex !== undefined, () => renderTitleModal(), 1],
+  ['report', () => ui.report, () => renderReportModal(), 1],
+  ['profile', () => ui.profileName, () => renderPlayerModal(), 2],
+  ['invite', () => ui.invite, () => renderInviteModal(), 2],
+  ['signup-form', () => ui.signupForm, () => renderEventFormModal(), 3],
+  ['signup-event', () => ui.signupId, () => renderSignupEventModal(), 2],
+  ['signup-list', () => ui.signupOpen, () => renderSignupListModal(), 1],
+  ['past-session', () => ui.pastId, () => renderPastSessionModal(), 2],
+  ['past-list', () => ui.pastList, () => renderPastListModal(), 1],
+  ['rank-profile', () => ui.rankProfile, () => renderPlayerModal(), 2],
+  ['ranks', () => ui.ranksOpen, () => renderRanksModal(), 1],
+  ['settings', () => ui.settings, () => renderSettingsModal(), 0],
+];
+const MODAL_LEAVE_MS = 260;
+let modalLeaveTimer = null;
+
+function reduceMotion() {
+  return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+/**
+ * 畫彈窗。動畫（像 iPhone 的底部面板）：
+ * - 打開：背景淡入、面板從下面滑上來
+ * - 關閉：面板滑下去、背景淡出，播完才真的移除
+ * - 彈窗裡換頁（例如報名列表 → 某一場）：內容左右滑動，面板高度平順地變化
+ */
 function renderModal() {
   const root = document.getElementById('modal-root');
+  const page = MODAL_PAGES.find(([, when]) => when());
+  const content = page ? page[2]() : '';
+  const key = page ? page[0] : '';
+  const depth = page ? page[3] : 0;
+
+  // 正在關閉中又要打開：直接清掉舊的，重新播放打開動畫
+  if (modalLeaveTimer && content) {
+    clearTimeout(modalLeaveTimer);
+    modalLeaveTimer = null;
+    root.innerHTML = '';
+  }
   const previous = root.querySelector('.modal');
-  const scrollTop = previous ? previous.scrollTop : 0;
 
-  let content = '';
-  if (install.guide) content = renderInstallGuide();
-  else if (ui.forgetConfirm) content = renderForgetConfirm();
-  else if (ui.teamDelete) content = renderTeamDeleteModal();
-  else if (ui.manual) content = renderManualModal();
-  else if (ui.result) content = renderResultModal();
-  else if (ui.backup) content = renderBackupModal();
-  else if (ui.copyText) content = renderCopyModal();
-  else if (ui.titleIndex !== null && ui.titleIndex !== undefined) content = renderTitleModal();
-  else if (ui.report) content = renderReportModal();
-  else if (ui.profileName) content = renderPlayerModal();
-  else if (ui.invite) content = renderInviteModal();
-  else if (ui.signupForm) content = renderEventFormModal();
-  else if (ui.signupId) content = renderSignupEventModal();
-  else if (ui.signupOpen) content = renderSignupListModal();
-  else if (ui.pastId) content = renderPastSessionModal();
-  else if (ui.pastList) content = renderPastListModal();
-  else if (ui.rankProfile) content = renderPlayerModal();
-  else if (ui.ranksOpen) content = renderRanksModal();
-  else if (ui.settings) content = renderSettingsModal();
+  if (!content) {
+    document.body.classList.toggle('modal-open', false);
+    if (!previous || modalLeaveTimer) return;
+    // 已經被手指往下拉出畫面的，就不用再播關閉動畫
+    const draggedAway = /110%/.test(previous.style.transform || '');
+    if (reduceMotion() || draggedAway) { root.innerHTML = ''; return; }
+    root.querySelector('.modal-bg').classList.add('modal-leave');
+    modalLeaveTimer = setTimeout(() => {
+      modalLeaveTimer = null;
+      root.innerHTML = '';
+      delete root.dataset.key;
+    }, MODAL_LEAVE_MS);
+    return;
+  }
 
-  // 只有第一次開啟才播放進場動畫，之後的更新不重播
+  const prevKey = root.dataset.key || '';
+  const prevDepth = Number(root.dataset.depth || 0);
+  const pageChanged = Boolean(previous) && prevKey !== key;
+  const scrollTop = previous && !pageChanged ? previous.scrollTop : 0;
+  const oldHeight = pageChanged ? previous.offsetHeight : 0;
   const enterClass = previous ? '' : ' modal-enter';
-  root.innerHTML = content
-    ? `<div class="modal-bg" data-action="modal-close">
-        <div class="modal${enterClass}" role="dialog" aria-modal="true"><div class="sheet-handle" aria-hidden="true"></div>${content}</div></div>`
-    : '';
+  const pageClass = pageChanged && !reduceMotion() ? ` page-${depth >= prevDepth ? 'fwd' : 'back'}` : '';
+
+  root.innerHTML = `<div class="modal-bg${previous ? '' : ' modal-bg-enter'}" data-action="modal-close">
+      <div class="modal${enterClass}" role="dialog" aria-modal="true"><div class="sheet-handle" aria-hidden="true"></div>
+        <div class="modal-page${pageClass}">${content}</div></div></div>`;
+  root.dataset.key = key;
+  root.dataset.depth = String(depth);
 
   const current = root.querySelector('.modal');
   if (current && previous) current.scrollTop = scrollTop;
-  document.body.classList.toggle('modal-open', Boolean(content));
+  // 換頁時面板高度從舊的平順變成新的
+  if (current && pageChanged && !reduceMotion()) {
+    const newHeight = current.offsetHeight;
+    if (Math.abs(newHeight - oldHeight) > 4) {
+      current.style.height = `${oldHeight}px`;
+      void current.offsetHeight;
+      current.style.transition = 'height 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
+      current.style.height = `${newHeight}px`;
+      setTimeout(() => {
+        if (!current.isConnected) return;
+        current.style.height = '';
+        current.style.transition = '';
+      }, 320);
+    }
+  }
+  document.body.classList.toggle('modal-open', true);
   lockPastView();
   applyViewerLock();
+}
+
+function renderLogoutConfirm() {
+  const who = cloud.user ? (cloud.user.displayName || cloud.user.email || '') : '';
+  return `
+    <h3>要登出${who ? `「${escapeHtml(who)}」` : ''}嗎？</h3>
+    <p class="sub">登出後不會收到上場通知，也看不到自己的戰績；之後再用 Google 登入就會恢復。</p>
+    <button class="btn-danger btn-block" style="margin-top:12px" data-action="google-logout-confirm">登出</button>
+    <button class="btn-ghost btn-block" data-action="modal-close">取消</button>`;
 }
 
 function render() {
@@ -8943,6 +9031,7 @@ function handleAction(el) {
     case 'modal-close':
       if (install.guide) { install.guide = false; sessionChanged = false; break; }
       if (ui.forgetConfirm) { ui.forgetConfirm = null; sessionChanged = false; break; }
+      if (ui.logoutConfirm) { ui.logoutConfirm = false; sessionChanged = false; break; }
       if (ui.teamDelete) { if (!ui.teamDelete.busy) ui.teamDelete = null; sessionChanged = false; break; }
       if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
       if (ui.copyText && ui.signupOpen) { ui.copyText = null; sessionChanged = false; break; }   // 報名訊息的手動複製視窗
@@ -9124,10 +9213,16 @@ function handleAction(el) {
       break;
     }
     case 'google-login': googleLogin(); return;
-    case 'google-logout':
-      if (ui.drawer) closeDrawer(viewerLogout);   // 從選單登出：先收起選單
-      else viewerLogout();
-      return;
+    case 'google-logout':   // 先跳確認視窗，避免不小心按到
+      if (ui.drawer) { closeDrawer(() => { ui.logoutConfirm = true; renderModal(); }); return; }
+      ui.logoutConfirm = true;
+      sessionChanged = false;
+      break;
+    case 'google-logout-confirm':
+      ui.logoutConfirm = false;
+      sessionChanged = false;
+      viewerLogout();
+      break;
     case 'claim-submit':
       if (!ui.claimName) { showToast('請先選擇你是誰'); return; }
       claimPlayer(ui.claimName);
