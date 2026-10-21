@@ -571,9 +571,26 @@
     display: flex; gap: 10px; align-items: center; justify-content: space-between;
   }
 
-  .seg { display: inline-flex; background: var(--floor); border-radius: var(--radius-s); padding: 3px; }
-  .seg button { background: transparent; padding: 6px 14px; }
-  .seg button[aria-pressed="true"] { background: var(--court-dark); color: var(--line); }
+  /* 切換鈕（和底部分頁同一種樣式）：灰綠軌道＋白色滑塊；可以點，也可以在上面左右滑 */
+  .seg { position: relative; display: inline-flex; padding: 3px; border-radius: 12px;
+    background: color-mix(in srgb, var(--court-dark) 12%, var(--floor)); touch-action: pan-y; }
+  .seg button { position: relative; z-index: 1; background: transparent; padding: 7px 14px; border-radius: 9px;
+    color: var(--muted); font-weight: 500; transition: color 0.2s ease; -webkit-tap-highlight-color: transparent; }
+  .seg button[aria-pressed="true"] { color: var(--ink); font-weight: 700; }
+  .seg button:not([aria-pressed="true"]):active { opacity: 0.55; }
+  .seg-ind { position: absolute; top: 3px; bottom: 3px; left: 0; width: 0; border-radius: 9px; pointer-events: none;
+    background: var(--surface); box-shadow: 0 3px 8px rgba(20, 38, 28, 0.12), 0 1px 1px rgba(20, 38, 28, 0.08);
+    transition: transform 0.36s cubic-bezier(0.32, 0.72, 0, 1), width 0.36s cubic-bezier(0.32, 0.72, 0, 1); }
+  .seg-ind.no-anim { transition: none; }
+  :root[data-appearance="dark"] .seg { background: #0B100D; }
+  :root[data-appearance="dark"] .seg-ind { background: #2E3B33; box-shadow: none; }
+  /* 切換後，下面的內容跟著往左／右滑進來 */
+  @media (prefers-reduced-motion: no-preference) {
+    .seg-in-fwd { animation: seg-in-fwd 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
+    .seg-in-back { animation: seg-in-back 0.3s cubic-bezier(0.32, 0.72, 0, 1); }
+    @keyframes seg-in-fwd { from { transform: translateX(28px); opacity: 0; } to { transform: none; opacity: 1; } }
+    @keyframes seg-in-back { from { transform: translateX(-28px); opacity: 0; } to { transform: none; opacity: 1; } }
+  }
 
   .stepper { display: inline-flex; align-items: center; gap: 4px; }
   .stepper button { width: 36px; height: 36px; padding: 0; background: var(--floor); font-size: 18px; }
@@ -1113,7 +1130,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.3';
+const APP_VERSION = '7.6';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3386,7 +3403,7 @@ function renderSignupListModal() {
   const view = prefs.signupView === 'calendar' ? 'calendar' : 'list';
   return `
     <h3>報名場次</h3>
-    <div class="seg ev-view" role="group" aria-label="顯示方式">
+    <div class="seg ev-view" data-swipe role="group" aria-label="顯示方式">
       <button data-action="signup-view" data-value="list" aria-pressed="${view === 'list'}">列表</button>
       <button data-action="signup-view" data-value="calendar" aria-pressed="${view === 'calendar'}">月曆</button>
     </div>
@@ -4052,6 +4069,8 @@ function renderDrawer() {
         item('data', 'box', '長期紀錄與資料'),
         item('backup', 'save', '備份與還原'),
       ],
+      // 共同管理者（不是擁有者）：可以離開管理畫面，回首頁切換到其他球團
+      cloudReady() && !isTeamOwner() ? [item('leave-manage', 'box', '切換球團・回首頁')] : [],
       [updateItem],
     ]
     : [
@@ -4157,9 +4176,7 @@ function drawerGo(target) {
       ui.settings = true;
       ui.settingsOnly = null;
     } else if (target === 'invite') {
-      ui.settings = true;
-      ui.settingsOnly = 'cloud';
-      openInvite();
+      openInvite();   // 單獨打開；關掉後直接回到排場畫面
     } else if (target === 'end-day') {
       ui.tab = 'records';
       ui.endDayArmed = !state.dayEnded;
@@ -4172,6 +4189,9 @@ function drawerGo(target) {
       ui.ranksOpen = true;
     } else if (target === 'leave') {
       leaveTeam();
+      return;
+    } else if (target === 'leave-manage') {
+      leaveManaging();
       return;
     } else if (target === 'home') {
       goHome();
@@ -4636,7 +4656,7 @@ function renderRanksTab() {
     ${myself ? renderMyStats(myself) : pick || (cloud.viewer && cloud.user ? '' : '<p class="sub">還沒有紀錄</p>')}
     <h2>長期排行榜</h2>
     <p class="sub" style="margin-top:-4px">累計 ${sessions.length} 次球局、${sessions.reduce((n, s) => n + s.matchCount, 0)} 場比賽${sessions.length ? `・最近存入 ${(() => { const d = new Date(Math.max(...sessions.map((x) => x.date || 0))); return `${d.getMonth() + 1}/${d.getDate()}`; })()}` : ''}${ranks.status === 'error' ? `・<span class="cloud-error" style="display:inline">${escapeHtml(ranks.error)}</span>` : ''}</p>
-    <div class="seg rank-seg" role="group" aria-label="排行榜種類">
+    <div class="seg rank-seg" data-swipe role="group" aria-label="排行榜種類">
       ${Object.entries(RANK_BOARDS).map(([key, b]) => `
         <button data-action="rank-board" data-value="${key}" aria-pressed="${board === key}">${b.label}</button>`).join('')}
     </div>
@@ -5717,6 +5737,26 @@ function joinTeam(code) {
 
 function goHome() {
   switchToHome();
+}
+
+/**
+ * 共同管理者離開管理畫面：先把還沒上傳的排場傳完，再讓這支手機回到「球友」身分。
+ * 排場資料都在雲端，所以清掉這支手機上的那份副本（否則首頁會誤以為是臨時開場）。
+ * 之後從球團頁選單按「管理這個球團」就能再回來。
+ */
+async function leaveManaging() {
+  const id = cloud.teamId;
+  flushSaves();
+  if (cloud.uploadTimer || cloud.sync === 'pending') {
+    showToast('正在上傳最後的排場…');
+    try { await uploadLive(); } catch (err) { console.warn('離開前上傳失敗:', err); }
+  }
+  if (id) saveJoinedTeam(id, cloud.teamName);
+  try {
+    window.localStorage.removeItem(CLOUD_TEAM_KEY);
+    window.localStorage.removeItem(STORAGE_KEYS.session);
+  } catch (err) { /* 無法寫入就照樣換頁 */ }
+  navigateTo(`${appBase()}?home=1`);
 }
 
 function leaveTeam() {
@@ -6965,7 +7005,7 @@ function relationData(mode) {
 
 function renderNetwork() {
   const mode = ui.networkMode === 'rival' ? 'rival' : 'partner';
-  const toggle = `<div class="seg" role="group" aria-label="關係圖類型" style="margin-bottom:10px">
+  const toggle = `<div class="seg" data-swipe role="group" aria-label="關係圖類型" style="margin-bottom:10px">
     <button data-action="network-mode" data-value="partner" aria-pressed="${mode === 'partner'}">搭檔</button>
     <button data-action="network-mode" data-value="rival" aria-pressed="${mode === 'rival'}">對戰</button>
   </div>`;
@@ -7503,7 +7543,7 @@ function renderLongProfileBody(name) {
 }
 
 function profileViewSeg(view, action) {
-  return `<div class="seg profile-seg" role="group" aria-label="戰績範圍">
+  return `<div class="seg profile-seg" data-swipe role="group" aria-label="戰績範圍">
       <button data-action="${action}" data-value="today" aria-pressed="${view === 'today'}">今日</button>
       <button data-action="${action}" data-value="long" aria-pressed="${view === 'long'}">長期</button>
     </div>`;
@@ -7598,9 +7638,27 @@ function renderModal() {
   const enterClass = previous ? '' : ' modal-enter';
   const pageClass = pageChanged && !reduceMotion() ? ` page-${depth >= prevDepth ? 'fwd' : 'back'}` : '';
 
-  root.innerHTML = `<div class="modal-bg${previous ? '' : ' modal-bg-enter'}" data-action="modal-close">
+  if (previous) {
+    // 彈窗已經開著：只換裡面的內容，外框不重建（才不會打斷正在播的打開動畫，例如 QR Code 剛好載入完）
+    const oldPage = previous.querySelector('.modal-page');
+    if (pageChanged || !oldPage) {
+      const fresh = document.createElement('div');
+      fresh.className = `modal-page${pageClass}`;
+      fresh.innerHTML = content;
+      if (oldPage) oldPage.replaceWith(fresh); else previous.appendChild(fresh);
+    } else {
+      oldPage.innerHTML = content;
+    }
+  } else {
+    root.innerHTML = `<div class="modal-bg modal-bg-enter" data-action="modal-close">
       <div class="modal${enterClass}" role="dialog" aria-modal="true"><div class="sheet-handle" aria-hidden="true"></div>
-        <div class="modal-page${pageClass}">${content}</div></div></div>`;
+        <div class="modal-page">${content}</div></div></div>`;
+    // 打開動畫播完就拿掉 class：之後手指下拉（inline transform）不會被動畫蓋住
+    const bg = root.querySelector('.modal-bg');
+    const box = root.querySelector('.modal');
+    bg.addEventListener('animationend', (e) => { if (e.target === bg) bg.classList.remove('modal-bg-enter'); });
+    box.addEventListener('animationend', (e) => { if (e.target === box) box.classList.remove('modal-enter'); });
+  }
   root.dataset.key = key;
   root.dataset.depth = String(depth);
 
@@ -8179,7 +8237,7 @@ function swipeBlocked(target) {
   if (ui.drawer) return false;   // 選單開著：任何地方往左滑都能收起
   return ui.manual || ui.result || ui.backup || ui.settings || ui.copyText || ui.titleIndex !== null || ui.report
     || ui.profileName || ui.signupOpen || ui.ranksOpen || ui.pastList || ui.pastId || ui.invite || ui.rankProfile
-    || target.closest('input, textarea, select, .tabbar, .modal-bg, .home-team');
+    || target.closest('input, textarea, select, .tabbar, .modal-bg, .home-team, .seg');
 }
 
 function drawerEls() {
@@ -9531,6 +9589,204 @@ document.addEventListener('click', (e) => {
   if (id) switchToTeam(id);
   else navigateTo(link.href);
 });
+
+
+/* ===================== 切換鈕（.seg）：滑塊動畫與左右滑 =====================
+ * 1. 每次畫面更新後，把白色滑塊放到選中的按鈕下；和上一次位置不同就滑過去
+ * 2. 在切換鈕上左右滑：滑塊跟著手指，放開就切到手指所在的那一個
+ * 3. 彈窗裡標了 data-swipe 的切換鈕：在它下面的內容左右滑，切到前一個／下一個
+ * 4. 切換後，切換鈕下面的內容往切換方向滑進來 */
+const segMemory = {};          // aria-label → 上一次滑塊位置 {x, w}
+let segPending = null;         // {label, dir}：剛切換，等重畫後播放內容滑入
+const segScrub = { seg: null, startX: 0, startY: 0, moved: false, decided: false, target: null };
+const segSwipe = { seg: null, page: null, startX: 0, startY: 0, dx: 0, decided: false, horizontal: false, t0: 0 };
+const SEG_SWIPE_PX = 60;
+
+function segButtons(seg) {
+  return Array.from(seg.querySelectorAll(':scope > button')).filter((b) => !b.hidden);
+}
+
+function segKey(seg) {
+  return seg.getAttribute('aria-label') || '';
+}
+
+function placeSegIndicator(seg, button, animate) {
+  let ind = seg.querySelector(':scope > .seg-ind');
+  if (!ind) {
+    ind = document.createElement('span');
+    ind.className = 'seg-ind no-anim';
+    ind.setAttribute('aria-hidden', 'true');
+    seg.prepend(ind);
+  }
+  if (!button || !button.offsetWidth) { ind.style.opacity = '0'; return; }
+  const pos = { x: button.offsetLeft, w: button.offsetWidth };
+  const last = segMemory[segKey(seg)];
+  ind.style.opacity = '';
+  if (animate && last && (last.x !== pos.x || last.w !== pos.w) && !ind.dataset.placed) {
+    // 新畫出來的切換鈕：先放在上一次的位置，下一格再滑到新位置
+    ind.classList.add('no-anim');
+    ind.style.transform = `translateX(${last.x}px)`;
+    ind.style.width = `${last.w}px`;
+    void ind.offsetWidth;
+    ind.classList.remove('no-anim');
+  } else if (!ind.dataset.placed) {
+    ind.classList.add('no-anim');
+  }
+  ind.style.transform = `translateX(${pos.x}px)`;
+  ind.style.width = `${pos.w}px`;
+  if (ind.classList.contains('no-anim')) { void ind.offsetWidth; ind.classList.remove('no-anim'); }
+  ind.dataset.placed = '1';
+  segMemory[segKey(seg)] = pos;
+}
+
+function syncSegs() {
+  document.querySelectorAll('.seg').forEach((seg) => {
+    if (segScrub.seg === seg) return;   // 手指正在上面滑
+    placeSegIndicator(seg, segButtons(seg).find((b) => b.getAttribute('aria-pressed') === 'true'), true);
+  });
+  if (segPending) {
+    const seg = Array.from(document.querySelectorAll('.seg')).find((el) => segKey(el) === segPending.label);
+    if (seg && !reduceMotion()) {
+      // 切換鈕後面的內容（同一層的兄弟元素）滑進來
+      let el = seg.nextElementSibling;
+      while (el) {
+        el.classList.remove('seg-in-fwd', 'seg-in-back');
+        void el.offsetWidth;
+        el.classList.add(`seg-in-${segPending.dir}`);
+        el = el.nextElementSibling;
+      }
+    }
+    segPending = null;
+  }
+}
+
+// 任何重畫之後都同步一次（render、renderModal、只重畫分頁內容…）
+let segSyncQueued = false;
+new MutationObserver(() => {
+  if (segSyncQueued) return;
+  segSyncQueued = true;
+  requestAnimationFrame(() => { segSyncQueued = false; syncSegs(); });
+}).observe(document.body, { childList: true, subtree: true });
+
+// 點切換鈕：記下方向，重畫後內容往那個方向滑進來
+document.addEventListener('click', (e) => {
+  const button = e.target.closest('.seg > button');
+  if (!button) return;
+  const seg = button.parentElement;
+  const list = segButtons(seg);
+  const from = list.findIndex((b) => b.getAttribute('aria-pressed') === 'true');
+  const to = list.indexOf(button);
+  if (from < 0 || to < 0 || from === to) return;
+  segPending = { label: segKey(seg), dir: to > from ? 'fwd' : 'back' };
+}, true);
+
+function segButtonAt(seg, x) {
+  const list = segButtons(seg);
+  let best = null;
+  list.forEach((b) => {
+    const r = b.getBoundingClientRect();
+    if (x >= r.left && x <= r.right) best = b;
+  });
+  if (best) return best;
+  const first = list[0].getBoundingClientRect();
+  return x < first.left ? list[0] : list[list.length - 1];
+}
+
+// 在切換鈕上滑：滑塊跟著手指
+document.addEventListener('touchstart', (e) => {
+  const seg = e.target.closest('.seg');
+  if (!seg || e.touches.length !== 1 || !segButtons(seg).length) return;
+  Object.assign(segScrub, { seg, startX: e.touches[0].clientX, startY: e.touches[0].clientY, moved: false, decided: false, target: null });
+}, { passive: true });
+
+document.addEventListener('touchmove', (e) => {
+  if (!segScrub.seg) return;
+  const t = e.touches[0];
+  const dx = t.clientX - segScrub.startX;
+  const dy = t.clientY - segScrub.startY;
+  if (!segScrub.decided) {
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
+    segScrub.decided = true;
+    if (Math.abs(dx) < Math.abs(dy)) { segScrub.seg = null; return; }   // 是上下捲動
+    segScrub.moved = true;
+  }
+  e.preventDefault();
+  const button = segButtonAt(segScrub.seg, t.clientX);
+  segScrub.target = button;
+  placeSegIndicator(segScrub.seg, button, false);
+  segButtons(segScrub.seg).forEach((b) => b.classList.toggle('seg-hover', b === button));
+}, { passive: false });
+
+function segScrubEnd() {
+  const { seg, moved, target } = segScrub;
+  segScrub.seg = null;
+  if (!seg || !moved) return;
+  segButtons(seg).forEach((b) => b.classList.remove('seg-hover'));
+  if (target && target.getAttribute('aria-pressed') !== 'true') target.click();
+  else syncSegs();
+}
+document.addEventListener('touchend', segScrubEnd);
+document.addEventListener('touchcancel', segScrubEnd);
+
+// 彈窗裡：在 data-swipe 切換鈕下面的內容左右滑，切到前一個／下一個
+function segForContent(modal, y) {
+  const list = Array.from(modal.querySelectorAll('.seg[data-swipe]')).filter((seg) => seg.offsetWidth);
+  let found = null;
+  list.forEach((seg) => { if (seg.getBoundingClientRect().top < y) found = seg; });
+  return found;
+}
+
+document.addEventListener('touchstart', (e) => {
+  segSwipe.seg = null;
+  const modal = e.target.closest('.modal');
+  if (!modal || e.touches.length !== 1) return;
+  if (e.target.closest('.seg, input, textarea, select, iframe, .ev-map, .home-team')) return;
+  const seg = segForContent(modal, e.touches[0].clientY);
+  if (!seg) return;
+  Object.assign(segSwipe, {
+    seg, page: modal.querySelector('.modal-page'), startX: e.touches[0].clientX, startY: e.touches[0].clientY,
+    dx: 0, decided: false, horizontal: false, t0: Date.now(),
+  });
+}, { passive: true });
+
+document.addEventListener('touchmove', (e) => {
+  if (!segSwipe.seg) return;
+  const t = e.touches[0];
+  const dx = t.clientX - segSwipe.startX;
+  const dy = t.clientY - segSwipe.startY;
+  if (!segSwipe.decided) {
+    if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
+    segSwipe.decided = true;
+    segSwipe.horizontal = Math.abs(dx) > Math.abs(dy) * 1.4;
+    if (!segSwipe.horizontal) { segSwipe.seg = null; return; }
+  }
+  e.preventDefault();
+  segSwipe.dx = dx;
+  // 內容輕微跟著手指（有阻力），讓人知道可以滑
+  if (segSwipe.page) {
+    segSwipe.page.style.transition = 'none';
+    segSwipe.page.style.transform = `translateX(${Math.max(-48, Math.min(48, dx * 0.3))}px)`;
+  }
+}, { passive: false });
+
+function segSwipeEnd() {
+  const { seg, page, dx, horizontal, t0 } = segSwipe;
+  segSwipe.seg = null;
+  if (!seg || !horizontal) return;
+  if (page) {
+    page.style.transition = 'transform 0.25s cubic-bezier(0.32, 0.72, 0, 1)';
+    page.style.transform = '';
+    setTimeout(() => { if (page.isConnected) page.style.transition = ''; }, 260);
+  }
+  const fast = Math.abs(dx) / Math.max(1, Date.now() - t0) > 0.4 && Math.abs(dx) > 30;
+  if (Math.abs(dx) < SEG_SWIPE_PX && !fast) return;
+  const list = segButtons(seg);
+  const now = list.findIndex((b) => b.getAttribute('aria-pressed') === 'true');
+  const next = list[now + (dx < 0 ? 1 : -1)];   // 往左滑＝下一個
+  if (next) next.click();
+}
+document.addEventListener('touchend', segSwipeEnd);
+document.addEventListener('touchcancel', segSwipeEnd);
 
 loadAll();
 render();
