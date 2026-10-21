@@ -1143,7 +1143,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.8';
+const APP_VERSION = '7.9';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -7028,7 +7028,7 @@ function renderNetwork() {
   </div>`;
   const { links, names } = relationData(mode);
   if (!Object.keys(links).length) {
-    return `${toggle}<p class="sub">${mode === 'rival' ? '打過比賽後，這裡會畫出誰和誰交手過。' : '打過雙打後，這裡會畫出誰和誰搭檔過。'}</p>`;
+    return `<div class="seg-group">${toggle}<p class="sub">${mode === 'rival' ? '打過比賽後，這裡會畫出誰和誰交手過。' : '打過雙打後，這裡會畫出誰和誰搭檔過。'}</p></div>`;
   }
 
   const size = 360;
@@ -7095,10 +7095,10 @@ function renderNetwork() {
   const legend = mode === 'rival' && focus
     ? '<p class="sub" style="margin:6px 0 0">綠線：贏比較多｜紅線：輸比較多｜黃線：平手或未記勝負</p>'
     : '';
-  return `${toggle}<div class="network ${mode} ${focus ? 'focus' : ''}">
+  return `<div class="seg-group">${toggle}<div class="network ${mode} ${focus ? 'focus' : ''}">
     <svg viewBox="0 0 ${size} ${size}" role="img" aria-label="${mode === 'rival' ? '對戰' : '搭檔'}關係圖">${edges}${nodes}</svg>
   </div>${legend}
-  <p class="sub" style="margin-top:6px">${caption}</p>`;
+  <p class="sub" style="margin-top:6px">${caption}</p></div>`;
 }
 
 function renderRecordsTab() {
@@ -8371,7 +8371,7 @@ function swipeBlocked(target) {
   if (ui.drawer) return false;   // 選單開著：任何地方往左滑都能收起
   return ui.manual || ui.result || ui.backup || ui.settings || ui.copyText || ui.titleIndex !== null || ui.report
     || ui.profileName || ui.signupOpen || ui.ranksOpen || ui.pastList || ui.pastId || ui.invite || ui.rankProfile
-    || target.closest('input, textarea, select, .tabbar, .modal-bg, .home-team, .seg');
+    || target.closest('input, textarea, select, .tabbar, .modal-bg, .home-team, .seg') || segForTarget(target);
 }
 
 function drawerEls() {
@@ -9864,23 +9864,40 @@ function segScrubEnd() {
 document.addEventListener('touchend', segScrubEnd);
 document.addEventListener('touchcancel', segScrubEnd);
 
-// 彈窗裡：在 data-swipe 切換鈕下面的內容左右滑，切到前一個／下一個
-function segForContent(modal, y) {
-  const list = Array.from(modal.querySelectorAll('.seg[data-swipe]')).filter((seg) => seg.offsetWidth);
-  let found = null;
-  list.forEach((seg) => { if (seg.getBoundingClientRect().top < y) found = seg; });
-  return found;
+// 在 data-swipe 切換鈕「後面的內容」左右滑，切到前一個／下一個（彈窗和主畫面都可以）
+// 從手指按到的元素往上找：哪一層的前面兄弟是 data-swipe 切換鈕，就是它控制的內容
+function segForTarget(target) {
+  let el = target;
+  while (el && el.id !== 'app' && !(el.classList && el.classList.contains('modal-page'))) {
+    let prev = el.previousElementSibling;
+    while (prev) {
+      if (prev.matches && prev.matches('.seg[data-swipe]') && prev.offsetWidth) return { seg: prev, block: el };
+      prev = prev.previousElementSibling;
+    }
+    el = el.parentElement;
+  }
+  // 彈窗裡按在空白處：用位置判斷，找手指上方最近的 data-swipe 切換鈕
+  const page = target.closest && target.closest('.modal-page');
+  if (page && target === page && lastTouchY !== null) {
+    let found = null;
+    page.querySelectorAll('.seg[data-swipe]').forEach((seg) => {
+      if (seg.offsetWidth && seg.getBoundingClientRect().bottom < lastTouchY) found = seg;
+    });
+    if (found) return { seg: found, block: page };
+  }
+  return null;
 }
+let lastTouchY = null;
+document.addEventListener('touchstart', (e) => { lastTouchY = e.touches.length ? e.touches[0].clientY : null; }, { passive: true, capture: true });
 
 document.addEventListener('touchstart', (e) => {
   segSwipe.seg = null;
-  const modal = e.target.closest('.modal');
-  if (!modal || e.touches.length !== 1) return;
-  if (e.target.closest('.seg, input, textarea, select, iframe, .ev-map, .home-team')) return;
-  const seg = segForContent(modal, e.touches[0].clientY);
-  if (!seg) return;
+  if (e.touches.length !== 1 || ui.drawer) return;
+  if (e.target.closest('.seg, input, textarea, select, iframe, .ev-map, .home-team, .tabbar')) return;
+  const found = segForTarget(e.target);
+  if (!found) return;
   Object.assign(segSwipe, {
-    seg, page: modal.querySelector('.modal-page'), startX: e.touches[0].clientX, startY: e.touches[0].clientY,
+    seg: found.seg, page: found.block, startX: e.touches[0].clientX, startY: e.touches[0].clientY,
     dx: 0, decided: false, horizontal: false, t0: Date.now(),
   });
 }, { passive: true });
