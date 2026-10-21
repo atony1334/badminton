@@ -363,12 +363,9 @@
   /* ===== 換頁與載入：淡出 → 載入畫面 → 淡入，避免畫面突然跳動 ===== */
   @view-transition { navigation: auto; }   /* 支援的瀏覽器（新版 Safari／Chrome）換頁時自動交叉淡化 */
   ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.22s; }
-  #tabbar-root { transition: opacity 0.16s ease; }
-  body.leaving .page, body.leaving #tabbar-root { opacity: 0; }
-  /* 只在淡出時才加 opacity 的轉場，不蓋掉 .page 原本推開選單用的 transform 轉場 */
-  body.leaving .page { transition: opacity 0.16s ease, transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.34s ease; }
-  .app-enter { animation: app-enter 0.28s ease-out; }
-  @keyframes app-enter { from { opacity: 0; } to { opacity: 1; } }
+  .app-enter { animation: app-enter 0.2s ease-out; }
+  @keyframes app-enter { from { opacity: 0.4; } to { opacity: 1; } }
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.2s; }
   .boot { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
   .boot-logo { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
     background: var(--court); color: var(--line); font-size: 28px; font-weight: 800; }
@@ -1099,7 +1096,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.31';
+const APP_VERSION = '7.0';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1532,7 +1529,8 @@ function restoreBackup(text) {
  *  teams/{teamId}/sessions/{sessionId} 每天封存的完整紀錄（之後做長期排行榜用）
  */
 const TEST_CLOUD = window.__FIREBASE_TEST__ || null;   // 自動化測試用，正式環境不存在
-const VIEW_TEAM = (() => {
+// 正在看的球團（?team=）。v7.0 起換球團不重新載入，所以是 let，由 switchToTeam／switchToHome 改
+let VIEW_TEAM = (() => {
   const id = new URLSearchParams(window.location.search).get('team');
   return id && /^[A-Za-z0-9]{12,40}$/.test(id) ? id : null;
 })();
@@ -1575,11 +1573,18 @@ function forgetJoinedTeam(id) {
  * 球友把觀看頁「加入主畫面」：主畫面圖示要記得是哪個球團。
  * 預設的 manifest 會從首頁（管理者畫面）打開，所以觀看頁換成一份帶著球團代碼的 manifest。
  */
-(function setupViewerHomeScreen() {
+const DEFAULT_MANIFEST_HREF = (document.querySelector('link[rel="manifest"]') || {}).href || '';
+
+function applyViewerManifest() {
   const base = `${window.location.origin}${window.location.pathname}`;
-  if (VIEW_TEAM) {
+  let link = document.querySelector('link[rel="manifest"]');
+  if (!VIEW_TEAM) {
+    // 回到首頁：還原預設的 manifest（iPhone 上原本就拿掉了，不用加回來）
+    if (link && DEFAULT_MANIFEST_HREF) link.href = DEFAULT_MANIFEST_HREF;
+    return;
+  }
+  {
     saveJoinedTeam(VIEW_TEAM);
-    const link = document.querySelector('link[rel="manifest"]');
     const ios = /iPhone|iPad|iPod/.test(navigator.userAgent || '') || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     if (link && ios) {
       // iPhone 沒有 manifest 時，「加入主畫面」會直接記住目前的網址（含球團代碼）
@@ -1603,6 +1608,13 @@ function forgetJoinedTeam(id) {
       };
       link.href = `data:application/manifest+json,${encodeURIComponent(JSON.stringify(manifest))}`;
     }
+  }
+}
+
+(function setupViewerHomeScreen() {
+  const base = `${window.location.origin}${window.location.pathname}`;
+  if (VIEW_TEAM) {
+    applyViewerManifest();
     return;
   }
   // 首頁：只加入過一個球團、這支手機又不是管理者（也沒有進行中的臨時開場），就直接進去
@@ -1715,12 +1727,13 @@ async function initCloud() {
     // 排場資料本來就存在手機（localStorage），網路恢復或下次打開時會自動補傳，不需要這層快取。
     cloud.db = fsMod.getFirestore(app);
     cloud.auth = authMod.getAuth(app);
-    if (cloud.viewer) {
-      startViewer();
-      authMod.onAuthStateChanged(cloud.auth, (user) => { onViewerUser(user); });
-      return;
-    }
-    authMod.onAuthStateChanged(cloud.auth, (user) => { onCloudUser(user); });
+    if (cloud.viewer) startViewer();
+    // 只註冊一次；換球團／回首頁不重新載入，所以依「當下」是球團頁還是首頁決定怎麼處理
+    authMod.onAuthStateChanged(cloud.auth, (user) => {
+      cloud.authKnown = true;
+      if (cloud.viewer) onViewerUser(user);
+      else onCloudUser(user);
+    });
   } catch (err) {
     console.warn('雲端功能載入失敗:', err);
     cloud.phase = 'error';
@@ -1753,6 +1766,7 @@ async function onCloudUser(user) {
   const { collection, query, where, limit, getDocs, getDoc } = cloud.fb;
   try {
     const snap = await getDocs(query(collection(cloud.db, 'teams'), where('adminUid', '==', user.uid), limit(1)));
+    if (cloud.viewer) return;   // 查詢途中已切到球團頁
     if (!snap.empty) {
       await attachTeam(snap.docs[0].id, snap.docs[0].data());
       return;
@@ -2096,7 +2110,7 @@ async function cloudLogout() {
  *  3. 頂部顯示「更新於幾點幾分」，球友看得出是不是最新的
  */
 const VIEWER_CHECK_MS = 20000;
-const viewerSync = { unsub: null, lastJson: '', timer: null, checking: false };
+const viewerSync = { unsub: null, lastJson: '', timer: null, checking: false, listening: false };
 
 // 打開球團頁時：「輪到你上場」的通知已經看到了，連同過期的通知一起清掉
 function clearSeenNotifications() {
@@ -2108,8 +2122,9 @@ function clearSeenNotifications() {
 
 function startViewer() {
   clearSeenNotifications();
-  document.addEventListener('visibilitychange', clearSeenNotifications);
-  cloud.fb.getDoc(teamRef(VIEW_TEAM)).then((snap) => {
+  const team = VIEW_TEAM;
+  cloud.fb.getDoc(teamRef(team)).then((snap) => {
+    if (team !== VIEW_TEAM) return;   // 已經換到別的球團
     if (!snap.exists()) {
       cloud.viewerStatus = 'missing';
       render();
@@ -2121,6 +2136,7 @@ function startViewer() {
     saveJoinedTeam(VIEW_TEAM, cloud.teamName);
     render();
   }).catch((err) => {
+    if (team !== VIEW_TEAM) return;
     cloud.viewerStatus = 'error';
     cloud.error = cloudErrorText(err);
     render();
@@ -2133,14 +2149,34 @@ function startViewer() {
   viewerSync.timer = setInterval(() => {
     if (document.visibilityState === 'visible') checkViewerFresh();
   }, VIEWER_CHECK_MS);
+  if (viewerSync.listening) return;
+  // 回到畫面／恢復網路時重新連線；只註冊一次，處理時才看目前是不是球團頁
+  viewerSync.listening = true;
   const wake = () => {
-    if (document.visibilityState !== 'visible') return;
+    if (!cloud.viewer || document.visibilityState !== 'visible') return;
     subscribeViewer();
     checkViewerFresh();
   };
+  document.addEventListener('visibilitychange', () => { if (cloud.viewer) clearSeenNotifications(); });
   document.addEventListener('visibilitychange', wake);
   window.addEventListener('online', wake);
   window.addEventListener('pageshow', (e) => { if (e.persisted) wake(); });
+}
+
+/** 離開球團頁：停掉這個球團的所有即時連線，清掉它的資料 */
+function stopViewer() {
+  if (viewerSync.unsub) viewerSync.unsub();
+  clearInterval(viewerSync.timer);
+  Object.assign(viewerSync, { unsub: null, timer: null, lastJson: '', checking: false });
+  if (members.mineUnsub) { members.mineUnsub(); members.mineUnsub = null; }
+  stopWatchEvents();
+  Object.assign(ranks, { status: 'idle', list: [], loadedAt: 0, error: '' });
+  past.cache = {};
+  pushState.seen = null;
+  Object.assign(cloud, {
+    claim: null, teamName: '', ownerUid: null, adminUids: [], error: '', notifyEnabled: true,
+    viewerStatus: 'loading', viewerUpdatedAt: 0, viewerCheckedAt: 0,
+  });
 }
 
 function subscribeViewer() {
@@ -2155,8 +2191,9 @@ function subscribeViewer() {
 function checkViewerFresh() {
   if (viewerSync.checking || !cloud.fb.getDocFromServer) return;
   viewerSync.checking = true;
-  cloud.fb.getDocFromServer(liveRef(VIEW_TEAM))
-    .then(applyViewerSnapshot)
+  const team = VIEW_TEAM;
+  cloud.fb.getDocFromServer(liveRef(team))
+    .then((snap) => { if (team === VIEW_TEAM) applyViewerSnapshot(snap); })
     .catch(() => {})   // 離線時略過，恢復連線會再試
     .finally(() => { viewerSync.checking = false; });
 }
@@ -2689,7 +2726,7 @@ const SIGNUP_PER_COURT = 8;
 const SIGNUP_NAME_MAX = 12;
 const SIGNUP_GUEST_MAX = 2;   // 每位球友最多幫幾位朋友報名
 const SIGNUP_PAST_SHOWN = 5;
-const VIEW_EVENT = (() => {
+let VIEW_EVENT = (() => {
   const id = new URLSearchParams(window.location.search).get('event');
   return id && /^[A-Za-z0-9-]{6,40}$/.test(id) ? id : null;
 })();
@@ -4414,16 +4451,19 @@ async function loadRanks(force = false) {
   if (!force && ranks.status === 'ready' && Date.now() - ranks.loadedAt < 60000) return;
   ranks.status = 'loading';
   const { collection, getDocs } = cloud.fb;
+  const team = rankTeamId();
   try {
-    const ref = collection(cloud.db, 'teams', rankTeamId(), 'stats');
+    const ref = collection(cloud.db, 'teams', team, 'stats');
     const snap = await getDocs(ref).catch((err) => {
       if (cloud.fb.getDocsFromServer) return cloud.fb.getDocsFromServer(ref);
       throw err;
     });
+    if (team !== rankTeamId()) return;   // 等待途中換了球團（stopViewer 已重設 ranks）
     ranks.list = snap.docs.map((d) => d.data());
     ranks.status = 'ready';
     ranks.loadedAt = Date.now();
   } catch (err) {
+    if (team !== rankTeamId()) return;
     ranks.status = 'error';
     ranks.error = cloudErrorText(err);
   }
@@ -5561,27 +5601,100 @@ function parseTeamCode(text) {
   return /^[A-Za-z0-9]{12,40}$/.test(raw) ? raw : null;
 }
 
-/**
- * App 內換頁：先把畫面淡出再跳轉，下一頁會先顯示載入畫面再淡入，看起來比較連貫。
- * 一律用 location.replace，不留瀏覽紀錄（避免 Safari 左右滑回上一頁）。
- */
-const LEAVE_FADE_MS = 160;
-function navigateTo(url) {
-  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (reduce) { window.location.replace(url); return; }
-  document.body.classList.add('leaving');
-  setTimeout(() => window.location.replace(url), LEAVE_FADE_MS);
+/* ===================== 換頁（v7.0：球友的換球團／回首頁不重新載入） =====================
+ * 球友手機（不是管理者）在「首頁 ⇄ 球團頁 ⇄ 另一個球團」之間切換時，
+ * 直接在畫面內換資料：停掉舊球團的連線 → 改網址（replaceState，不留瀏覽紀錄）→ 重畫 → 連上新球團。
+ * 管理者手機的狀態牽涉上傳與同步，仍用重新載入（location.replace）比較保險。 */
+function appBase() {
+  return `${window.location.origin}${window.location.pathname}`;
 }
-// 從瀏覽器快取回到這頁時，把淡出狀態還原
-window.addEventListener('pageshow', () => document.body.classList.remove('leaving'));
+
+function navigateTo(url) {
+  window.location.replace(url);
+}
+
+// 可以不重新載入的情況：這支手機不是管理者
+function canSwitchInPlace() {
+  return !storageGet(CLOUD_TEAM_KEY) && !isPasswordUser() && cloud.phase !== 'ready';
+}
+
+// ui 一開始的樣子：換畫面時把彈窗、分頁、各種「正在看的東西」還原
+const UI_INITIAL = Object.assign({}, ui);
+
+function resetUiForSwitch() {
+  Object.keys(ui).forEach((key) => {
+    if (key === 'viewKey') return;
+    if (!(key in UI_INITIAL)) delete ui[key];
+  });
+  Object.assign(ui, UI_INITIAL, { setupSelected: new Set() });
+}
+
+// 回到首頁：重新讀這支手機自己的排場（臨時開場）和常用球員
+function reloadLocalData() {
+  const session = storageGet(STORAGE_KEYS.session);
+  state = session ? normalizeState(session) : createDefaultState();
+  const savedRegulars = storageGet(STORAGE_KEYS.regulars);
+  regulars = Array.isArray(savedRegulars) ? savedRegulars : [];
+}
+
+// 換畫面的動畫：支援的瀏覽器（iOS 18 以上 Safari、Chrome）交叉淡化，其他直接換
+function swapView(update) {
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (document.startViewTransition && !reduce) document.startViewTransition(update);
+  else update();
+}
+
+function switchToTeam(id) {
+  if (!TEAM_ID_RE.test(String(id || ''))) return;
+  if (!canSwitchInPlace()) { saveJoinedTeam(id); navigateTo(`${appBase()}?team=${id}`); return; }
+  flushSaves();   // 臨時開場的資料先存好
+  swapView(() => {
+    if (cloud.viewer) stopViewer();
+    VIEW_TEAM = id;
+    VIEW_EVENT = null;
+    HOME_PARAM = false;
+    cloud.viewer = true;
+    cloud.viewerStatus = 'loading';
+    state = createDefaultState();
+    regulars = [];   // 觀看者不用這支手機的常用球員
+    window.history.replaceState(null, '', `${appBase()}?team=${id}`);
+    applyViewerManifest();
+    resetUiForSwitch();
+    render();
+    window.scrollTo(0, 0);
+    // 連上新球團（放在同一個 callback 裡：startViewTransition 會延後執行，要確保順序）
+    if (cloud.fb) {
+      startViewer();
+      if (cloud.authKnown) onViewerUser(cloud.user);
+    }
+  });
+}
+
+function switchToHome() {
+  if (!canSwitchInPlace()) { navigateTo(`${appBase()}?home=1`); return; }
+  swapView(() => {
+    if (cloud.viewer) stopViewer();
+    VIEW_TEAM = null;
+    VIEW_EVENT = null;
+    HOME_PARAM = true;
+    cloud.viewer = false;
+    reloadLocalData();
+    window.history.replaceState(null, '', `${appBase()}?home=1`);
+    applyViewerManifest();
+    resetUiForSwitch();
+    render();
+    window.scrollTo(0, 0);
+    if (cloud.fb && cloud.authKnown) onCloudUser(cloud.user);
+  });
+}
 
 function joinTeam(code) {
   saveJoinedTeam(code);
-  navigateTo(`${window.location.origin}${window.location.pathname}?team=${code}`);
+  switchToTeam(code);
 }
 
 function goHome() {
-  navigateTo(`${window.location.origin}${window.location.pathname}?home=1`);
+  switchToHome();
 }
 
 function leaveTeam() {
@@ -5604,7 +5717,7 @@ function isAdminDevice() {
 }
 
 // ?home=1：從「切換球團」回來，臨時開場進行中也先停在首頁
-const HOME_PARAM = Boolean(new URLSearchParams(window.location.search).get('home'));
+let HOME_PARAM = Boolean(new URLSearchParams(window.location.search).get('home'));
 
 function showHome() {
   return !cloud.viewer && !ui.homeLocal && !isAdminDevice() && (!state.players.length || HOME_PARAM);
@@ -9310,7 +9423,9 @@ document.addEventListener('click', (e) => {
   const link = e.target.closest('a.home-team-link');
   if (!link || e.defaultPrevented) return;
   e.preventDefault();
-  navigateTo(link.href);
+  const id = new URL(link.href, window.location.href).searchParams.get('team');
+  if (id) switchToTeam(id);
+  else navigateTo(link.href);
 });
 
 loadAll();
