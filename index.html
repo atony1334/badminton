@@ -85,7 +85,10 @@
   :root[data-appearance="dark"] { --menu-bg: #080B09; }
   .page { position: relative; z-index: 2; transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.34s ease; }
   body.drawer-open { overflow: hidden; background: var(--menu-bg); }
-  body.drawer-open .page { position: fixed; inset: 0; overflow: hidden; box-shadow: -6px 0 30px rgba(0, 0, 0, 0.22); }
+  body.drawer-open .page { position: fixed; inset: 0; overflow: hidden; box-shadow: -6px 0 30px rgba(0, 0, 0, 0.22); transform: translateX(0); }
+  /* 選單打開時 .page 有 transform，裡面的 fixed 分頁列會改成跟著 .page 的內容走；
+     往下移動「頁面捲動的距離」，讓它留在畫面最下方 */
+  body.drawer-open .tabbar { transform: translateY(var(--lock-y, 0px)); }
   body.drawer-open .page.pushed { transform: translateX(var(--dw)); border-radius: 30px; }
   .drawer-bg { position: fixed; top: 0; bottom: 0; left: var(--dw); right: 0; z-index: 12; background: transparent; }
   .drawer {
@@ -1065,7 +1068,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.28';
+const APP_VERSION = '6.29';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -4001,6 +4004,7 @@ function lockPage(on) {
   if (!page || on === pageLock.locked) return;
   if (on) {
     pageLock.y = window.scrollY;
+    page.style.setProperty('--lock-y', `${pageLock.y}px`);
     document.body.classList.add('drawer-open');
     page.scrollTop = pageLock.y;
   } else {
