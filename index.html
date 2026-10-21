@@ -362,11 +362,8 @@
   .wait-links button { display: inline-flex; align-items: center; gap: 6px; }
   .wait-links svg { width: 18px; height: 18px; }
   /* ===== 換頁與載入：淡出 → 載入畫面 → 淡入，避免畫面突然跳動 ===== */
-  @view-transition { navigation: auto; }   /* 支援的瀏覽器（新版 Safari／Chrome）換頁時自動交叉淡化 */
-  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.22s; }
   .app-enter { animation: app-enter 0.2s ease-out; }
   @keyframes app-enter { from { opacity: 0.4; } to { opacity: 1; } }
-  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.2s; }
   .boot { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
   .boot-logo { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
     background: var(--court); color: var(--line); font-size: 28px; font-weight: 800; }
@@ -1130,6 +1127,34 @@
 <script>
 'use strict';
 
+/* ===================== 觸控保險 =====================
+ * iPhone：手指按住的元素如果在滑動途中被重畫拿掉（例如球友頁剛好收到即時排場），
+ * 之後的 touchmove／touchend 只會送到那個已經不在畫面上的元素，傳不到 document，
+ * 拖到一半的選單、分頁、視窗就會停在半路。
+ * 這裡記下 document 上的觸控處理；元素被拿掉時，改由它直接轉交給這些處理。 */
+const docTouchHandlers = { touchmove: [], touchend: [], touchcancel: [] };
+(function forwardDetachedTouches() {
+  const add = document.addEventListener.bind(document);
+  document.addEventListener = (type, fn, opts) => {
+    if (docTouchHandlers[type]) docTouchHandlers[type].push(fn);
+    return add(type, fn, opts);
+  };
+  const TYPES = ['touchmove', 'touchend', 'touchcancel'];
+  add('touchstart', (e) => {
+    const target = e.target;
+    if (!target || !target.addEventListener) return;
+    const forward = (ev) => {
+      if (target.isConnected) return;   // 還在畫面上：事件會照常傳到 document
+      docTouchHandlers[ev.type].forEach((fn) => fn(ev));
+    };
+    const cleanup = () => TYPES.forEach((t) => target.removeEventListener(t, forward));
+    TYPES.forEach((t) => target.addEventListener(t, forward, { passive: false }));
+    const finish = () => setTimeout(cleanup, 0);
+    target.addEventListener('touchend', finish, { once: true });
+    target.addEventListener('touchcancel', finish, { once: true });
+  }, { passive: true, capture: true });
+}());
+
 /* ===================== 常數 ===================== */
 const STORAGE_KEYS = {
   session: 'badminton-session',
@@ -1143,7 +1168,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.9';
+const APP_VERSION = '7.10';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -4152,6 +4177,10 @@ function setDrawerOpenClass(open) {
 }
 
 function openDrawer() {
+  // 關到一半又打開：取消「關完」的收尾，不然它稍後會把剛打開的選單收掉
+  clearTimeout(drawerCloseTimer);
+  drawerCloseTimer = null;
+  ui.drawerClosing = false;
   ui.drawer = true;
   ui.drawerAnim = '';
   renderDrawerRoot();
@@ -4161,17 +4190,24 @@ function openDrawer() {
   }));
 }
 
+let drawerCloseTimer = null;
+
 function closeDrawer(after) {
   if (!ui.drawer) { if (after) after(); return; }
+  // 正在關的途中又被要求關一次：只補上要做的事，不重複計時
+  ui.drawerClosing = true;
   setDrawerOpenClass(false);
+  clearTimeout(drawerCloseTimer);
   const done = () => {
+    drawerCloseTimer = null;
+    ui.drawerClosing = false;
     ui.drawer = false;
     ui.drawerAnim = '';
     renderDrawerRoot();
     if (after) after();
   };
-  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) done();
-  else setTimeout(done, 340);
+  if (reduceMotion()) done();
+  else drawerCloseTimer = setTimeout(done, 340);
 }
 
 function renderDrawerRoot() {
@@ -4179,7 +4215,7 @@ function renderDrawerRoot() {
   if (!root) return;
   root.innerHTML = renderDrawer();
   lockPage(Boolean(ui.drawer));
-  if (ui.drawer && ui.drawerAnim === 'open') setDrawerOpenClass(true);   // 選單開著時重畫：維持推開的狀態
+  if (ui.drawer && ui.drawerAnim === 'open' && !ui.drawerClosing) setDrawerOpenClass(true);   // 選單開著時重畫：維持推開的狀態
   applyViewerLock();
 }
 
@@ -5695,11 +5731,10 @@ function reloadLocalData() {
   regulars = Array.isArray(savedRegulars) ? savedRegulars : [];
 }
 
-// 換畫面的動畫：支援的瀏覽器（iOS 18 以上 Safari、Chrome）交叉淡化，其他直接換
+// 換畫面：直接更新，淡入交給 render() 的 app-enter。
+// （v7.10 拿掉 View Transitions：iPhone Safari 在畫面有 fixed 元素、選單／視窗動畫進行中時，偶爾會停在半途的畫面）
 function swapView(update) {
-  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  if (document.startViewTransition && !reduce) document.startViewTransition(update);
-  else update();
+  update();
 }
 
 function switchToTeam(id) {
@@ -8415,6 +8450,9 @@ function releaseDrawer(open) {
     el.style.borderBottomLeftRadius = '';
   });
   if (open) {
+    clearTimeout(drawerCloseTimer);
+    drawerCloseTimer = null;
+    ui.drawerClosing = false;
     ui.drawerAnim = 'open';
     setDrawerOpenClass(true);
   } else {
@@ -8445,6 +8483,9 @@ document.addEventListener('touchmove', (event) => {
     else swipe.mode = hasTabs ? 'tab' : null;
     if (!swipe.mode) { swipe.active = false; return; }
     if (swipe.mode === 'drawer-open') {   // 先把選單畫出來（在畫面外），再跟著手指拉出
+      clearTimeout(drawerCloseTimer);
+      drawerCloseTimer = null;
+      ui.drawerClosing = false;
       ui.drawer = true;
       ui.drawerAnim = '';
       renderDrawerRoot();
@@ -9715,6 +9756,24 @@ function closeTopOverlay() {
   return false;
 }
 window.addEventListener('popstate', closeTopOverlay);
+
+// 保險：從背景切回 App 時，選單是關的就把畫面上殘留的推開／拖曳狀態清乾淨
+function settleScreen() {
+  if (ui.drawer || drawerCloseTimer) return;
+  [pageEl(), tabBarEl(), document.getElementById('tab-body')].forEach((el) => {
+    if (!el) return;
+    el.style.transform = '';
+    el.style.transition = '';
+    el.style.borderRadius = '';
+    el.style.borderBottomLeftRadius = '';
+  });
+  if (document.body.classList.contains('drawer-open')) lockPage(false);
+  document.body.classList.remove('drawer-open');
+  const page = pageEl();
+  if (page) page.classList.remove('pushed');
+}
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') settleScreen(); });
+window.addEventListener('pageshow', settleScreen);
 
 // 球團清單的連結：換頁但不留瀏覽紀錄
 document.addEventListener('click', (e) => {
