@@ -355,6 +355,7 @@
   :root[data-appearance="dark"] .ev-tag.full { background: rgba(255, 200, 80, .15); }
   :root[data-appearance="dark"] .ev-main .ev-mine.ok { color: #7FD9A0; }
   .notify-off-chip { margin-left: 6px; font-size: 12px; padding: 2px 8px; border-radius: 999px; background: #FFF1D6; color: #8A5A00; font-weight: 600; }
+  .d-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
   .d-state { flex: 0 !important; font-size: 13px; font-weight: 700; color: var(--muted); }
   .d-state.on { color: var(--accent, #2E9E5B); }
   .wait-links { display: flex; gap: 10px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
@@ -1096,7 +1097,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.1';
+const APP_VERSION = '7.2';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3923,6 +3924,7 @@ function renderTurnAlert() {
  */
 const ICONS = {
   pin: '<path d="M12 21s-6-5.6-6-11a6 6 0 0 1 12 0c0 5.4-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/>',
+  logout: '<path d="M10 4H5v16h5M14 8l4 4-4 4M18 12H9"/>',
   note: '<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
   calendar: '<path d="M4 6h16v14H4zM4 10h16M8 3v5M16 3v5"/>',
@@ -4008,7 +4010,10 @@ function renderDrawer() {
     ]
     : admin && showHome()
     ? [
-      [item('cloud', 'cloud', '訪客登入')],
+      // 已登入：顯示「名字，登出」；還沒登入才顯示「訪客登入」
+      [cloud.user
+        ? `<button class="d-item" data-action="google-logout">${icon('logout')}<span class="d-ellipsis">${escapeHtml(cloud.user.displayName || cloud.user.email || '帳號')}，登出</span></button>`
+        : item('cloud', 'cloud', '訪客登入')],
       [item('look', 'palette', '畫面'), item('backup', 'save', '備份與還原')],
       [updateItem],
     ]
@@ -9119,7 +9124,10 @@ function handleAction(el) {
       break;
     }
     case 'google-login': googleLogin(); return;
-    case 'google-logout': viewerLogout(); return;
+    case 'google-logout':
+      if (ui.drawer) closeDrawer(viewerLogout);   // 從選單登出：先收起選單
+      else viewerLogout();
+      return;
     case 'claim-submit':
       if (!ui.claimName) { showToast('請先選擇你是誰'); return; }
       claimPlayer(ui.claimName);
