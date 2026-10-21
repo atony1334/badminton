@@ -360,6 +360,36 @@
   .wait-links { display: flex; gap: 10px; justify-content: center; margin-top: 16px; flex-wrap: wrap; }
   .wait-links button { display: inline-flex; align-items: center; gap: 6px; }
   .wait-links svg { width: 18px; height: 18px; }
+  /* ===== 換頁與載入：淡出 → 載入畫面 → 淡入，避免畫面突然跳動 ===== */
+  @view-transition { navigation: auto; }   /* 支援的瀏覽器（新版 Safari／Chrome）換頁時自動交叉淡化 */
+  ::view-transition-old(root), ::view-transition-new(root) { animation-duration: 0.22s; }
+  #tabbar-root { transition: opacity 0.16s ease; }
+  body.leaving .page, body.leaving #tabbar-root { opacity: 0; }
+  /* 只在淡出時才加 opacity 的轉場，不蓋掉 .page 原本推開選單用的 transform 轉場 */
+  body.leaving .page { transition: opacity 0.16s ease, transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.34s ease; }
+  .app-enter { animation: app-enter 0.28s ease-out; }
+  @keyframes app-enter { from { opacity: 0; } to { opacity: 1; } }
+  .boot { min-height: 70vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; }
+  .boot-logo { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
+    background: var(--court); color: var(--line); font-size: 28px; font-weight: 800; }
+  .boot-dots { display: flex; gap: 8px; }
+  .boot-dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--court); opacity: 0.25; animation: boot-dot 1s ease-in-out infinite; }
+  .boot-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .boot-dots span:nth-child(3) { animation-delay: 0.3s; }
+  @keyframes boot-dot { 0%, 100% { opacity: 0.25; transform: scale(0.85); } 50% { opacity: 1; transform: scale(1); } }
+  /* 觀看者連線中：先畫出場地的骨架，資料到了再淡入 */
+  .sk { position: relative; overflow: hidden; border-radius: var(--radius-l);
+    background: color-mix(in srgb, var(--court) 30%, var(--floor)); }
+  .sk::after { content: ''; position: absolute; inset: 0; transform: translateX(-100%);
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.35), transparent); animation: sk-shine 1.3s ease-in-out infinite; }
+  :root[data-appearance="dark"] .sk::after { background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent); }
+  @keyframes sk-shine { to { transform: translateX(100%); } }
+  .sk-court { height: 250px; margin-bottom: 14px; }
+  .sk-bench { height: 150px; }
+  .sk-note { text-align: center; color: var(--muted); font-size: 14px; margin: 12px 0 0; }
+  @media (prefers-reduced-motion: reduce) {
+    .app-enter, .sk::after, .boot-dots span { animation: none; }
+  }
   .viewer-wait {
     margin-top: 40px; text-align: center; color: var(--muted); font-size: 16px; line-height: 1.7;
     padding: 28px 16px; border: 2px dashed var(--floor); border-radius: var(--radius-l);
@@ -1046,7 +1076,7 @@
 </style>
 </head>
 <body>
-<div class="page"><div class="wrap" id="app">載入中…</div></div>
+<div class="page"><div class="wrap" id="app"><div class="boot" role="status" aria-label="載入中"><div class="boot-logo">羽</div><div class="boot-dots"><span></span><span></span><span></span></div></div></div></div>
 <div id="tabbar-root"></div>
 <div id="drawer-root"></div>
 <div id="modal-root"></div>
@@ -1069,7 +1099,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.30';
+const APP_VERSION = '6.31';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2187,8 +2217,11 @@ function renderViewerWaiting() {
         <p class="sub">${cloud.teamName ? `${escapeHtml(cloud.teamName)}・` : ''}觀看模式</p>
       </div>
     </header>
-    <div class="viewer-wait">${escapeHtml(text)}</div>
-    ${renderEventCards()}
+    ${cloud.viewerStatus === 'loading'
+      ? `<div aria-busy="true"><div class="sk sk-court"></div><div class="sk sk-court"></div><div class="sk sk-bench"></div>
+         <p class="sk-note">${escapeHtml(text)}</p></div>`
+      : `<div class="viewer-wait">${escapeHtml(text)}</div>`}
+    ${cloud.viewerStatus === 'loading' ? '' : renderEventCards()}
     ${['empty', 'live'].includes(cloud.viewerStatus) ? `
     <div class="wait-links">
       <button class="btn-ghost" data-action="drawer-go" data-target="${cloud.user ? 'account' : 'ranks'}">${icon('user')}${cloud.user ? '我的戰績' : '長期排行榜'}</button>
@@ -5528,13 +5561,27 @@ function parseTeamCode(text) {
   return /^[A-Za-z0-9]{12,40}$/.test(raw) ? raw : null;
 }
 
+/**
+ * App 內換頁：先把畫面淡出再跳轉，下一頁會先顯示載入畫面再淡入，看起來比較連貫。
+ * 一律用 location.replace，不留瀏覽紀錄（避免 Safari 左右滑回上一頁）。
+ */
+const LEAVE_FADE_MS = 160;
+function navigateTo(url) {
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) { window.location.replace(url); return; }
+  document.body.classList.add('leaving');
+  setTimeout(() => window.location.replace(url), LEAVE_FADE_MS);
+}
+// 從瀏覽器快取回到這頁時，把淡出狀態還原
+window.addEventListener('pageshow', () => document.body.classList.remove('leaving'));
+
 function joinTeam(code) {
   saveJoinedTeam(code);
-  window.location.replace(`${window.location.origin}${window.location.pathname}?team=${code}`);
+  navigateTo(`${window.location.origin}${window.location.pathname}?team=${code}`);
 }
 
 function goHome() {
-  window.location.replace(`${window.location.origin}${window.location.pathname}?home=1`);
+  navigateTo(`${window.location.origin}${window.location.pathname}?home=1`);
 }
 
 function leaveTeam() {
@@ -7389,6 +7436,14 @@ function render() {
   else app.innerHTML = cloud.viewer ? renderViewerWaiting() : renderSetup();
   // 分頁列在 .page 外面：選單推開時 .page 會加 transform，放裡面會跟著內容捲走
   document.getElementById('tabbar-root').innerHTML = showMain ? renderTabBar() : '';
+  // 換到不同的畫面（載入中 → 排場、首頁、設定…）時淡入；同一個畫面內的更新不播
+  const viewKey = showHome() ? 'home' : showMain ? 'main' : (cloud.viewer ? `viewer-${cloud.viewerStatus}` : 'setup');
+  if (viewKey !== ui.viewKey) {
+    ui.viewKey = viewKey;
+    app.classList.remove('app-enter');
+    void app.offsetWidth;   // 重新觸發動畫
+    app.classList.add('app-enter');
+  }
   renderModal();
   renderDrawerRoot();
   animateTabIndicator();
@@ -8298,7 +8353,7 @@ async function forceUpdate() {
     console.warn('預先下載失敗，直接重新載入:', err);
   }
   url.searchParams.set('v', String(Date.now()));
-  window.location.replace(url.toString());
+  navigateTo(url.toString());
 }
 
 /* ===================== 事件 ===================== */
@@ -9255,7 +9310,7 @@ document.addEventListener('click', (e) => {
   const link = e.target.closest('a.home-team-link');
   if (!link || e.defaultPrevented) return;
   e.preventDefault();
-  window.location.replace(link.href);
+  navigateTo(link.href);
 });
 
 loadAll();
