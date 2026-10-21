@@ -1096,7 +1096,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.0';
+const APP_VERSION = '7.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1919,13 +1919,14 @@ async function uploadLive() {
   const tasks = [];
   if (liveJson !== cloud.lastLive) {
     cloud.lastLive = liveJson;
+    // merge：只更新排場欄位，不碰 notifyEnabled。
+    // 通知開關只由 setNotifyEnabled 寫入；否則重新整理後還沒讀到設定（或讀取失敗）就上傳，會把「關」蓋回「開」
     tasks.push(setDoc(liveRef(), {
       stateJson: liveJson,
       updatedAt: state.updatedAt || Date.now(),
       savedAt: serverTimestamp(),
       appVersion: APP_VERSION,
-      notifyEnabled: cloud.notifyEnabled,
-    }));
+    }, { merge: true }));
   }
   if (regsJson !== cloud.lastRegs) {
     cloud.lastRegs = regsJson;
