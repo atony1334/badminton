@@ -394,6 +394,19 @@
   }
   .view-only { cursor: default; }
   .join-panel { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+  /* 輸入框、掃描鈕、加入鈕：同樣高度、同樣圓角，排成一列 */
+  .join-panel .row { flex-wrap: nowrap; gap: 8px; align-items: stretch; }
+  .join-panel .row > * { height: 48px; box-sizing: border-box; border-radius: var(--radius-s); margin: 0; }
+  .join-panel .row input { min-width: 0; }
+  .join-panel .row .btn-primary { flex: 0 0 auto; padding: 0 18px; }
+  .btn-scan { flex: 0 0 48px; width: 48px; display: inline-flex; align-items: center; justify-content: center; padding: 0;
+    background: var(--surface); color: var(--ink); border: 2px solid var(--border); }
+  .btn-scan svg { width: 22px; height: 22px; }
+  .scan-box { position: relative; width: 100%; max-width: 340px; aspect-ratio: 1; margin: 10px auto; border-radius: 16px; overflow: hidden; background: #000; }
+  .scan-box video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .scan-frame { position: absolute; inset: 16%; border: 3px solid rgba(255, 255, 255, 0.92); border-radius: 18px;
+    box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.35); pointer-events: none; }
+  .scan-hint { position: absolute; left: 0; right: 0; bottom: 10px; text-align: center; color: #fff; font-size: 13px; text-shadow: 0 1px 3px rgba(0,0,0,0.6); }
   .invite-code { text-align: center; margin: 4px 0; font-size: 14px; word-break: break-all; }
   .invite-code b { user-select: all; -webkit-user-select: all; }
   .invite-code .btn-ghost { padding: 2px 8px; font-size: 13px; }
@@ -1130,7 +1143,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.6';
+const APP_VERSION = '7.8';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1144,6 +1157,8 @@ const FIREBASE_CONFIG = {
 };
 const FIREBASE_SDK = 'https://www.gstatic.com/firebasejs/10.12.2';
 const QR_LIB = 'https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js';
+// 掃描 QR Code：瀏覽器有內建 BarcodeDetector（安卓 Chrome）就用內建的，沒有（iPhone）才載入 jsQR
+const JSQR_LIB = 'https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js';
 const BACKUP_VERSION = 1;
 const TEAM_SIZE = { doubles: 2, singles: 1 };
 const MODE_LABEL = { doubles: '雙打', singles: '單打' };
@@ -3963,6 +3978,7 @@ const ICONS = {
   calendar: '<path d="M4 6h16v14H4zM4 10h16M8 3v5M16 3v5"/>',
   cloud: '<path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.1 9.2 4.5 4.5 0 0 0 7 18z"/>',
   qr: '<path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h2v2h-2zM18 18h2v2h-2zM14 18h2M18 14h2"/>',
+  scan: '<path d="M4 8V5a1 1 0 0 1 1-1h3M16 4h3a1 1 0 0 1 1 1v3M20 16v3a1 1 0 0 1-1 1h-3M8 20H5a1 1 0 0 1-1-1v-3M4 12h16"/>',
   court: '<path d="M4 5h16v14H4zM12 5v14M4 9h16M4 15h16"/>',
   speaker: '<path d="M4 9h4l5-4v14l-5-4H4zM16 9a4 4 0 0 1 0 6"/>',
   palette: '<path d="M12 3a9 9 0 1 0 0 18c1 0 1.5-.7 1.5-1.5 0-1.2-1-1.5-1-2.5s.8-1.5 2-1.5H17a4 4 0 0 0 4-4c0-4.4-4-8.5-9-8.5z"/><circle cx="7.5" cy="11" r="1"/><circle cx="10.5" cy="7.5" r="1"/><circle cx="15" cy="7.5" r="1"/>',
@@ -5823,6 +5839,7 @@ function renderJoinPanel() {
       <div class="row">
         <input type="text" id="join-code" autocomplete="off" autocapitalize="off" spellcheck="false"
           placeholder="球團代碼或連結" value="${escapeHtml(ui.joinCode || '')}" style="flex:1">
+        <button class="btn-scan" data-action="qr-scan" aria-label="用相機掃描 QR Code">${icon('scan')}</button>
         <button class="btn-primary" data-action="join-team">加入</button>
       </div>
     </div>`;
@@ -7569,6 +7586,7 @@ const MODAL_PAGES = [
   ['install', () => install.guide, () => renderInstallGuide(), 5],
   ['logout', () => ui.logoutConfirm, () => renderLogoutConfirm(), 5],
   ['forget', () => ui.forgetConfirm, () => renderForgetConfirm(), 5],
+  ['scan', () => ui.scan, () => renderScanModal(), 2],
   ['team-delete', () => ui.teamDelete, () => renderTeamDeleteModal(), 3],
   ['manual', () => ui.manual, () => renderManualModal(), 1],
   ['result', () => ui.result, () => renderResultModal(), 1],
@@ -7589,6 +7607,7 @@ const MODAL_PAGES = [
 ];
 const MODAL_LEAVE_MS = 260;
 let modalLeaveTimer = null;
+let lastModalContent = '';   // 上一次畫的彈窗內容；一樣就不重畫
 
 function reduceMotion() {
   return Boolean(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -7617,6 +7636,7 @@ function renderModal() {
 
   if (!content) {
     document.body.classList.toggle('modal-open', false);
+    lastModalContent = '';
     if (!previous || modalLeaveTimer) return;
     // 已經被手指往下拉出畫面的，就不用再播關閉動畫
     const draggedAway = /110%/.test(previous.style.transform || '');
@@ -7638,6 +7658,12 @@ function renderModal() {
   const enterClass = previous ? '' : ' modal-enter';
   const pageClass = pageChanged && !reduceMotion() ? ` page-${depth >= prevDepth ? 'fwd' : 'back'}` : '';
 
+  if (previous && !pageChanged && content === lastModalContent) {
+    if (ui.scan) attachScanVideo();
+    document.body.classList.toggle('modal-open', true);
+    return;
+  }
+  lastModalContent = content;
   if (previous) {
     // 彈窗已經開著：只換裡面的內容，外框不重建（才不會打斷正在播的打開動畫，例如 QR Code 剛好載入完）
     const oldPage = previous.querySelector('.modal-page');
@@ -7680,8 +7706,116 @@ function renderModal() {
     }
   }
   document.body.classList.toggle('modal-open', true);
+  if (ui.scan) attachScanVideo();
   lockPastView();
   applyViewerLock();
+}
+
+/* ===================== 掃描球團 QR Code ===================== */
+const scan = { stream: null, timer: null, detector: null, busy: false, lastBadAt: 0 };
+const SCAN_INTERVAL_MS = 250;
+
+function renderScanModal() {
+  const err = ui.scan && ui.scan.error;
+  return `
+    <h3>掃描球團 QR Code</h3>
+    ${err ? `<p class="cloud-error" style="display:block">${escapeHtml(err)}</p>` : `
+    <div class="scan-box"><video id="scan-video" playsinline muted autoplay></video><div class="scan-frame"></div>
+      <div class="scan-hint">把 QR Code 放進框裡</div></div>`}
+    <p class="sub">掃描管理者手機上「邀請球友」的 QR Code，掃到就會自動加入。</p>
+    <button class="btn-ghost btn-block" data-action="modal-close">取消</button>`;
+}
+
+function attachScanVideo() {
+  const video = document.getElementById('scan-video');
+  if (!video || !scan.stream || video.srcObject === scan.stream) return;
+  video.srcObject = scan.stream;
+  video.play().catch(() => {});
+}
+
+function stopScanner() {
+  clearInterval(scan.timer);
+  if (scan.stream) scan.stream.getTracks().forEach((t) => t.stop());
+  Object.assign(scan, { stream: null, timer: null, detector: null, busy: false });
+}
+
+function scanFailed(message) {
+  stopScanner();
+  if (!ui.scan) return;
+  ui.scan.error = message;
+  renderModal();
+}
+
+async function openScanner() {
+  ui.scan = { error: '' };
+  renderModal();
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    scanFailed('這個瀏覽器不能開相機。請改用 Safari／Chrome 打開，或直接貼上連結。');
+    return;
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' } }, audio: false });
+    if (!ui.scan) { stream.getTracks().forEach((t) => t.stop()); return; }   // 等權限時已經按了取消
+    scan.stream = stream;
+    attachScanVideo();
+    if ('BarcodeDetector' in window) {
+      try {
+        const formats = await window.BarcodeDetector.getSupportedFormats();
+        if (formats.includes('qr_code')) scan.detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+      } catch (err) { /* 不支援就改用 jsQR */ }
+    }
+    if (!scan.detector) await loadScriptOnce(JSQR_LIB);
+    if (!ui.scan) { stopScanner(); return; }
+    scan.timer = setInterval(scanTick, SCAN_INTERVAL_MS);
+  } catch (err) {
+    const denied = err && (err.name === 'NotAllowedError' || err.name === 'SecurityError');
+    scanFailed(denied
+      ? '沒有相機權限。請到手機的「設定」允許這個 App／瀏覽器使用相機，或直接貼上連結。'
+      : '無法開啟相機，請直接貼上管理者給的連結。');
+  }
+}
+
+function scanTick() {
+  const video = document.getElementById('scan-video');
+  if (scan.busy || !video || video.readyState < 2 || !video.videoWidth) return;
+  if (scan.detector) {
+    scan.busy = true;
+    scan.detector.detect(video)
+      .then((codes) => handleScanText(codes[0] && codes[0].rawValue))
+      .catch(() => {})
+      .finally(() => { scan.busy = false; });
+    return;
+  }
+  if (!window.jsQR) return;
+  // 縮小再辨識：手機上比較快，QR Code 也夠清楚
+  const ratio = Math.min(1, 640 / video.videoWidth);
+  const w = Math.round(video.videoWidth * ratio);
+  const h = Math.round(video.videoHeight * ratio);
+  scan.canvas = scan.canvas || document.createElement('canvas');
+  scan.canvas.width = w;
+  scan.canvas.height = h;
+  const ctx = scan.canvas.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(video, 0, 0, w, h);
+  const found = window.jsQR(ctx.getImageData(0, 0, w, h).data, w, h, { inversionAttempts: 'dontInvert' });
+  handleScanText(found && found.data);
+}
+
+function handleScanText(text) {
+  if (!text || !ui.scan) return;
+  const code = parseTeamCode(text);
+  if (code) {
+    stopScanner();
+    ui.scan = null;
+    if (navigator.vibrate) navigator.vibrate(30);
+    showToast('掃到了，正在加入球團…');
+    joinTeam(code);
+    renderModal();
+    return;
+  }
+  if (Date.now() - scan.lastBadAt > 2500) {   // 掃到別的 QR Code：提示一下，不要一直跳
+    scan.lastBadAt = Date.now();
+    showToast('這不是球團的 QR Code');
+  }
 }
 
 function renderLogoutConfirm() {
@@ -9090,6 +9224,7 @@ function handleAction(el) {
       if (install.guide) { install.guide = false; sessionChanged = false; break; }
       if (ui.forgetConfirm) { ui.forgetConfirm = null; sessionChanged = false; break; }
       if (ui.logoutConfirm) { ui.logoutConfirm = false; sessionChanged = false; break; }
+      if (ui.scan) { stopScanner(); ui.scan = null; sessionChanged = false; break; }
       if (ui.teamDelete) { if (!ui.teamDelete.busy) ui.teamDelete = null; sessionChanged = false; break; }
       if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
       if (ui.copyText && ui.signupOpen) { ui.copyText = null; sessionChanged = false; break; }   // 報名訊息的手動複製視窗
@@ -9344,6 +9479,7 @@ function handleAction(el) {
       ui.forgetConfirm = null;
       sessionChanged = false;
       break;
+    case 'qr-scan': openScanner(); return;
     case 'join-team': {
       const code = parseTeamCode(ui.joinCode);
       if (!code) { showToast('看不懂這個代碼，請貼上管理者給的整串連結'); return; }
