@@ -85,10 +85,10 @@
   :root[data-appearance="dark"] { --menu-bg: #080B09; }
   .page { position: relative; z-index: 2; transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.34s ease; }
   body.drawer-open { overflow: hidden; background: var(--menu-bg); }
-  body.drawer-open .page { position: fixed; inset: 0; overflow: hidden; box-shadow: -6px 0 30px rgba(0, 0, 0, 0.22); transform: translateX(0); }
-  /* 選單打開時 .page 有 transform，裡面的 fixed 分頁列會改成跟著 .page 的內容走；
-     往下移動「頁面捲動的距離」，讓它留在畫面最下方 */
-  body.drawer-open .tabbar { transform: translateY(var(--lock-y, 0px)); }
+  body.drawer-open .page { position: fixed; inset: 0; overflow: hidden; box-shadow: -6px 0 30px rgba(0, 0, 0, 0.22); }
+  /* 分頁列放在 .page 外面（#tabbar-root），永遠固定在螢幕底部；選單推開時跟著畫面一起往右移 */
+  .tabbar { transition: transform 0.34s cubic-bezier(0.22, 1, 0.36, 1), border-radius 0.34s ease; }
+  body.drawer-open:has(.page.pushed) .tabbar { transform: translateX(var(--dw)); border-bottom-left-radius: 30px; }
   body.drawer-open .page.pushed { transform: translateX(var(--dw)); border-radius: 30px; }
   .drawer-bg { position: fixed; top: 0; bottom: 0; left: var(--dw); right: 0; z-index: 12; background: transparent; }
   .drawer {
@@ -1047,6 +1047,7 @@
 </head>
 <body>
 <div class="page"><div class="wrap" id="app">載入中…</div></div>
+<div id="tabbar-root"></div>
 <div id="drawer-root"></div>
 <div id="modal-root"></div>
 <div id="install-root"></div>
@@ -1068,7 +1069,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.29';
+const APP_VERSION = '6.30';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -4004,7 +4005,6 @@ function lockPage(on) {
   if (!page || on === pageLock.locked) return;
   if (on) {
     pageLock.y = window.scrollY;
-    page.style.setProperty('--lock-y', `${pageLock.y}px`);
     document.body.classList.add('drawer-open');
     page.scrollTop = pageLock.y;
   } else {
@@ -6921,8 +6921,7 @@ function renderMain() {
       </div>
     </header>
     ${renderStorageBanner()}
-    <div class="tab-body ${ui.tabAnim || ''}" id="tab-body">${body}</div>
-    ${renderTabBar()}`;
+    <div class="tab-body ${ui.tabAnim || ''}" id="tab-body">${body}</div>`;
 }
 
 /* ===================== 畫面：彈出視窗 ===================== */
@@ -7384,9 +7383,12 @@ function renderModal() {
 
 function render() {
   const app = document.getElementById('app');
+  const showMain = !showHome() && state.players.length > 0;
   if (showHome()) app.innerHTML = renderHome();
-  else if (state.players.length) app.innerHTML = renderMain() + renderTurnAlert();
+  else if (showMain) app.innerHTML = renderMain() + renderTurnAlert();
   else app.innerHTML = cloud.viewer ? renderViewerWaiting() : renderSetup();
+  // 分頁列在 .page 外面：選單推開時 .page 會加 transform，放裡面會跟著內容捲走
+  document.getElementById('tabbar-root').innerHTML = showMain ? renderTabBar() : '';
   renderModal();
   renderDrawerRoot();
   animateTabIndicator();
@@ -7937,6 +7939,12 @@ function followDrawer(offset) {
   page.style.transition = 'none';
   page.style.transform = `translateX(${shown}px)`;
   page.style.borderRadius = `${Math.round(30 * p)}px`;
+  const bar = tabBarEl();
+  if (bar) {
+    bar.style.transition = 'none';
+    bar.style.transform = `translateX(${shown}px)`;
+    bar.style.borderBottomLeftRadius = `${Math.round(30 * p)}px`;
+  }
   panel.style.transition = 'none';
   panel.style.opacity = String(0.4 + 0.6 * p);
   panel.style.transform = `translateX(${-28 * (1 - p)}px)`;
@@ -7944,12 +7952,13 @@ function followDrawer(offset) {
 
 function releaseDrawer(open) {
   const { panel } = drawerEls();
-  [panel, pageEl()].forEach((el) => {
+  [panel, pageEl(), tabBarEl()].forEach((el) => {
     if (!el) return;
     el.style.transition = '';
     el.style.transform = '';
     el.style.opacity = '';
     el.style.borderRadius = '';
+    el.style.borderBottomLeftRadius = '';
   });
   if (open) {
     ui.drawerAnim = 'open';
