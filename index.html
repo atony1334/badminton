@@ -63,7 +63,7 @@
   :root { --wrap-max: 560px; }
   .wrap {
     max-width: var(--wrap-max); margin: 0 auto;
-    padding: 20px max(16px, env(safe-area-inset-right)) calc(96px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+    padding: 20px max(16px, env(safe-area-inset-right)) calc(120px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
   }
 
   /* 頂部列 */
@@ -280,7 +280,7 @@
 
   /* 加到主畫面提醒：在底部分頁列上方 */
   .install-bar { position: fixed; left: 12px; right: 12px; z-index: 8;
-    bottom: calc(76px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto;
+    bottom: calc(110px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto;
     display: flex; align-items: center; gap: 10px; padding: 10px 8px 10px 12px;
     background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 16px;
     box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); animation: install-in 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
@@ -460,7 +460,8 @@
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
     display: flex; justify-content: center;
     background: var(--floor);
-    padding: 8px 16px calc(10px + env(safe-area-inset-bottom));
+    /* 下方多留空間：避開 iPhone 底部的「滑動切換 App」橫條，不會誤觸 */
+    padding: 8px 16px max(26px, calc(env(safe-area-inset-bottom) + 14px));
   }
   .tabbar-inner {
     display: flex; width: 100%; max-width: var(--wrap-max); position: relative;
@@ -468,7 +469,7 @@
     background: color-mix(in srgb, var(--court-dark) 12%, var(--floor));
   }
   .tabbar button {
-    flex: 1; position: relative; z-index: 1; background: transparent; border-radius: 10px; padding: 10px 4px;
+    flex: 1; position: relative; z-index: 1; background: transparent; border-radius: 10px; padding: 14px 4px;
     font-size: 16px; font-weight: 500; color: var(--muted); transition: color 0.2s ease;
   }
   .tabbar button[aria-selected="true"] { color: var(--ink); font-weight: 700; }
@@ -1064,7 +1065,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.25';
+const APP_VERSION = '6.26';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
