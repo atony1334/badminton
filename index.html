@@ -277,6 +277,22 @@
   .coadmin-badge { margin-left: 6px; font-size: 11px; vertical-align: middle; }
   .setup-teams { margin-top: 20px; }
   .setup-teams .home-sec { margin-top: 0; }
+
+  /* 加到主畫面提醒：在底部分頁列上方 */
+  .install-bar { position: fixed; left: 12px; right: 12px; z-index: 8;
+    bottom: calc(76px + env(safe-area-inset-bottom)); max-width: 520px; margin: 0 auto;
+    display: flex; align-items: center; gap: 10px; padding: 10px 8px 10px 12px;
+    background: var(--surface); color: var(--ink); border: 1px solid var(--border); border-radius: 16px;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18); animation: install-in 0.35s cubic-bezier(0.22, 1, 0.36, 1); }
+  body:not(:has(.tabbar)) .install-bar { bottom: calc(16px + env(safe-area-inset-bottom)); }
+  body.drawer-open .install-bar, body.modal-open .install-bar { display: none; }
+  .install-icon { width: 36px; height: 36px; border-radius: 9px; flex-shrink: 0; }
+  .install-text { flex: 1; font-size: 13px; line-height: 1.4; }
+  .install-go { padding: 8px 12px; font-size: 14px; white-space: nowrap; }
+  .install-close { padding: 6px; }
+  .install-steps { padding-left: 22px; line-height: 2; margin: 8px 0 12px; }
+  .ios-share { width: 20px; height: 20px; vertical-align: -4px; color: #0A84FF; }
+  @keyframes install-in { from { transform: translateY(20px); opacity: 0; } to { transform: none; opacity: 1; } }
   .reg-add { margin-bottom: 16px; }
   .guest-list li { min-height: 48px; }
   .guest-list .ev-name small { display: block; margin: 2px 0 0; font-size: 12px; }
@@ -439,29 +455,39 @@
   .invite-qr-empty { color: #5B6B61; font-size: 14px; text-align: center; }
   .invite-link { word-break: break-all; text-align: center; font-size: 13px; color: var(--muted); margin: 10px 0 6px; user-select: all; -webkit-user-select: all; }
 
-  /* 底部分頁 */
+  /* 底部分頁：分段切換樣式（灰綠軌道＋白色滑塊） */
   .tabbar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
     display: flex; justify-content: center;
-    background: var(--surface); border-top: 1px solid var(--border);
-    padding-bottom: env(safe-area-inset-bottom);
+    background: var(--floor);
+    padding: 8px 16px calc(10px + env(safe-area-inset-bottom));
   }
-  .tabbar-inner { display: flex; width: 100%; max-width: var(--wrap-max); }
+  .tabbar-inner {
+    display: flex; width: 100%; max-width: var(--wrap-max); position: relative;
+    padding: 4px; border-radius: 14px; box-sizing: border-box;
+    background: color-mix(in srgb, var(--court-dark) 12%, var(--floor));
+  }
   .tabbar button {
-    flex: 1; background: transparent; border-radius: 0; padding: 12px 4px 14px;
-    font-size: 16px; font-weight: 600; color: var(--muted); border-top: 3px solid transparent;
+    flex: 1; position: relative; z-index: 1; background: transparent; border-radius: 10px; padding: 10px 4px;
+    font-size: 16px; font-weight: 500; color: var(--muted); transition: color 0.2s ease;
   }
-  .tabbar button[aria-selected="true"] { color: var(--court-dark); border-top-color: var(--tape); }
-  .tabbar small { display: block; font-size: 12px; font-weight: 400; }
-
-  .tabbar-inner { position: relative; }
+  .tabbar button[aria-selected="true"] { color: var(--ink); font-weight: 700; }
+  .tabbar button { -webkit-tap-highlight-color: transparent; }
+  .tabbar button:not([aria-selected="true"]):active { opacity: 0.55; }
+  /* 按住目前這頁：滑塊微微縮小（iOS 分段控制的按壓感） */
+  .tabbar-inner:has(button[aria-selected="true"]:active) .tab-indicator { scale: 0.95; }
+  /* 白色滑塊：寬度 = (軌道 − 左右內距) ÷ 3，translateX 以自身寬度為單位移動 */
   .tab-indicator {
-    position: absolute; top: 0; left: 0; height: 3px; background: var(--tape);
-    width: calc(100% / 3); transition: transform 0.25s ease;
+    position: absolute; top: 4px; bottom: 4px; left: 4px;
+    width: calc((100% - 8px) / 3); border-radius: 10px;
+    background: var(--surface); box-shadow: 0 3px 8px rgba(20, 38, 28, 0.12), 0 1px 1px rgba(20, 38, 28, 0.08);
+    transition: transform 0.36s cubic-bezier(0.32, 0.72, 0, 1), scale 0.2s ease;
   }
-  .tabbar button[aria-selected="true"] { border-top-color: transparent; }
+  /* 夜間：軌道壓暗、滑塊提亮，才看得出選到哪一頁 */
+  :root[data-appearance="dark"] .tabbar-inner { background: #0B100D; }
+  :root[data-appearance="dark"] .tab-indicator { background: #2E3B33; box-shadow: none; }
   /* 在分頁列上左右滑動：指示條跟著手指，手指所在的分頁先亮起來 */
-  .tabbar.scrubbing .tab-indicator { transition: none; height: 4px; }
+  .tabbar.scrubbing .tab-indicator { transition: none; }
   .tabbar { touch-action: pan-y; }
   .tab-body { touch-action: pan-y; will-change: transform; }
   @media (prefers-reduced-motion: no-preference) {
@@ -823,6 +849,32 @@
   tr.resting td { background: var(--row-rest); color: var(--muted); }
   tr.resting .name { text-decoration: line-through; }
   td.actions button.btn-return { background: var(--tape); font-weight: 600; }
+  th.th-switch { text-align: right; }
+  /* 球員表固定欄寬：狀態從「等待」變「休息中」時，其他欄位不會左右跑 */
+  table.roster-table { table-layout: fixed; }
+  .roster-table col.c-num { width: 46px; }
+  .roster-table col.c-wait { width: 58px; }
+  .roster-table col.c-status { width: 72px; }
+  .roster-table col.c-switch { width: 66px; }
+  .roster-table td, .roster-table th { overflow: hidden; }
+  /* 上場／休息開關（iPhone 樣式）：綠＝可上場、灰＝休息
+     - 滑塊用 iOS 常見的減速曲線；按住時滑塊會拉長，放開才滑過去 */
+  td.actions button.switch {
+    position: relative; display: inline-block; vertical-align: middle;
+    width: 51px; height: 31px; padding: 0; border-radius: 999px;
+    background: color-mix(in srgb, var(--ink) 16%, var(--surface));
+    transition: background-color 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+    -webkit-tap-highlight-color: transparent;
+  }
+  td.actions button.switch[aria-checked="true"] { background: var(--court); }
+  .switch-knob {
+    position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 999px;
+    background: #FFFFFF; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 1px 1px rgba(0, 0, 0, 0.16);
+    transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), width 0.2s ease;
+  }
+  .switch[aria-checked="true"] .switch-knob { transform: translateX(20px); }
+  .switch:active .switch-knob { width: 33px; }
+  .switch[aria-checked="true"]:active .switch-knob { transform: translateX(14px); }
   .resting-list { margin-top: 10px; font-size: 14px; color: var(--muted); }
   .resting-list .badge { margin-right: 6px; }
 
@@ -970,8 +1022,8 @@
     .top h1 { font-size: 18px; }
     .top .sub { font-size: 12px; }
     h2 { margin: 16px 0 8px; }
-    .tabbar button { padding: 6px 4px 8px; font-size: 14px; }
-    .tabbar small { display: inline; margin-left: 6px; }
+    .tabbar { padding-top: 4px; padding-bottom: calc(4px + env(safe-area-inset-bottom)); }
+    .tabbar button { padding: 6px 4px; font-size: 14px; }
     .court { padding: 8px 10px; }
     .court-head { margin-bottom: 4px; }
     .court-hint { display: none; }
@@ -993,6 +1045,7 @@
 <div class="page"><div class="wrap" id="app">載入中…</div></div>
 <div id="drawer-root"></div>
 <div id="modal-root"></div>
+<div id="install-root"></div>
 <div id="toast-root"></div>
 
 <script>
@@ -1011,7 +1064,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.22';
+const APP_VERSION = '6.25';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1537,7 +1590,7 @@ const VIEWER_ACTIONS = new Set([
   'title-open', 'player-open', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
-  'invite-copy-code', 'manage-team', 'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
+  'invite-copy-code', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
   'signup-view', 'signup-month', 'signup-day',
 ]);
@@ -6010,11 +6063,13 @@ function renderRoster() {
       <td>${status}</td>
       <td class="actions">${ui.editRoster
         ? `<button class="btn-remove" data-action="remove-player" data-id="${p.id}" aria-label="移除 ${escapeHtml(p.name)}">移除</button>`
-        : `<button class="${p.active ? '' : 'btn-return'}" data-action="toggle-active" data-id="${p.id}">${p.active ? '休息' : '回來'}</button>`}
+        : `<button class="switch" role="switch" aria-checked="${p.active}" data-action="toggle-active" data-id="${p.id}"
+            aria-label="${escapeHtml(p.name)}${p.active ? '：可上場，點一下改休息' : '：休息中，點一下回來'}"><span class="switch-knob"></span></button>`}
       </td></tr>`;
   }).join('');
-  return `<table>
-    <thead><tr><th>球員（★ 常用）</th><th>場數</th><th>累計等</th><th>狀態</th><th></th></tr></thead>
+  return `<table class="roster-table">
+    <colgroup><col><col class="c-num"><col class="c-wait"><col class="c-status"><col class="c-switch"></colgroup>
+    <thead><tr><th>球員（★ 常用）</th><th>場數</th><th>累計等</th><th>狀態</th><th class="th-switch">上場</th></tr></thead>
     <tbody>${rows}</tbody></table>
     <p class="sub" style="margin-top:6px">綠色列為正在場上，場數只計算已完成的場次，與歷史紀錄一致。<br>
       體力：上場每分鐘 −1.5、輸球再 −5、場下每分鐘 +1，綠色充足、黃色偏累、紅色該休息了（只是好玩，不影響排場）。</p>`;
@@ -6814,20 +6869,20 @@ function renderRecordsTab() {
 }
 
 const TAB_ORDER = ['courts', 'players', 'records'];
+const SWITCH_ANIM_MS = 300;   // 球員開關滑動時間（和 CSS 的 .switch-knob 一致）
 
 function renderTabBar() {
-  const waiting = availablePlayers().length;
   const tabs = [
-    { key: 'courts', label: '場地', note: `${waiting} 人等待` },
-    { key: 'players', label: '球員', note: `${state.players.filter((p) => p.active).length} 人` },
-    { key: 'records', label: '紀錄', note: `${state.history.length} 場` },
+    { key: 'courts', label: '場地' },
+    { key: 'players', label: '球員' },
+    { key: 'records', label: '紀錄' },
   ];
   // 指示條先停在上一個分頁的位置，畫面更新後再滑到目前分頁（見 animateTabIndicator）
   const from = TAB_ORDER.indexOf(ui.prevTab || ui.tab);
   return `<nav class="tabbar" aria-label="分頁"><div class="tabbar-inner" role="tablist">
     <div class="tab-indicator" style="transform: translateX(${from * 100}%)"></div>
     ${tabs.map((t) => `<button role="tab" data-action="tab" data-tab="${t.key}" aria-selected="${ui.tab === t.key}">
-      ${t.label}<small class="num">${t.note}</small></button>`).join('')}
+      ${t.label}</button>`).join('')}
   </div></nav>`;
 }
 
@@ -7286,7 +7341,8 @@ function renderModal() {
   const scrollTop = previous ? previous.scrollTop : 0;
 
   let content = '';
-  if (ui.forgetConfirm) content = renderForgetConfirm();
+  if (install.guide) content = renderInstallGuide();
+  else if (ui.forgetConfirm) content = renderForgetConfirm();
   else if (ui.teamDelete) content = renderTeamDeleteModal();
   else if (ui.manual) content = renderManualModal();
   else if (ui.result) content = renderResultModal();
@@ -8415,7 +8471,16 @@ function handleAction(el) {
     case 'cancel-match': cancelMatch(court); break;
 
     /* 球員 */
-    case 'toggle-active': toggleActive(id); break;
+    case 'toggle-active':
+      // 開關先在原地滑過去（像 iPhone），動畫播完再真正切換並重畫，避免整列瞬間跳掉
+      if (el.classList.contains('switch') && !el.dataset.animating) {
+        el.dataset.animating = '1';
+        el.setAttribute('aria-checked', String(el.getAttribute('aria-checked') !== 'true'));
+        setTimeout(() => handleAction(el), SWITCH_ANIM_MS);
+        return;
+      }
+      toggleActive(id);
+      break;
     case 'remove-player': removePlayer(id); break;
     case 'toggle-regular': toggleRegular(name); sessionChanged = false; break;
     case 'quick-add': addPlayers([name]); showToast(`已加入 ${name}`); break;
@@ -8686,6 +8751,7 @@ function handleAction(el) {
       forceUpdate();
       return;
     case 'modal-close':
+      if (install.guide) { install.guide = false; sessionChanged = false; break; }
       if (ui.forgetConfirm) { ui.forgetConfirm = null; sessionChanged = false; break; }
       if (ui.teamDelete) { if (!ui.teamDelete.busy) ui.teamDelete = null; sessionChanged = false; break; }
       if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
@@ -8911,6 +8977,13 @@ function handleAction(el) {
       } else showToast('無法自動複製，請長按代碼複製');
       return;
     case 'coadmin-toggle': toggleCoAdmin(el.dataset.uid); return;
+    case 'install-go': installGo(); return;
+    case 'install-close':
+      prefs.installSnoozedAt = Date.now();
+      savePrefs();
+      renderInstallBanner();
+      showToast('之後想加，可以從瀏覽器的分享選單「加入主畫面」');
+      return;
     case 'team-delete-open': ui.teamDelete = { text: '', busy: false }; sessionChanged = false; modalOnly = true; break;
     case 'team-delete-go': deleteTeam(); return;
     case 'manage-team':   // 共同管理者：從球友頁進入這個球團的管理畫面
@@ -9043,6 +9116,103 @@ document.addEventListener('change', (event) => {
   }
 });
 
+
+/* ===================== 加到主畫面提醒 =====================
+ * 用瀏覽器（不是主畫面 App）打開時，在畫面下方出現小提醒：
+ *  - 安卓／電腦 Chrome：瀏覽器有提供安裝視窗（beforeinstallprompt），按「加到主畫面」直接跳出
+ *  - iPhone：Safari 不開放直接安裝，按下後用圖示教學「分享 → 加入主畫面」
+ *  - LINE 等 App 內的瀏覽器：先請對方改用 Safari／Chrome 開啟
+ * 按 ✕ 之後 14 天內不再出現。 */
+const INSTALL_SNOOZE_MS = 14 * 86400000;
+const install = { prompt: null, guide: false };
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();          // 先收起來，等使用者按我們的按鈕再跳
+  install.prompt = e;
+  renderInstallBanner();
+});
+window.addEventListener('appinstalled', () => {
+  install.prompt = null;
+  showToast('已加到主畫面，之後從主畫面圖示打開就好');
+  renderInstallBanner();
+});
+
+function isMobileDevice() {
+  return isIOS() || /Android/i.test(navigator.userAgent || '');
+}
+
+function installSnoozed() {
+  return Date.now() - (Number(prefs.installSnoozedAt) || 0) < INSTALL_SNOOZE_MS;
+}
+
+function shouldOfferInstall() {
+  if (isStandalone() || isEmbedded() || installSnoozed()) return false;
+  return isMobileDevice() || Boolean(install.prompt);
+}
+
+function renderInstallBanner() {
+  const root = document.getElementById('install-root');
+  if (!root) return;
+  if (!shouldOfferInstall()) { root.innerHTML = ''; return; }
+  const text = IN_APP_BROWSER
+    ? '用 Safari／Chrome 打開，再加到主畫面，使用起來像 App'
+    : '加到主畫面，下次一點就開，還能收上場通知';
+  root.innerHTML = `
+    <div class="install-bar" role="region" aria-label="加到主畫面">
+      <img src="icon-192.png" alt="" class="install-icon">
+      <span class="install-text">${text}</span>
+      <button class="btn-primary install-go" data-action="install-go">${IN_APP_BROWSER ? '怎麼做' : '加到主畫面'}</button>
+      <button class="icon-btn install-close" data-action="install-close" aria-label="先不要">✕</button>
+    </div>`;
+}
+
+async function installGo() {
+  if (install.prompt) {
+    const evt = install.prompt;
+    install.prompt = null;
+    evt.prompt();
+    const choice = await evt.userChoice.catch(() => null);
+    if (choice && choice.outcome === 'dismissed') showToast('之後也可以從瀏覽器選單「安裝應用程式」');
+    renderInstallBanner();
+    return;
+  }
+  install.guide = true;
+  renderModal();
+}
+
+function renderInstallGuide() {
+  if (IN_APP_BROWSER) {
+    return `
+      <h3>先用瀏覽器打開</h3>
+      <ol class="install-steps">
+        <li>按右上角「<b>⋯</b>」或「<b>分享</b>」</li>
+        <li>選「<b>用預設瀏覽器開啟</b>」（Safari 或 Chrome）</li>
+        <li>打開後，畫面下方會再出現「加到主畫面」</li>
+      </ol>
+      <button class="btn-primary btn-block" data-action="modal-close">知道了</button>`;
+  }
+  if (isIOS()) {
+    const share = '<svg class="ios-share" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12M8 7l4-4 4 4M6 11H5v10h14V11h-1" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    return `
+      <h3>加到主畫面</h3>
+      <p class="sub">iPhone 不能從網頁直接安裝，跟著三步就好：</p>
+      <ol class="install-steps">
+        <li>按 Safari 下方（或 Chrome 右上）的 <b>分享</b> ${share}</li>
+        <li>往下滑，選「<b>加入主畫面</b>」</li>
+        <li>右上角按「<b>加入</b>」</li>
+      </ol>
+      <p class="sub">之後從主畫面的羽球圖示打開，就像 App 一樣，也能開啟「輪到你上場」通知。</p>
+      <button class="btn-primary btn-block" data-action="modal-close">知道了</button>`;
+  }
+  return `
+    <h3>加到主畫面</h3>
+    <ol class="install-steps">
+      <li>按瀏覽器右上角的「<b>⋮</b>」選單</li>
+      <li>選「<b>加到主畫面</b>」或「<b>安裝應用程式</b>」</li>
+    </ol>
+    <button class="btn-primary btn-block" data-action="modal-close">知道了</button>`;
+}
+
 /* ===================== 擋住瀏覽器的「上一頁／下一頁」滑動 =====================
  * Safari 只有在「有上一頁」時才會出現左右滑回去的動作，所以：
  * 1. App 內的換頁（進球團、回首頁、強制更新）一律用 location.replace，不留下瀏覽紀錄
@@ -9074,6 +9244,7 @@ document.addEventListener('click', (e) => {
 
 loadAll();
 render();
+renderInstallBanner();
 initCloud();
 </script>
 </body>
