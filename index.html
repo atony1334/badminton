@@ -1065,7 +1065,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '6.26';
+const APP_VERSION = '6.28';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3907,7 +3907,7 @@ function drawerAccount() {
   if (showHome()) {
     return cloud.user
       ? { initial: (cloud.user.displayName || cloud.user.email || '球').slice(0, 1), title: cloud.user.displayName || cloud.user.email || '球友', lines: ['已用 Google 登入'] }
-      : { initial: '羽', title: '羽球輪轉排場', lines: ['管理者請從「管理者登入」進入'] };
+      : { initial: '羽', title: '羽球輪轉排場', lines: ['選一個球團，或臨時開場'] };
   }
   if (cloud.user) return { initial: '管', title: cloud.user.email || '管理者', lines: ['已登入，還沒建立球團'] };
   return { initial: '羽', title: '管理者', lines: [cloudConfigured() ? '還沒登入雲端同步' : '單機模式'] };
@@ -3933,7 +3933,7 @@ function renderDrawer() {
     ]
     : admin && showHome()
     ? [
-      [item('cloud', 'cloud', '管理者登入・雲端同步')],
+      [item('cloud', 'cloud', '訪客登入')],
       [item('look', 'palette', '畫面'), item('backup', 'save', '備份與還原')],
       [updateItem],
     ]
@@ -6046,6 +6046,8 @@ function renderStamina(player) {
 
 function renderRoster() {
   const busy = onCourtIds();
+  // 觀看者不能切換上場／休息，整個「上場」欄位不畫，避免右邊空一塊
+  const canEdit = !cloud.viewer;
   const rows = state.players.map((p) => {
     let status = '<span class="badge badge-wait">等待</span>';
     if (!p.active) status = '<span class="badge badge-rest">休息中</span>';
@@ -6062,15 +6064,15 @@ function renderRoster() {
       <td class="num">${busy.has(p.id) ? p.played - 1 : p.played}</td>
       <td class="num">${p.benched}</td>
       <td>${status}</td>
-      <td class="actions">${ui.editRoster
+      ${canEdit ? `<td class="actions">${ui.editRoster
         ? `<button class="btn-remove" data-action="remove-player" data-id="${p.id}" aria-label="移除 ${escapeHtml(p.name)}">移除</button>`
         : `<button class="switch" role="switch" aria-checked="${p.active}" data-action="toggle-active" data-id="${p.id}"
             aria-label="${escapeHtml(p.name)}${p.active ? '：可上場，點一下改休息' : '：休息中，點一下回來'}"><span class="switch-knob"></span></button>`}
-      </td></tr>`;
+      </td>` : ''}</tr>`;
   }).join('');
   return `<table class="roster-table">
-    <colgroup><col><col class="c-num"><col class="c-wait"><col class="c-status"><col class="c-switch"></colgroup>
-    <thead><tr><th>球員（★ 常用）</th><th>場數</th><th>累計等</th><th>狀態</th><th class="th-switch">上場</th></tr></thead>
+    <colgroup><col><col class="c-num"><col class="c-wait"><col class="c-status">${canEdit ? '<col class="c-switch">' : ''}</colgroup>
+    <thead><tr><th>球員（★ 常用）</th><th>場數</th><th>累計等</th><th>狀態</th>${canEdit ? '<th class="th-switch">上場</th>' : ''}</tr></thead>
     <tbody>${rows}</tbody></table>
     <p class="sub" style="margin-top:6px">綠色列為正在場上，場數只計算已完成的場次，與歷史紀錄一致。<br>
       體力：上場每分鐘 −1.5、輸球再 −5、場下每分鐘 +1，綠色充足、黃色偏累、紅色該休息了（只是好玩，不影響排場）。</p>`;
