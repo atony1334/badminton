@@ -54,6 +54,10 @@
   html { touch-action: manipulation; -webkit-text-size-adjust: 100%; text-size-adjust: 100%; }
   /* 部分預覽環境（如 Claude app）會強制深色底，改由獨立容器鋪滿背景 */
   .page { background: var(--floor); min-height: 100vh; color: var(--ink); }
+  /* 切分頁、左右滑時內容會暫時往右推出畫面；不裁掉的話頁面會瞬間變寬，
+     安卓（尤其主畫面 App）會因此重新縮放畫面，底部切換欄就會往下掉。clip 不影響上下捲動與 sticky */
+  .page { overflow-x: clip; }
+  @supports not (overflow: clip) { html, body { overflow-x: hidden; } }
   body {
     margin: 0; min-height: 100vh;
     background: var(--floor); color: var(--ink);
@@ -1168,7 +1172,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.10';
+const APP_VERSION = '7.11';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
