@@ -1188,7 +1188,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.18';
+const APP_VERSION = '7.19';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -4038,6 +4038,7 @@ function renderTurnAlert() {
 const ICONS = {
   pin: '<path d="M12 21s-6-5.6-6-11a6 6 0 0 1 12 0c0 5.4-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/>',
   logout: '<path d="M10 4H5v16h5M14 8l4 4-4 4M18 12H9"/>',
+  trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
   note: '<path d="M6 3h9l4 4v14H6zM14 3v5h5M9 13h7M9 17h5"/>',
   refresh: '<path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/>',
   calendar: '<path d="M4 6h16v14H4zM4 10h16M8 3v5M16 3v5"/>',
@@ -4118,7 +4119,8 @@ function renderDrawer() {
   const groups = admin && isLocalMode() && !showHome()
     ? [
       [item('play', 'court', '排場設定'), item('voice', 'speaker', '語音唸名'), item('look', 'palette', '畫面')],
-      [state.players.length ? item('end-day', 'flag', '結束今日打球') : '', item('backup', 'save', '備份與還原')],
+      [state.players.length ? item('end-day', 'flag', '結束今日打球') : '', item('backup', 'save', '備份與還原'),
+        state.players.length ? item('reset-local', 'trash', '全部清除，重新開場') : ''],
       [item('home', 'box', '切換球團・回首頁')],
       [updateItem],
     ]
@@ -4280,6 +4282,8 @@ function drawerGo(target) {
     } else if (target === 'leave') {
       leaveTeam();
       return;
+    } else if (target === 'reset-local') {
+      ui.resetConfirm = true;   // 先確認，避免誤按
     } else if (target === 'leave-manage') {
       leaveManaging();
       return;
@@ -7687,6 +7691,7 @@ function renderPlayerModal() {
 const MODAL_PAGES = [
   ['install', () => install.guide, () => renderInstallGuide(), 5],
   ['logout', () => ui.logoutConfirm, () => renderLogoutConfirm(), 5],
+  ['reset', () => ui.resetConfirm, () => renderResetConfirm(), 5],
   ['forget', () => ui.forgetConfirm, () => renderForgetConfirm(), 5],
   ['scan-confirm', () => ui.scanConfirm, () => renderScanConfirm(), 3],
   ['scan', () => ui.scan, () => renderScanModal(), 2],
@@ -7953,6 +7958,14 @@ function renderScanConfirm() {
     <p class="sub">球團代碼：<span class="num">${escapeHtml(c.id)}</span></p>
     ${c.joined ? '<p class="sub">你之前已經加入過這個球團，按加入會直接打開。</p>' : '<p class="sub">加入後可以即時看排場、報名場次；不用登入，也不會改到任何資料。</p>'}
     <button class="btn-primary btn-block" style="margin-top:12px" data-action="scan-join" ${loading ? 'disabled' : ''}>${c.joined ? '打開球團' : '加入'}</button>
+    <button class="btn-ghost btn-block" data-action="modal-close">取消</button>`;
+}
+
+function renderResetConfirm() {
+  return `
+    <h3>全部清除，重新開場？</h3>
+    <p class="sub">今天的場地、球員和 ${state.history.length} 場紀錄都會清掉，不會產生戰報；常用球員會保留，下次開場可以直接勾選。</p>
+    <button class="btn-danger btn-block" style="margin-top:12px" data-action="reset-confirm">全部清除</button>
     <button class="btn-ghost btn-block" data-action="modal-close">取消</button>`;
 }
 
@@ -9428,6 +9441,7 @@ function handleAction(el) {
       if (install.guide) { install.guide = false; sessionChanged = false; break; }
       if (ui.forgetConfirm) { ui.forgetConfirm = null; sessionChanged = false; break; }
       if (ui.logoutConfirm) { ui.logoutConfirm = false; sessionChanged = false; break; }
+      if (ui.resetConfirm) { ui.resetConfirm = false; sessionChanged = false; break; }
       if (ui.scan) { stopScanner(); ui.scan = null; sessionChanged = false; break; }
       if (ui.scanConfirm) { ui.scanConfirm = null; sessionChanged = false; break; }
       if (ui.teamDelete) { if (!ui.teamDelete.busy) ui.teamDelete = null; sessionChanged = false; break; }
@@ -9712,6 +9726,13 @@ function handleAction(el) {
       cloudLogout();
       return;
 
+    case 'reset-confirm':
+      ui.resetConfirm = false;
+      startNewDay();
+      ui.tab = 'courts';
+      window.scrollTo(0, 0);
+      showToast('已全部清除，可以重新開場');
+      break;
     case 'reset':
       if (!ui.resetArmed) {
         ui.resetArmed = true;
