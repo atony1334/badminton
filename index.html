@@ -1183,7 +1183,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.15';
+const APP_VERSION = '7.16';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1866,7 +1866,7 @@ async function onCloudUser(user) {
       return;
     }
     // 離線時查詢可能是空的、或是共同管理者（不是擁有者，查不到）：
-    // 用這支手機記住的球團代碼確認（共同管理者在球友頁按「管理這個球團」時會記下）
+    // 用這支手機記住的球團代碼確認（共同管理者打開球團頁時會自動記下，見 maybeAutoManage）
     const savedId = storageGet(CLOUD_TEAM_KEY);
     if (savedId) {
       const team = await getDoc(teamRef(savedId)).catch(() => null);
@@ -2215,6 +2215,21 @@ function clearSeenNotifications() {
   }).catch(() => {});
 }
 
+/**
+ * 共同管理者打開球團頁：不用再按「管理這個球團」，直接切到管理畫面。
+ * 要等「球團資料（管理者名單）」和「登入狀態」都拿到才判斷；用信箱密碼登入的是擁有者手機，不在這裡處理。
+ */
+function maybeAutoManage() {
+  if (!cloud.viewer || !VIEW_TEAM || !cloud.user || isPasswordUser() || cloud.autoManaging) return;
+  if (!cloud.teamName && !cloud.ownerUid) return;   // 球團資料還沒讀到
+  if (!teamAdminOf({ adminUid: cloud.ownerUid, adminUids: cloud.adminUids }, cloud.user.uid)) return;
+  if (storageGet(CLOUD_TEAM_KEY) && storageGet(CLOUD_TEAM_KEY) !== VIEW_TEAM) return;   // 這支手機已在管理別的球團
+  cloud.autoManaging = true;
+  storageSet(CLOUD_TEAM_KEY, VIEW_TEAM);
+  showToast('你是共同管理者，正在進入管理畫面…');
+  navigateTo(appBase());
+}
+
 function startViewer() {
   clearSeenNotifications();
   const team = VIEW_TEAM;
@@ -2230,6 +2245,7 @@ function startViewer() {
     cloud.adminUids = Array.isArray(snap.data().adminUids) ? snap.data().adminUids : [];
     saveJoinedTeam(VIEW_TEAM, cloud.teamName);
     render();
+    maybeAutoManage();
   }).catch((err) => {
     if (team !== VIEW_TEAM) return;
     cloud.viewerStatus = 'error';
@@ -2463,7 +2479,7 @@ function renderCloudSettings() {
   if (cloud.phase === 'no-team' && !isPasswordUser()) {
     return wrap(`
       <p class="sub set-note">已用 Google 登入 ${escapeHtml(cloud.user.email || '')}，但還不是任何球團的管理者。</p>
-      <p class="sub set-note">請球團擁有者在「雲端同步 → 球友帳號」把你設為共同管理者，再打開球團連結，從選單按「管理這個球團」。</p>
+      <p class="sub set-note">請球團擁有者在「雲端同步 → 球友帳號」把你設為共同管理者，再打開球團連結，就會自動進入管理畫面。</p>
       <button class="btn-ghost" data-action="cloud-logout">登出</button>`);
   }
   if (cloud.phase === 'no-team') {
@@ -2604,6 +2620,7 @@ const members = { unsub: null, list: [], mineUnsub: null };
 
 function onViewerUser(user) {
   cloud.user = user;
+  maybeAutoManage();
   if (members.mineUnsub) { members.mineUnsub(); members.mineUnsub = null; }
   cloud.claim = null;
   if (user) {
@@ -4135,8 +4152,6 @@ function renderDrawer() {
     : [
       [
         isPasswordUser() ? item('home', 'court', '回到管理畫面') : '',
-        !isPasswordUser() && cloud.user && (cloud.adminUids || []).includes(cloud.user.uid)
-          ? `<button class="d-item" data-action="manage-team">${icon('court')}<span>管理這個球團</span><span class="d-state on">共同管理者</span></button>` : '',
         item('signup', 'calendar', '報名場次', badge(openSignupCount())),
         isPasswordUser() ? '' : item('account', 'user', cloud.user ? '我的帳號・上場通知' : '登入 / 認領球員'),
         item('ranks', 'trophy', '長期排行榜・我的戰績'),
@@ -5811,7 +5826,7 @@ function goHome() {
 /**
  * 共同管理者離開管理畫面：先把還沒上傳的排場傳完，再讓這支手機回到「球友」身分。
  * 排場資料都在雲端，所以清掉這支手機上的那份副本（否則首頁會誤以為是臨時開場）。
- * 之後從球團頁選單按「管理這個球團」就能再回來。
+ * 之後從首頁點這個球團，會自動回到管理畫面。
  */
 async function leaveManaging() {
   const id = cloud.teamId;
