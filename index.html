@@ -722,6 +722,11 @@
   .court-map .slot-bottom .name-chip { top: 42.5%; }
   .court-map .slot-only .name-chip { top: 50%; }
   .court-map.empty { display: flex; align-items: center; justify-content: center; }
+  /* 新上場的球員：名字從小彈出來（用 scale 屬性，不會蓋掉置中用的 transform） */
+  @media (prefers-reduced-motion: no-preference) {
+    .name-chip.chip-in { animation: chip-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+    @keyframes chip-in { 0% { scale: 0.3; opacity: 0; } 60% { opacity: 1; } 100% { scale: 1; opacity: 1; } }
+  }
   .court-map.empty svg { opacity: 0.45; }
   .court-map .empty-label {
     position: relative; font-weight: 600; background: var(--c-chip);
@@ -1183,7 +1188,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.16';
+const APP_VERSION = '7.17';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -6178,7 +6183,7 @@ function renderCourt(court, index) {
     </button>`;
   };
   const predict = renderPredictBar(court.match);
-  const lines = `${predict}<div class="court-map ${paused ? 'is-paused' : ''}">${courtLinesSvg()}${half(court.match.teamA, 'A')}${half(court.match.teamB, 'B')}</div>`;
+  const lines = `${predict}<div class="court-map ${paused ? 'is-paused' : ''}" data-court-map="${index}">${courtLinesSvg()}${half(court.match.teamA, 'A')}${half(court.match.teamB, 'B')}</div>`;
   // 提示文字在選擇勝方前後都保留，避免版面高度改變而跳動
   const hint = paused
     ? '<p class="court-hint">暫停中無法記勝負或換位，繼續比賽後即可操作</p>'
@@ -7960,6 +7965,51 @@ function renderLogoutConfirm() {
     <button class="btn-ghost btn-block" data-action="modal-close">取消</button>`;
 }
 
+/* ===================== 上場動畫 =====================
+ * 每次重畫後比對每個場地「每個位置是誰」：換成新的人，名字就彈出來（同一場地依序錯開）。
+ * 動畫進行中又重畫（例如球友頁收到即時更新），用負的延遲接著播，不會從頭重來也不會突然出現。 */
+const CHIP_ANIM_MS = 500;
+const CHIP_STAGGER_MS = 80;
+const chipSeen = {};      // 場地 → [位置上的球員 id]
+const chipStarted = {};   // `場地|位置|id` → 開始時間
+let chipReady = false;    // 第一次畫面不播（剛打開 App 時不要全部一起跳）
+
+function animateNewPlayers(reset) {
+  const now = Date.now();
+  if (reset) chipReady = false;
+  else if (!chipReady && Object.keys(chipSeen).length === 0 && ui.viewKey === 'main') chipReady = true;   // 從選人畫面按開始
+  const maps = document.querySelectorAll('#app .court-map[data-court-map]');
+  const present = new Set();
+  let order = 0;   // 跨場地依序錯開：第 1 場地的人先出來，再來第 2 場地
+  maps.forEach((map) => {
+    const court = map.dataset.courtMap;
+    present.add(court);
+    const chips = Array.from(map.querySelectorAll('.drag-chip'));
+    const ids = chips.map((c) => c.dataset.pid || c.textContent.trim());
+    const before = chipSeen[court];
+    chips.forEach((chip, slot) => {
+      const key = `${court}|${slot}|${ids[slot]}`;
+      if (chipReady && (!before || before[slot] !== ids[slot]) && !chipStarted[key]) {
+        chipStarted[key] = now + order * CHIP_STAGGER_MS;
+        order += 1;
+      }
+      const start = chipStarted[key];
+      if (start && now - start < CHIP_ANIM_MS) {
+        const name = chip.querySelector('.name-chip');
+        if (name) {
+          name.style.animationDelay = `${start - now}ms`;
+          name.classList.add('chip-in');
+        }
+      }
+    });
+    chipSeen[court] = ids;
+  });
+  Object.keys(chipSeen).forEach((court) => { if (!present.has(court) && document.getElementById('tab-body') && ui.tab === 'courts') delete chipSeen[court]; });
+  Object.keys(chipStarted).forEach((key) => { if (now - chipStarted[key] > CHIP_ANIM_MS * 2) delete chipStarted[key]; });
+  // 只有真的看到場地畫面之後才開始播（在其他分頁時不記錄，回到場地分頁不會全部跳）
+  if (maps.length) chipReady = true;
+}
+
 function render() {
   const app = document.getElementById('app');
   const showMain = !showHome() && state.players.length > 0;
@@ -7970,7 +8020,11 @@ function render() {
   document.getElementById('tabbar-root').innerHTML = showMain ? renderTabBar() : '';
   // 換到不同的畫面（載入中 → 排場、首頁、設定…）時淡入；同一個畫面內的更新不播
   const viewKey = showHome() ? 'home' : showMain ? 'main' : (cloud.viewer ? `viewer-${cloud.viewerStatus}` : 'setup');
-  if (viewKey !== ui.viewKey) {
+  const prevViewKey = ui.viewKey;
+  const viewChanged = viewKey !== prevViewKey;
+  // 剛打開 App、剛進球團：場上的人本來就在，不播上場動畫；按「開始」排出第一輪則要播
+  const freshScreen = viewChanged && (!prevViewKey || prevViewKey === 'home' || prevViewKey.startsWith('viewer-'));
+  if (viewChanged) {
     ui.viewKey = viewKey;
     app.classList.remove('app-enter');
     void app.offsetWidth;   // 重新觸發動畫
@@ -7980,6 +8034,7 @@ function render() {
   renderPop();
   renderDrawerRoot();
   animateTabIndicator();
+  animateNewPlayers(freshScreen);
   applyViewerLock();
 }
 
@@ -8435,6 +8490,7 @@ function switchTabInPlace(nextTab) {
   if (!body) { render(); return; }
   body.innerHTML = renderTabBody();
   applyViewerLock();
+  animateNewPlayers(false);
   body.className = `tab-body ${forward ? 'from-right' : 'from-left'}`;
   void body.offsetWidth;   // 重新觸發進場動畫
   tabBarEl().querySelectorAll('button[role="tab"]').forEach((b) => {
