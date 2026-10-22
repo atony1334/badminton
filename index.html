@@ -1189,7 +1189,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.20';
+const APP_VERSION = '7.21';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -10232,6 +10232,59 @@ function segSwipeEnd() {
 }
 document.addEventListener('touchend', segSwipeEnd);
 document.addEventListener('touchcancel', segSwipeEnd);
+
+/* ===================== 彈窗裡往右滑返回上一頁 =====================
+ * 有「← 所有場次」「‹ 歷史球局」這類返回鈕（.past-back）的彈窗頁：手指往右滑就返回，像 iPhone。
+ * 內容跟著手指移動，放開超過門檻（或快速一撥）就按下返回鈕，否則彈回原位。
+ * 從切換鈕或它控制的內容（例如關係圖）開始滑的，交給切換鈕處理。 */
+const backSwipe = { page: null, button: null, startX: 0, startY: 0, dx: 0, decided: false, t0: 0 };
+const BACK_SWIPE_PX = 80;
+
+document.addEventListener('touchstart', (e) => {
+  backSwipe.page = null;
+  if (e.touches.length !== 1 || ui.titlePop) return;
+  const modal = e.target.closest('.modal');
+  if (!modal || e.target.closest('.seg, input, textarea, select, iframe, .ev-map') || segForTarget(e.target)) return;
+  const page = modal.querySelector('.modal-page');
+  const button = page && page.querySelector('.past-back');
+  if (!button) return;
+  Object.assign(backSwipe, { page, button, startX: e.touches[0].clientX, startY: e.touches[0].clientY, dx: 0, decided: false, t0: Date.now() });
+}, { passive: true });
+
+document.addEventListener('touchmove', (e) => {
+  if (!backSwipe.page) return;
+  const t = e.touches[0];
+  const dx = t.clientX - backSwipe.startX;
+  const dy = t.clientY - backSwipe.startY;
+  if (!backSwipe.decided) {
+    if (Math.abs(dx) < 12 && Math.abs(dy) < 12) return;
+    backSwipe.decided = true;
+    // 只接「往右、偏水平」的滑動；往左或上下捲動都照常
+    if (!(dx > 0 && Math.abs(dx) > Math.abs(dy) * 1.4)) { backSwipe.page = null; return; }
+  }
+  e.preventDefault();
+  backSwipe.dx = Math.max(0, dx);
+  backSwipe.page.style.transition = 'none';
+  backSwipe.page.style.transform = `translateX(${backSwipe.dx}px)`;
+  backSwipe.page.style.opacity = String(Math.max(0.4, 1 - backSwipe.dx / 500));
+}, { passive: false });
+
+function backSwipeEnd() {
+  const { page, button, dx, decided, t0 } = backSwipe;
+  backSwipe.page = null;
+  if (!page || !decided) return;
+  const fast = dx > 50 && dx / Math.max(1, Date.now() - t0) > 0.5;   // 快速一撥
+  if ((dx >= BACK_SWIPE_PX || fast) && button.isConnected) {
+    button.click();   // 返回後新的一頁會從左邊滑進來
+    return;
+  }
+  page.style.transition = 'transform 0.25s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.25s ease';
+  page.style.transform = '';
+  page.style.opacity = '';
+  setTimeout(() => { if (page.isConnected) page.style.transition = ''; }, 260);
+}
+document.addEventListener('touchend', backSwipeEnd);
+document.addEventListener('touchcancel', backSwipeEnd);
 
 loadAll();
 render();
