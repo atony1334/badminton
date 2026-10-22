@@ -1172,7 +1172,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.13';
+const APP_VERSION = '7.14';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -4282,7 +4282,7 @@ function renderSettingsSection(key) {
  * 直接沿用「紀錄」分頁的畫面：畫的時候暫時把 state 換成那一天的資料，畫完就換回來。
  * 畫面上會改到今天資料的按鈕（刪除紀錄、改勝負、開個人頁…）一律拿掉，只能看。
  */
-const PAST_ALLOWED_ACTIONS = new Set(['network-mode', 'network-focus', 'history-toggle', 'modal-close', 'past-back']);
+const PAST_ALLOWED_ACTIONS = new Set(['network-mode', 'network-focus', 'history-toggle', 'modal-close', 'past-back', 'title-open']);
 const past = { cache: {}, loading: null, error: '' };
 
 function pastDateText(t) {
@@ -6995,6 +6995,21 @@ function fullWho(who) {
 }
 
 function renderTitleModal() {
+  const day = ui.titleDay && past.cache[ui.titleDay];
+  if (day) {
+    // 歷史球局的稱號：暫時換成那一天的資料來畫，畫完立刻換回來
+    const today = state;
+    try {
+      state = day;
+      return renderTitleModalBody();
+    } finally {
+      state = today;
+    }
+  }
+  return renderTitleModalBody();
+}
+
+function renderTitleModalBody() {
   const t = todayTitles()[ui.titleIndex];
   if (!t) return '<p class="sub">這個稱號已經不存在了。</p><button class="btn-primary btn-block" data-action="modal-close">關閉</button>';
   return `<div class="title-modal">
@@ -7635,7 +7650,7 @@ const MODAL_PAGES = [
   ['result', () => ui.result, () => renderResultModal(), 1],
   ['backup', () => ui.backup, () => renderBackupModal(), 2],
   ['copy', () => ui.copyText, () => renderCopyModal(), 4],
-  ['title', () => ui.titleIndex !== null && ui.titleIndex !== undefined, () => renderTitleModal(), 1],
+  ['title', () => ui.titleIndex !== null && ui.titleIndex !== undefined, () => renderTitleModal(), 3],
   ['report', () => ui.report, () => renderReportModal(), 1],
   ['profile', () => ui.profileName, () => renderPlayerModal(), 2],
   ['invite', () => ui.invite, () => renderInviteModal(), 2],
@@ -9240,7 +9255,12 @@ function handleAction(el) {
       sessionChanged = false;
       if (ui.pastId) modalOnly = true;
       break;
-    case 'title-open': ui.titleIndex = Number(el.dataset.index); sessionChanged = false; break;
+    case 'title-open':
+      ui.titleIndex = Number(el.dataset.index);
+      // 從歷史球局點的：記住是哪一天，稱號視窗要用那天的資料
+      ui.titleDay = el.closest('.past-view') ? ui.pastId : null;
+      sessionChanged = false;
+      break;
     case 'settings-open': ui.settings = true; ui.settingsOnly = null; sessionChanged = false; break;
     case 'set-appearance':
       prefs.appearance = el.dataset.value;
@@ -9311,6 +9331,12 @@ function handleAction(el) {
       if (ui.logoutConfirm) { ui.logoutConfirm = false; sessionChanged = false; break; }
       if (ui.scan) { stopScanner(); ui.scan = null; sessionChanged = false; break; }
       if (ui.scanConfirm) { ui.scanConfirm = null; sessionChanged = false; break; }
+      if (ui.titleDay && ui.titleIndex !== null && ui.titleIndex !== undefined) {
+        ui.titleIndex = null;
+        ui.titleDay = null;
+        sessionChanged = false;
+        break;
+      }
       if (ui.teamDelete) { if (!ui.teamDelete.busy) ui.teamDelete = null; sessionChanged = false; break; }
       if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
       if (ui.copyText && ui.signupOpen) { ui.copyText = null; sessionChanged = false; break; }   // 報名訊息的手動複製視窗
