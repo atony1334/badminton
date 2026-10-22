@@ -1172,7 +1172,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.11';
+const APP_VERSION = '7.13';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1715,7 +1715,7 @@ const VIEWER_ACTIONS = new Set([
   'title-open', 'player-open', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
-  'invite-copy-code', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
+  'invite-copy-code', 'invite-copy', 'invite-share', 'cloud-invite', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
   'signup-view', 'signup-month', 'signup-day',
 ]);
@@ -1757,9 +1757,14 @@ function randomId(length) {
   return Array.from(bytes, (b) => chars[b % chars.length]).join('');
 }
 
+// 目前這個球團的代碼：管理者用 cloud.teamId，球友（觀看者）用網址裡的球團
+function currentTeamId() {
+  return cloud.viewer ? VIEW_TEAM : cloud.teamId;
+}
+
 function viewerLink() {
   // openExternalBrowser=1：在 LINE 點開會自動改用手機的瀏覽器（Google 登入在 LINE 裡不能用）
-  return `${window.location.origin}${window.location.pathname}?team=${cloud.teamId}&openExternalBrowser=1`;
+  return `${window.location.origin}${window.location.pathname}?team=${currentTeamId()}&openExternalBrowser=1`;
 }
 
 function teamRef(id = cloud.teamId || VIEW_TEAM) {
@@ -2401,7 +2406,7 @@ function renderInviteModal() {
     <p class="sub">掃描或點開連結就能即時看排場，不用登入，也不能更改任何資料。</p>
     ${qr}
     <p class="invite-link num" id="invite-link">${escapeHtml(link)}</p>
-    <p class="invite-code">球團代碼：<b class="num">${escapeHtml(cloud.teamId)}</b>
+    <p class="invite-code">球團代碼：<b class="num">${escapeHtml(currentTeamId() || '')}</b>
       <button class="btn-ghost" data-action="invite-copy-code">複製代碼</button></p>
     <p class="sub" style="margin:0 0 8px;text-align:center;font-size:13px">從主畫面打開看不到球團時，在開始畫面輸入這組代碼就能加入。</p>
     <div class="court-actions" style="justify-content:center">
@@ -2567,9 +2572,7 @@ function renderViewerSettings() {
     <section class="set-group"><div class="set-body" style="padding-top:12px">
       <h4 class="set-head">觀看模式</h4>
       <p class="sub set-note">${cloud.teamName ? `正在看「${escapeHtml(cloud.teamName)}」的排場。` : ''}這裡只能看，排場由管理者操作，會自動即時更新。</p>
-      <p class="sub set-note">球團代碼（給別人加入，或在主畫面 App 裡輸入）：</p>
-      <p class="invite-code"><b class="num">${escapeHtml(VIEW_TEAM || '')}</b>
-        <button class="btn-ghost" data-action="invite-copy-code">複製</button></p>
+      <button class="btn-outline btn-block" data-action="cloud-invite">${icon('qr')}邀請球友（QR Code・連結・代碼）</button>
       ${cloud.user ? `<p class="sub set-note">已用 Google 登入：${escapeHtml(cloud.user.email || '')}${cloud.claim ? `（${escapeHtml(cloud.claim.name)}）` : ''}</p>
         <button class="btn-ghost" data-action="google-logout" style="align-self:flex-start">登出</button>` : ''}
     </div></section>
@@ -4130,7 +4133,7 @@ function renderDrawer() {
       ],
       [item('look', 'palette', '畫面'), updateItem],
       [
-        item('all', 'qr', '球團代碼・資訊'),
+        item('invite', 'qr', '邀請球友（QR Code）'),
         item('home', 'box', '切換球團・回首頁'),
       ],
     ];
@@ -7625,6 +7628,7 @@ const MODAL_PAGES = [
   ['install', () => install.guide, () => renderInstallGuide(), 5],
   ['logout', () => ui.logoutConfirm, () => renderLogoutConfirm(), 5],
   ['forget', () => ui.forgetConfirm, () => renderForgetConfirm(), 5],
+  ['scan-confirm', () => ui.scanConfirm, () => renderScanConfirm(), 3],
   ['scan', () => ui.scan, () => renderScanModal(), 2],
   ['team-delete', () => ui.teamDelete, () => renderTeamDeleteModal(), 3],
   ['manual', () => ui.manual, () => renderManualModal(), 1],
@@ -7846,15 +7850,51 @@ function handleScanText(text) {
     stopScanner();
     ui.scan = null;
     if (navigator.vibrate) navigator.vibrate(30);
-    showToast('掃到了，正在加入球團…');
-    joinTeam(code);
-    renderModal();
+    confirmScannedTeam(code);
     return;
   }
   if (Date.now() - scan.lastBadAt > 2500) {   // 掃到別的 QR Code：提示一下，不要一直跳
     scan.lastBadAt = Date.now();
     showToast('這不是球團的 QR Code');
   }
+}
+
+/* 掃到球團後先確認：讀出球團名稱，讓球友決定要不要加入 */
+function confirmScannedTeam(id) {
+  const known = readJoinedTeams().find((t) => t.id === id);
+  ui.scanConfirm = { id, name: known ? known.name : '', status: 'loading', joined: Boolean(known) };
+  renderModal();
+  if (!cloud.fb) { ui.scanConfirm.status = 'ok'; renderModal(); return; }   // 雲端還沒載入：先用代碼確認
+  cloud.fb.getDoc(teamRef(id)).then((snap) => {
+    if (!ui.scanConfirm || ui.scanConfirm.id !== id) return;
+    if (!snap.exists()) { ui.scanConfirm.status = 'missing'; renderModal(); return; }
+    ui.scanConfirm.name = snap.data().name || ui.scanConfirm.name;
+    ui.scanConfirm.status = 'ok';
+    renderModal();
+  }).catch(() => {
+    if (!ui.scanConfirm || ui.scanConfirm.id !== id) return;
+    ui.scanConfirm.status = 'ok';   // 讀不到（例如網路慢）：仍可加入，進去後會再連線
+    renderModal();
+  });
+}
+
+function renderScanConfirm() {
+  const c = ui.scanConfirm;
+  if (c.status === 'missing') {
+    return `
+      <h3>找不到這個球團</h3>
+      <p class="sub">QR Code 可能已經失效，或球團被刪除了。請向管理者索取新的邀請。</p>
+      <button class="btn-primary btn-block" style="margin-top:12px" data-action="qr-scan">重新掃描</button>
+      <button class="btn-ghost btn-block" data-action="modal-close">取消</button>`;
+  }
+  const loading = c.status === 'loading';
+  const title = loading && !c.name ? '正在讀取球團…' : `加入「${escapeHtml(c.name || '球團')}」？`;
+  return `
+    <h3>${title}</h3>
+    <p class="sub">球團代碼：<span class="num">${escapeHtml(c.id)}</span></p>
+    ${c.joined ? '<p class="sub">你之前已經加入過這個球團，按加入會直接打開。</p>' : '<p class="sub">加入後可以即時看排場、報名場次；不用登入，也不會改到任何資料。</p>'}
+    <button class="btn-primary btn-block" style="margin-top:12px" data-action="scan-join" ${loading ? 'disabled' : ''}>${c.joined ? '打開球團' : '加入'}</button>
+    <button class="btn-ghost btn-block" data-action="modal-close">取消</button>`;
 }
 
 function renderLogoutConfirm() {
@@ -9270,6 +9310,7 @@ function handleAction(el) {
       if (ui.forgetConfirm) { ui.forgetConfirm = null; sessionChanged = false; break; }
       if (ui.logoutConfirm) { ui.logoutConfirm = false; sessionChanged = false; break; }
       if (ui.scan) { stopScanner(); ui.scan = null; sessionChanged = false; break; }
+      if (ui.scanConfirm) { ui.scanConfirm = null; sessionChanged = false; break; }
       if (ui.teamDelete) { if (!ui.teamDelete.busy) ui.teamDelete = null; sessionChanged = false; break; }
       if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
       if (ui.copyText && ui.signupOpen) { ui.copyText = null; sessionChanged = false; break; }   // 報名訊息的手動複製視窗
@@ -9499,7 +9540,7 @@ function handleAction(el) {
     case 'invite-copy': copyInviteLink(); return;
     case 'invite-copy-code':
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(cloud.viewer ? VIEW_TEAM : cloud.teamId).then(() => showToast('已複製球團代碼'), () => showToast('無法自動複製，請長按代碼複製'));
+        navigator.clipboard.writeText(currentTeamId()).then(() => showToast('已複製球團代碼'), () => showToast('無法自動複製，請長按代碼複製'));
       } else showToast('無法自動複製，請長按代碼複製');
       return;
     case 'coadmin-toggle': toggleCoAdmin(el.dataset.uid); return;
@@ -9524,7 +9565,14 @@ function handleAction(el) {
       ui.forgetConfirm = null;
       sessionChanged = false;
       break;
-    case 'qr-scan': openScanner(); return;
+    case 'qr-scan': ui.scanConfirm = null; openScanner(); return;
+    case 'scan-join': {
+      const id = ui.scanConfirm && ui.scanConfirm.id;
+      ui.scanConfirm = null;
+      if (id) joinTeam(id);
+      renderModal();
+      return;
+    }
     case 'join-team': {
       const code = parseTeamCode(ui.joinCode);
       if (!code) { showToast('看不懂這個代碼，請貼上管理者給的整串連結'); return; }
