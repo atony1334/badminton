@@ -352,7 +352,8 @@
   .ev-times { display: flex; gap: 10px; }
   .ev-times label { flex: 1; display: flex; flex-direction: column; gap: 4px; }
   .ev-today { display: flex; justify-content: space-between; align-items: center; gap: 10px; }
-  .ev-today span { display: flex; flex-direction: column; }
+  .ev-today span { display: flex; flex-direction: column; min-width: 0; gap: 2px; }
+  .ev-today .btn-primary { flex: 0 0 auto; white-space: nowrap; }
   .ev-today small { color: var(--muted); font-size: 13px; }
   :root[data-appearance="dark"] .ev-tag.open, :root[data-appearance="dark"] .ev-no { background: rgba(80, 200, 120, .18); color: #7FD9A0; }
   :root[data-appearance="dark"] .ev-tag.full, :root[data-appearance="dark"] .ev-main .ev-mine { background: transparent; color: #F2C46B; }
@@ -1188,7 +1189,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.19';
+const APP_VERSION = '7.20';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3015,6 +3016,8 @@ function newEventForm(ev) {
     ui.signupForm = {
       editId: ev.id, date: ev.date || localDateKey(), start: ev.start || '', end: ev.end || '',
       venue: ev.venue || '', place: ev.place || '', note: ev.note || '', courts: Number(ev.courts) || 1,
+      cap: eventCap(ev),
+      capAuto: eventCap(ev) === (Number(ev.courts) || 1) * SIGNUP_PER_COURT,
     };
     return;
   }
@@ -3023,6 +3026,7 @@ function newEventForm(ev) {
   ui.signupForm = {
     editId: null, date: localDateKey(), start: last.start || '19:00', end: last.end || '22:00',
     venue: last.venue || '', place: last.place || '', note: '', courts: Number(last.courts) || 2,
+    cap: (Number(last.courts) || 2) * SIGNUP_PER_COURT, capAuto: true,
   };
 }
 
@@ -3040,7 +3044,7 @@ async function saveEventForm() {
     place: cleanPlace(f.place),
     note: String(f.note || '').trim().slice(0, 200),
     courts,
-    cap: courts * SIGNUP_PER_COURT,
+    cap: Math.max(1, Math.min(SIGNUP_CAP_MAX, Number(f.cap) || courts * SIGNUP_PER_COURT)),
     updatedAt: serverTimestamp(),
   };
   signup.busy = true;
@@ -3652,7 +3656,17 @@ function renderEventFormModal() {
           <button data-action="ev-courts" data-value="1" aria-label="增加場地">＋</button>
         </div>
       </div>
-      <p class="sub">名額上限 <b class="num">${f.courts * SIGNUP_PER_COURT}</b> 人（每面場 ${SIGNUP_PER_COURT} 人），額滿後報名的人排候補。</p>
+      <div class="row">
+        <span class="label">人數上限</span>
+        <div class="stepper">
+          <button data-action="ev-cap" data-value="-1" aria-label="減少名額">−</button>
+          <span class="num">${f.cap}</span>
+          <button data-action="ev-cap" data-value="1" aria-label="增加名額">＋</button>
+        </div>
+      </div>
+      <p class="sub">${f.capAuto
+        ? `預設每面場 ${SIGNUP_PER_COURT} 人，會跟著場地數變；`
+        : `已手動設定（每面場 ${SIGNUP_PER_COURT} 人是 ${f.courts * SIGNUP_PER_COURT} 人），改場地數不會自動變；`}額滿後報名的人排候補。${renderCapWarning(f)}</p>
       <label class="label" for="ev-note">備註（選填）</label>
       <textarea id="ev-note" maxlength="200" placeholder="例如：場地費 150 元，請自備球">${escapeHtml(f.note)}</textarea>
     </div>
@@ -3662,6 +3676,20 @@ function renderEventFormModal() {
 }
 
 // 管理者選人畫面：今天有報名場次就提示帶入
+const SIGNUP_CAP_MAX = 99;
+
+// 編輯場次時把名額調低：提醒會有人從正取變候補
+function renderCapWarning(f) {
+  if (!f.editId) return '';
+  const ev = signup.events.find((e) => e.id === f.editId);
+  if (!ev) return '';
+  const count = (signup.lists[f.editId] || []).length;
+  const before = Math.min(count, eventCap(ev));
+  const after = Math.min(count, f.cap);
+  if (after >= before) return '';
+  return `<br><b class="cloud-error" style="display:inline">目前 ${before} 人正取，調成 ${f.cap} 人後，最晚報名的 ${before - after} 人會變成候補。</b>`;
+}
+
 function renderTodaySignupPanel() {
   if (cloud.viewer || !cloudReady()) return '';
   const today = upcomingEvents().filter((ev) => ev.date === localDateKey());
@@ -3669,7 +3697,8 @@ function renderTodaySignupPanel() {
   return today.map((ev) => {
     const ranked = signupRanked(ev);
     return `<div class="panel ev-today">
-      <span><b>今天的報名</b><small>${escapeHtml(eventTitle(ev))}・正取 ${ranked.main.length} 人${ranked.wait.length ? `・候補 ${ranked.wait.length}` : ''}</small></span>
+      <span><b>今天的報名</b><small>${escapeHtml(eventTitle(ev))}</small>
+        <small>正取 ${ranked.main.length} 人${ranked.wait.length ? `・候補 ${ranked.wait.length} 人` : ''}</small></span>
       <button class="btn-primary" data-action="event-apply" data-id="${escapeHtml(ev.id)}">帶入名單</button>
     </div>`;
   }).join('');
@@ -9584,11 +9613,22 @@ function handleAction(el) {
       break;
     }
     case 'event-form-cancel': ui.signupForm = null; sessionChanged = false; modalOnly = true; break;
-    case 'ev-courts':
-      ui.signupForm.courts = Math.max(1, Math.min(MAX_COURTS, ui.signupForm.courts + Number(el.dataset.value)));
+    case 'ev-courts': {
+      const f = ui.signupForm;
+      f.courts = Math.max(1, Math.min(MAX_COURTS, f.courts + Number(el.dataset.value)));
+      if (f.capAuto) f.cap = f.courts * SIGNUP_PER_COURT;   // 沒手動改過：名額跟著場地數
       sessionChanged = false;
       modalOnly = true;
       break;
+    }
+    case 'ev-cap': {
+      const f = ui.signupForm;
+      f.cap = Math.max(1, Math.min(SIGNUP_CAP_MAX, f.cap + Number(el.dataset.value)));
+      f.capAuto = f.cap === f.courts * SIGNUP_PER_COURT;
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    }
     case 'event-save': saveEventForm(); return;
     case 'event-status': {
       const ev = signup.events.find((e) => e.id === ui.signupId);
