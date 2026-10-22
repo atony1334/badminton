@@ -712,7 +712,7 @@
      縱向：上發球區介於單打邊線(0.46m)與中線(3.05m) → 佔上半格的 57.5%；下發球區對稱為 42.5% */
   .court-map .drag-chip { position: relative; padding: 0; display: block; }
   .court-map .name-chip {
-    position: absolute; transform: translate(-50%, -50%);
+    position: absolute; translate: -50% -50%;   /* 用 translate 屬性置中：彈出動畫的 scale 才會以名字本身為基準 */
     background: var(--c-chip); font-size: 17px; font-weight: 600;
     max-width: 80%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
@@ -724,7 +724,7 @@
   .court-map.empty { display: flex; align-items: center; justify-content: center; }
   /* 新上場的球員：名字從小彈出來（用 scale 屬性，不會蓋掉置中用的 transform） */
   @media (prefers-reduced-motion: no-preference) {
-    .name-chip.chip-in { animation: chip-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; }
+    .name-chip.chip-in { animation: chip-in 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both; transform-origin: 50% 100%; }   /* 從名字的正下方放大 */
     @keyframes chip-in { 0% { scale: 0.3; opacity: 0; } 60% { opacity: 1; } 100% { scale: 1; opacity: 1; } }
   }
   .court-map.empty svg { opacity: 0.45; }
@@ -1188,7 +1188,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.17';
+const APP_VERSION = '7.18';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
