@@ -868,6 +868,16 @@
   :root[data-appearance="dark"] .title-card.rare .t-head { color: #E6C35C; }
   :root[data-appearance="dark"] .rare-head { color: #E6C35C; }
   .title-card .t-more { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  /* 稱號小視窗：疊在畫面（或彈窗）上方的小卡片，點外面就關 */
+  .pop-bg { position: fixed; inset: 0; z-index: 15; display: flex; align-items: center; justify-content: center; padding: 24px;
+    background: rgba(20, 38, 28, 0.45); }
+  .pop-card { width: min(340px, 100%); max-height: 80vh; overflow-y: auto; background: var(--surface); color: var(--ink);
+    border-radius: 18px; padding: 20px 18px 16px; box-shadow: 0 12px 40px rgba(0, 0, 0, 0.25); text-align: center; }
+  @media (prefers-reduced-motion: no-preference) {
+    .pop-bg.pop-enter { animation: modal-bg-in 0.2s ease; }
+    .pop-bg.pop-enter .pop-card { animation: pop-in 0.22s cubic-bezier(0.32, 0.72, 0, 1); }
+    @keyframes pop-in { from { transform: scale(0.94); opacity: 0; } to { transform: none; opacity: 1; } }
+  }
   .title-modal .t-big { font-size: 44px; line-height: 1; }
   .title-modal .t-who { font-size: 22px; font-weight: 700; margin: 8px 0 4px; overflow-wrap: anywhere; }
   .title-modal .t-fact { font-size: 16px; margin: 0 0 14px; }
@@ -1125,6 +1135,7 @@
 <div id="tabbar-root"></div>
 <div id="drawer-root"></div>
 <div id="modal-root"></div>
+<div id="pop-root"></div>
 <div id="install-root"></div>
 <div id="toast-root"></div>
 
@@ -1172,7 +1183,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.14';
+const APP_VERSION = '7.15';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1712,7 +1723,7 @@ const SESSION_BEFORE_CLOUD_KEY = 'badminton-session-before-cloud';   // 被雲�
 // 觀看者可以用的操作：只看、切換分頁、調整自己手機的外觀與語音
 const VIEWER_ACTIONS = new Set([
   'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
-  'title-open', 'player-open', 'network-mode', 'network-focus',
+  'title-open', 'title-pop-close', 'player-open', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'invite-copy-code', 'invite-copy', 'invite-share', 'cloud-invite', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
@@ -6994,24 +7005,38 @@ function fullWho(who) {
   return Array.isArray(who) ? who.join('、') : who;
 }
 
-function renderTitleModal() {
-  const day = ui.titleDay && past.cache[ui.titleDay];
-  if (day) {
-    // 歷史球局的稱號：暫時換成那一天的資料來畫，畫完立刻換回來
-    const today = state;
-    try {
-      state = day;
-      return renderTitleModalBody();
-    } finally {
-      state = today;
-    }
-  }
-  return renderTitleModalBody();
+/* 稱號小視窗：不放進彈窗堆疊，關掉就回到原本的畫面（今天的紀錄或歷史球局） */
+let lastPopHtml = '';
+
+function renderPop() {
+  const root = document.getElementById('pop-root');
+  if (!root) return;
+  if (!ui.titlePop) { root.innerHTML = ''; lastPopHtml = ''; return; }
+  const html = renderTitlePopBody();
+  if (html === lastPopHtml && root.firstElementChild) return;   // 內容沒變（例如即時更新重畫）就不動
+  const fresh = !root.firstElementChild;
+  lastPopHtml = html;
+  root.innerHTML = `<div class="pop-bg${fresh ? ' pop-enter' : ''}" data-action="title-pop-close">
+    <div class="pop-card" role="dialog" aria-modal="true">${html}</div></div>`;
 }
 
-function renderTitleModalBody() {
-  const t = todayTitles()[ui.titleIndex];
-  if (!t) return '<p class="sub">這個稱號已經不存在了。</p><button class="btn-primary btn-block" data-action="modal-close">關閉</button>';
+function renderTitlePopBody() {
+  const { index, day: dayId } = ui.titlePop;
+  const day = dayId && past.cache[dayId];
+  if (!day) return renderTitleCard(index);
+  // 歷史球局的稱號：暫時換成那一天的資料來畫，畫完立刻換回來
+  const today = state;
+  try {
+    state = day;
+    return renderTitleCard(index);
+  } finally {
+    state = today;
+  }
+}
+
+function renderTitleCard(index) {
+  const t = todayTitles()[index];
+  if (!t) return '<p class="sub">這個稱號已經不存在了。</p><button class="btn-primary btn-block" data-action="title-pop-close">關閉</button>';
   return `<div class="title-modal">
     <div class="t-big">${t.icon}</div>
     <h3 style="margin-top:8px">${t.rare ? '✨ 隱藏成就・' : ''}${t.title}</h3>
@@ -7019,7 +7044,7 @@ function renderTitleModalBody() {
     ${Array.isArray(t.who) && t.who.length > 1 ? `<p class="sub" style="margin:0 0 6px">${t.who.length} 人並列</p>` : ''}
     <p class="t-fact">${t.detail}</p>
     <div class="t-rule">${TITLE_RULES[t.title] || ''}</div>
-    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="title-pop-close">關閉</button>
   </div>`;
 }
 
@@ -7650,7 +7675,6 @@ const MODAL_PAGES = [
   ['result', () => ui.result, () => renderResultModal(), 1],
   ['backup', () => ui.backup, () => renderBackupModal(), 2],
   ['copy', () => ui.copyText, () => renderCopyModal(), 4],
-  ['title', () => ui.titleIndex !== null && ui.titleIndex !== undefined, () => renderTitleModal(), 3],
   ['report', () => ui.report, () => renderReportModal(), 1],
   ['profile', () => ui.profileName, () => renderPlayerModal(), 2],
   ['invite', () => ui.invite, () => renderInviteModal(), 2],
@@ -7938,6 +7962,7 @@ function render() {
     app.classList.add('app-enter');
   }
   renderModal();
+  renderPop();
   renderDrawerRoot();
   animateTabIndicator();
   applyViewerLock();
@@ -8463,7 +8488,7 @@ const swipe = { active: false, decided: false, horizontal: false, x: 0, y: 0, dx
 
 function swipeBlocked(target) {
   if (ui.drawer) return false;   // 選單開著：任何地方往左滑都能收起
-  return ui.manual || ui.result || ui.backup || ui.settings || ui.copyText || ui.titleIndex !== null || ui.report
+  return ui.manual || ui.result || ui.backup || ui.settings || ui.copyText || ui.titlePop || ui.report
     || ui.profileName || ui.signupOpen || ui.ranksOpen || ui.pastList || ui.pastId || ui.invite || ui.rankProfile
     || target.closest('input, textarea, select, .tabbar, .modal-bg, .home-team, .seg') || segForTarget(target);
 }
@@ -9256,11 +9281,14 @@ function handleAction(el) {
       if (ui.pastId) modalOnly = true;
       break;
     case 'title-open':
-      ui.titleIndex = Number(el.dataset.index);
-      // 從歷史球局點的：記住是哪一天，稱號視窗要用那天的資料
-      ui.titleDay = el.closest('.past-view') ? ui.pastId : null;
-      sessionChanged = false;
-      break;
+      // 稱號用小視窗顯示；從歷史球局點的，記住是哪一天，用那天的資料
+      ui.titlePop = { index: Number(el.dataset.index), day: el.closest('.past-view') ? ui.pastId : null };
+      renderPop();
+      return;
+    case 'title-pop-close':
+      ui.titlePop = null;
+      renderPop();
+      return;
     case 'settings-open': ui.settings = true; ui.settingsOnly = null; sessionChanged = false; break;
     case 'set-appearance':
       prefs.appearance = el.dataset.value;
@@ -9331,12 +9359,6 @@ function handleAction(el) {
       if (ui.logoutConfirm) { ui.logoutConfirm = false; sessionChanged = false; break; }
       if (ui.scan) { stopScanner(); ui.scan = null; sessionChanged = false; break; }
       if (ui.scanConfirm) { ui.scanConfirm = null; sessionChanged = false; break; }
-      if (ui.titleDay && ui.titleIndex !== null && ui.titleIndex !== undefined) {
-        ui.titleIndex = null;
-        ui.titleDay = null;
-        sessionChanged = false;
-        break;
-      }
       if (ui.teamDelete) { if (!ui.teamDelete.busy) ui.teamDelete = null; sessionChanged = false; break; }
       if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
       if (ui.copyText && ui.signupOpen) { ui.copyText = null; sessionChanged = false; break; }   // 報名訊息的手動複製視窗
@@ -9828,6 +9850,7 @@ document.addEventListener('touchstart', (e) => {
 }, { passive: false });
 
 function closeTopOverlay() {
+  if (ui.titlePop) { ui.titlePop = null; renderPop(); return true; }
   if (ui.drawer) { closeDrawer(); return true; }
   const bg = document.querySelector('#modal-root .modal-bg');
   if (bg) { handleAction(bg); return true; }
