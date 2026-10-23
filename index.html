@@ -395,6 +395,7 @@
     padding: 28px 16px; border: 2px dashed var(--floor); border-radius: var(--radius-l);
   }
   .view-only { cursor: default; }
+  .home-admin { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
   .join-panel { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
   /* 輸入框、掃描鈕、加入鈕：同樣高度、同樣圓角，排成一列 */
   .join-panel .row { flex-wrap: nowrap; gap: 8px; align-items: stretch; }
@@ -1189,7 +1190,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.21';
+const APP_VERSION = '7.22';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2798,7 +2799,7 @@ function renderAccountCard(all) {
     return `<div class="account-card">
       <p>${who} 是<b>管理者帳號</b>，不用認領球員。想用球友身分報名、收上場通知，請用自己的 Google 帳號登入。</p>
       <span class="member-btns">
-        <button class="btn-primary" data-action="drawer-go" data-target="home">回到管理畫面</button>
+        <button class="btn-primary" data-action="drawer-go" data-target="admin-home">回到管理畫面</button>
       </span>
     </div>`;
   }
@@ -4155,11 +4156,13 @@ function renderDrawer() {
     ]
     : admin && showHome()
     ? [
+      // 管理者手機切換到首頁：選單只放「回到管理畫面」
+      isAdminDevice() ? [item('admin-home', 'court', '回到管理畫面')]
       // 已登入：顯示「名字，登出」；還沒登入才顯示「訪客登入」
-      [cloud.user
+      : [cloud.user
         ? `<button class="d-item" data-action="google-logout">${icon('logout')}<span class="d-ellipsis">${escapeHtml(cloud.user.displayName || cloud.user.email || '帳號')}，登出</span></button>`
         : item('cloud', 'cloud', '訪客登入')],
-      [item('look', 'palette', '畫面'), item('backup', 'save', '備份與還原')],
+      [item('look', 'palette', '畫面'), isAdminDevice() ? '' : item('backup', 'save', '備份與還原')],
       [updateItem],
     ]
     : admin
@@ -4183,11 +4186,13 @@ function renderDrawer() {
       ],
       // 共同管理者（不是擁有者）：可以離開管理畫面，回首頁切換到其他球團
       cloudReady() && !isTeamOwner() ? [item('leave-manage', 'box', '切換球團・回首頁')] : [],
+      // 擁有者：去首頁看其他球團，這支手機仍是管理者，隨時按「回到管理畫面」
+      cloudReady() && isTeamOwner() ? [item('switch-team', 'box', '切換球團')] : [],
       [updateItem],
     ]
     : [
       [
-        isPasswordUser() ? item('home', 'court', '回到管理畫面') : '',
+        isPasswordUser() ? item('admin-home', 'court', '回到管理畫面') : '',
         item('signup', 'calendar', '報名場次', badge(openSignupCount())),
         isPasswordUser() ? '' : item('account', 'user', cloud.user ? '我的帳號・上場通知' : '登入 / 認領球員'),
         item('ranks', 'trophy', '長期排行榜・我的戰績'),
@@ -4313,6 +4318,12 @@ function drawerGo(target) {
       return;
     } else if (target === 'reset-local') {
       ui.resetConfirm = true;   // 先確認，避免誤按
+    } else if (target === 'switch-team') {
+      goHomeAsAdmin();
+      return;
+    } else if (target === 'admin-home') {
+      navigateTo(appBase());
+      return;
     } else if (target === 'leave-manage') {
       leaveManaging();
       return;
@@ -5751,7 +5762,6 @@ function renderSetup() {
         開始排場（<span id="setup-total" class="num">${total}</span> 人）
       </button>
     </div>
-    ${isAdminDevice() ? `<div class="setup-teams">${renderJoinedTeams()}${renderJoinPanel()}</div>` : ''}
     <div style="margin-top:20px;text-align:center">
       <button class="btn-ghost" data-action="backup-open">備份與還原</button>
     </div>
@@ -5810,6 +5820,7 @@ function swapView(update) {
 
 function switchToTeam(id) {
   if (!TEAM_ID_RE.test(String(id || ''))) return;
+  if (id === storageGet(CLOUD_TEAM_KEY)) { navigateTo(appBase()); return; }   // 自己管理的球團：回管理畫面
   if (!canSwitchInPlace()) { saveJoinedTeam(id); navigateTo(`${appBase()}?team=${id}`); return; }
   flushSaves();   // 臨時開場的資料先存好
   swapView(() => {
@@ -5866,6 +5877,15 @@ function goHome() {
  * 排場資料都在雲端，所以清掉這支手機上的那份副本（否則首頁會誤以為是臨時開場）。
  * 之後從首頁點這個球團，會自動回到管理畫面。
  */
+// 擁有者去首頁：先把還沒上傳的排場傳完再換頁
+async function goHomeAsAdmin() {
+  flushSaves();
+  if (cloud.uploadTimer || cloud.sync === 'pending') {
+    try { await uploadLive(); } catch (err) { console.warn('換頁前上傳失敗:', err); }
+  }
+  navigateTo(`${appBase()}?home=1`);
+}
+
 async function leaveManaging() {
   const id = cloud.teamId;
   flushSaves();
@@ -5904,7 +5924,9 @@ function isAdminDevice() {
 let HOME_PARAM = Boolean(new URLSearchParams(window.location.search).get('home'));
 
 function showHome() {
-  return !cloud.viewer && !ui.homeLocal && !isAdminDevice() && (!state.players.length || HOME_PARAM);
+  // 管理者手機：只有從選單按「切換球團」（?home=1）才進首頁；平常直接是管理畫面
+  if (isAdminDevice()) return !cloud.viewer && HOME_PARAM;
+  return !cloud.viewer && !ui.homeLocal && (!state.players.length || HOME_PARAM);
 }
 
 // 臨時開場：不是管理者也不是球友頁，資料只存在這支手機，沒有雲端和長期紀錄
@@ -5918,7 +5940,9 @@ function appTitle() {
 
 // 我加入的球團（首頁、選人畫面共用）
 function renderJoinedTeams() {
-  const teams = readJoinedTeams();
+  // 這支手機管理的球團已經在上面的「我管理的球團」，不重複列出
+  const managed = storageGet(CLOUD_TEAM_KEY);
+  const teams = readJoinedTeams().filter((t) => t.id !== managed);
   if (!teams.length) return '';
   const dateText = (t) => {
     if (!t.at) return '';
@@ -6046,13 +6070,18 @@ function renderHome() {
         <p class="sub">選一個開始</p>
       </div>
     </header>
+    ${isAdminDevice() ? `<div class="panel home-admin">
+      <b>我管理的球團</b>
+      <p class="sub" style="margin:0">${escapeHtml(cloud.teamName || '球團')}${cloud.phase === 'ready' ? '' : '（連線中…）'}</p>
+      <button class="btn-primary btn-block" data-action="back-to-admin">回到管理畫面</button>
+    </div>` : ''}
     ${renderJoinedTeams()}
     ${renderJoinPanel()}
-    <div class="panel home-local">
+    ${isAdminDevice() ? '' : `<div class="panel home-local">
       <b>臨時開場</b>
       <p class="sub" style="margin:0">自己排場，不用登入；資料只存在這支手機。</p>
       <button class="btn-primary btn-block" data-action="home-local">${state.players.length ? `回到臨時開場（${state.players.length} 人）` : '開始臨時開場'}</button>
-    </div>
+    </div>`}
     ${renderUpdateFooter()}`;
 }
 
@@ -9739,6 +9768,7 @@ function handleAction(el) {
       sessionChanged = false;
       break;
     case 'qr-scan': ui.scanConfirm = null; openScanner(); return;
+    case 'back-to-admin': navigateTo(appBase()); return;
     case 'scan-join': {
       const id = ui.scanConfirm && ui.scanConfirm.id;
       ui.scanConfirm = null;
