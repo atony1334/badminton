@@ -395,6 +395,14 @@
     padding: 28px 16px; border: 2px dashed var(--floor); border-radius: var(--radius-l);
   }
   .view-only { cursor: default; }
+  .bond-list { list-style: none; margin: 0 0 10px; padding: 0; background: var(--surface); border-radius: var(--radius-l); overflow: hidden; }
+  .bond-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--floor); }
+  .bond-row:first-child { border-top: 0; }
+  .bond-names { flex: 1; min-width: 0; font-size: 16px; }
+  .bond-names small { color: var(--muted); margin-left: 4px; }
+  .bond-row .btn-ghost { padding: 4px 6px; font-size: 13px; }
+  .bond-add { flex-wrap: nowrap; gap: 6px; }
+  .bond-add select { flex: 1; min-width: 0; height: 44px; }
   .home-admin { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
   .join-panel { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
   /* 輸入框、掃描鈕、加入鈕：同樣高度、同樣圓角，排成一列 */
@@ -740,6 +748,9 @@
     border-radius: var(--radius-s); transition: background 0.12s ease;
   }
   .drag-chip.drag-source { opacity: 0.35; }
+  .next-reset { margin-left: auto; padding: 2px 10px; font-size: 12px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.16); color: var(--line); }
+  .bench-row.row-next .bench-label { display: flex; align-items: baseline; gap: 6px; }
   .bench-chip { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; touch-action: manipulation; }
   .bench-chip.drag-source { opacity: 0.35; }
   .bench-chip.drop-target { background: var(--tape); color: var(--on-tape); }
@@ -939,14 +950,14 @@
   .roster-table td, .roster-table th { overflow: hidden; }
   /* 上場／休息開關（iPhone 樣式）：綠＝可上場、灰＝休息
      - 滑塊用 iOS 常見的減速曲線；按住時滑塊會拉長，放開才滑過去 */
-  td.actions button.switch {
+  button.switch {
     position: relative; display: inline-block; vertical-align: middle;
     width: 51px; height: 31px; padding: 0; border-radius: 999px;
     background: color-mix(in srgb, var(--ink) 16%, var(--surface));
     transition: background-color 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
     -webkit-tap-highlight-color: transparent;
   }
-  td.actions button.switch[aria-checked="true"] { background: var(--court); }
+  button.switch[aria-checked="true"] { background: var(--court); }
   .switch-knob {
     position: absolute; top: 2px; left: 2px; width: 27px; height: 27px; border-radius: 999px;
     background: #FFFFFF; box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15), 0 1px 1px rgba(0, 0, 0, 0.16);
@@ -1190,7 +1201,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '7.22';
+const APP_VERSION = '9.0';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1247,6 +1258,9 @@ function createDefaultState() {
     finishedCount: 0,
     startSeq: 0,        // 開局流水號：比較先後用，避免同一毫秒開多場時時間戳相同
     nextId: 1,
+    nextPins: [],       // 管理者手動拉進「下一場」的人（id）
+    nextSkips: [],      // 管理者手動從「下一場」換出去的人（id）；排完下一場就清空，回到一般等待
+    bonds: [],          // 搭檔綁定 [{a: 名字, b: 名字, on: true}]：同一隊上場；開新的一天會保留
     sessionId: newSessionId(),   // 這次球局的代碼：雲端封存用
     updatedAt: 0,                // 最後修改時間：換手機時判斷本機和雲端哪份比較新
   };
@@ -1594,6 +1608,9 @@ function normalizeState(raw) {
     p.lastStartSeq = p.lastStartSeq || 0;
   });
   next.startSeq = next.startSeq || 0;
+  next.nextPins = Array.isArray(next.nextPins) ? next.nextPins : [];
+  next.nextSkips = Array.isArray(next.nextSkips) ? next.nextSkips : [];
+  next.bonds = Array.isArray(next.bonds) ? next.bonds.filter((b) => b && b.a && b.b) : [];
   if (!FAIRNESS_STEP[next.fairness]) next.fairness = 'played';
   next.dayEnded = Boolean(next.dayEnded);
   if (!next.sessionId) next.sessionId = newSessionId();
@@ -4980,6 +4997,84 @@ function rankPlayers(players) {
 }
 
 // 畫面顯示用：同優先級依加入順序，重畫時順序不會跳動
+/**
+ * 「下一場」名單：照公平順序排，再套用管理者的手動調整
+ * - nextPins：拉進來的人排最前面
+ * - nextSkips：換出去的人這一場先不排（人數不夠時才補回來）
+ */
+function nextUpPlayers(needTotal = TEAM_SIZE[state.mode] * 2) {
+  const avail = availablePlayers();
+  const ranked = rankPlayersStable(avail);
+  const byId = new Map(avail.map((p) => [p.id, p]));
+  const pins = (state.nextPins || []).map((id) => byId.get(id)).filter(Boolean);
+  const skips = new Set(state.nextSkips || []);
+  const rest = ranked.filter((p) => !pins.includes(p));
+  const preferred = rest.filter((p) => !skips.has(p.id));
+  const fallback = rest.filter((p) => skips.has(p.id));
+  return takeWithBonds(pins.concat(preferred, fallback), needTotal);
+}
+
+/* ===================== 搭檔綁定 =====================
+ * 開啟的綁定：兩人一起上場、同一隊（只限雙打）。
+ * 其中一人休息、在場上或沒來時，另一人照常排，不會卡住輪轉。 */
+const BOND_SPLIT_PENALTY = 100000;   // 綁定的兩人被分到不同隊：幾乎禁止
+
+function bondsActive() {
+  return TEAM_SIZE[state.mode] === 2 ? (state.bonds || []).filter((b) => b.on) : [];
+}
+
+/** 這位球員開啟中的綁定搭檔 id（沒有就 null） */
+function bondPartnerId(id) {
+  const p = getPlayer(id);
+  if (!p) return null;
+  const bond = bondsActive().find((b) => b.a === p.name || b.b === p.name);
+  if (!bond) return null;
+  const partner = state.players.find((x) => x.name === (bond.a === p.name ? bond.b : bond.a));
+  return partner ? partner.id : null;
+}
+
+function isBondPair(a, b) {
+  return bondPartnerId(a) === b;
+}
+
+/** 依序加入名單：遇到有綁定、搭檔也在名單裡的，兩人一起加（放得下才加） */
+function takeWithBonds(ordered, count) {
+  const pool = new Set(ordered.map((p) => p.id));
+  const out = [];
+  ordered.forEach((p) => {
+    if (out.length >= count || out.includes(p)) return;
+    const mate = bondPartnerId(p.id);
+    const mateP = mate !== null && pool.has(mate) ? ordered.find((x) => x.id === mate) : null;
+    if (mateP && !out.includes(mateP)) {
+      if (out.length + 2 <= count) out.push(p, mateP);
+    } else {
+      out.push(p);
+    }
+  });
+  // 綁定讓人數湊不齊時，照原本順序補滿
+  ordered.forEach((p) => { if (out.length < count && !out.includes(p)) out.push(p); });
+  return out;
+}
+
+function hasNextOverride() {
+  return Boolean((state.nextPins && state.nextPins.length) || (state.nextSkips && state.nextSkips.length));
+}
+
+function clearNextOverride() {
+  state.nextPins = [];
+  state.nextSkips = [];
+}
+
+/** 板凳區的 inId 和下一場的 outId 互換 */
+function swapNextUp(inId, outId) {
+  const pins = (state.nextPins || []).filter((id) => id !== outId && id !== inId);
+  const skips = (state.nextSkips || []).filter((id) => id !== inId && id !== outId);
+  pins.push(inId);
+  skips.push(outId);
+  state.nextPins = pins;
+  state.nextSkips = skips;
+}
+
 function rankPlayersStable(players) {
   return players.slice().sort((a, b) => comparePriority(a, b) || a.id - b.id);
 }
@@ -5086,10 +5181,12 @@ function matchPenalty(teamA, teamB) {
   let penalty = recencyPenalty(teamA, teamB);
   penalty += GROUP_COUNT_WEIGHT * (groupCounts()[groupKey(teamA.concat(teamB))] || 0);
   withinPairs(teamA).concat(withinPairs(teamB)).forEach(([a, b]) => {
+    if (isBondPair(a, b)) return;   // 綁定的搭檔本來就要一起打，不算重複
     const times = pairStat(a, b).partner;
     penalty += PARTNER_REPEAT_PENALTY[Math.min(times, PARTNER_REPEAT_PENALTY.length - 1)] * Math.max(1, times - 1);
   });
   crossPairs(teamA, teamB).forEach(([a, b]) => {
+    if (isBondPair(a, b)) penalty += BOND_SPLIT_PENALTY;
     penalty += OPPONENT_WEIGHT * pairStat(a, b).opponent;
   });
   return penalty;
@@ -5141,33 +5238,63 @@ function waitLimit(needTotal) {
 function pickMatch(needTotal) {
   const ranked = rankPlayers(availablePlayers());
   if (ranked.length < needTotal) return null;
+  if (hasNextOverride()) {
+    // 管理者調整過「下一場」：就排這幾個人（只決定分隊），排完回到一般規則
+    const ids = nextUpPlayers(needTotal).map((p) => p.id);
+    clearNextOverride();
+    return bestSplit(ids);
+  }
 
   const limit = waitLimit(needTotal);
-  const overdue = ranked
+  const availIds = new Set(ranked.map((p) => p.id));
+  const mateOf = (p) => { const m = bondPartnerId(p.id); return m !== null && availIds.has(m) ? m : null; };
+  // 連等達上限的人：有綁定的話搭檔一起上（放不下兩人就先跳過這組）
+  const overdue = [];
+  ranked
     .filter((p) => p.wait >= limit)
     .sort((a, b) => b.wait - a.wait || comparePriority(a, b))
-    .slice(0, needTotal);
+    .forEach((p) => {
+      if (overdue.length >= needTotal || overdue.includes(p)) return;
+      const m = mateOf(p);
+      const mateP = m !== null ? ranked.find((x) => x.id === m) : null;
+      if (mateP && !overdue.includes(mateP)) {
+        if (overdue.length + 2 <= needTotal) overdue.push(p, mateP);   // 搭檔就算還沒等那麼久也一起上
+      } else {
+        overdue.push(p);
+      }
+    });
   const rest = ranked.filter((p) => !overdue.includes(p));
   const openSlots = needTotal - overdue.length;
 
   if (openSlots === 0) return bestSplit(overdue.map((p) => p.id));
 
-  const boundary = priorityLevel(rest[openSlots - 1]);
+  const boundary = priorityLevel(rest[Math.min(openSlots, rest.length) - 1]);
   const candidates = rest.filter((p) => priorityLevel(p) <= boundary + 1).slice(0, CANDIDATE_LIMIT);
+  // 候選人有綁定：搭檔也放進候選，才有機會兩人一起上
+  candidates.slice().forEach((p) => {
+    const m = mateOf(p);
+    const mateP = m !== null ? rest.find((x) => x.id === m) : null;
+    if (mateP && !candidates.includes(mateP)) candidates.push(mateP);
+  });
+  // 一組人裡，綁定的兩人要嘛都在、要嘛都不在
+  const bondOk = (chosen) => chosen.every((p) => { const m = mateOf(p); return m === null || chosen.some((x) => x.id === m); });
   const idealLevel = rest.slice(0, openSlots).reduce((sum, p) => sum + priorityLevel(p), 0);
   const minBenched = Math.min(...candidates.map(effectiveBenched));
 
   let best = null;
+  let bondFree = null;   // 萬一綁定讓所有組合都不成立，退回不看綁定的最佳解
   for (const combo of combinations(candidates, openSlots)) {
     const chosen = overdue.concat(combo);
+    const ok = bondOk(chosen);
     const split = bestSplit(chosen.map((p) => p.id));
     const levelCost = (LEVEL_COST_BY_FAIRNESS[state.fairness] || 20) * (combo.reduce((sum, p) => sum + priorityLevel(p), 0) - idealLevel);
     const waitScore = combo.reduce((sum, p) => sum + p.wait * p.wait, 0);
     const benchScore = combo.reduce((sum, p) => sum + effectiveBenched(p) - minBenched, 0);
     const score = split.penalty + levelCost - WAIT_WEIGHT * waitScore - BENCH_WEIGHT * benchScore;
-    if (!best || score < best.score) best = Object.assign({ score }, split);
+    if (ok && (!best || score < best.score)) best = Object.assign({ score }, split);
+    if (!bondFree || score < bondFree.score) bondFree = Object.assign({ score }, split);
   }
-  return best;
+  return best || bondFree;
 }
 
 function updatePairs(teamA, teamB, delta) {
@@ -6307,14 +6434,16 @@ function renderWaiting() {
   const limit = waitLimit(needTotal);
   const ranked = rankPlayersStable(availablePlayers());
   const resting = state.players.filter((p) => !p.active);
-  const nextUp = ranked.slice(0, needTotal);
-  const others = ranked.slice(needTotal);
+  const nextUp = nextUpPlayers(needTotal);
+  const others = ranked.filter((p) => !nextUp.includes(p));
 
   let html = '';
   if (!ranked.length) {
     html += renderBenchRow('板凳區', '<span class="bench-empty">板凳是空的，大家都在場上</span>');
   } else {
-    html += renderBenchRow(`下一場<small>${nextUp.length} 人</small>`,
+    const adjusted = hasNextOverride() && !cloud.viewer
+      ? '<button class="next-reset" data-action="next-reset">已手動調整・還原</button>' : '';
+    html += renderBenchRow(`下一場<small>${nextUp.length} 人</small>${adjusted}`,
       nextUp.map((p) => renderSeat(p, { next: true, limit })).join(''), 'row-next');
     if (others.length) {
       html += renderBenchRow(`板凳區<small>${others.length} 人</small>`,
@@ -6336,7 +6465,7 @@ function renderWaiting() {
         <div class="sideline-line" aria-hidden="true"></div>
         <div class="bench-area">${html}</div>
       </div>
-      <p class="court-hint">已等 ${limit} 局必上${cloud.viewer ? '' : '｜長按名字拖到場上換人'}</p>
+      <p class="court-hint">已等 ${limit} 局必上${cloud.viewer ? '' : '｜長按名字拖到場上換人，或在「下一場」和板凳區之間互換'}</p>
     </div>`;
 }
 
@@ -6577,7 +6706,37 @@ function renderPlayersTab() {
       <input type="text" id="add-names" placeholder="新增球員，可用逗號分隔" style="flex:1" value="${escapeHtml(ui.addText)}">
       <button class="btn-primary" data-action="add-players">新增</button>
     </div>
-    ${renderRoster()}`;
+    ${renderRoster()}
+    ${renderBonds()}`;
+}
+
+function renderBonds() {
+  const bonds = state.bonds || [];
+  const singles = TEAM_SIZE[state.mode] !== 2;
+  const names = new Set(state.players.map((p) => p.name));
+  const bonded = new Set(bonds.flatMap((b) => [b.a, b.b]));
+  const free = state.players.filter((p) => !bonded.has(p.name));
+  const list = bonds.map((b, i) => {
+    const missing = !names.has(b.a) || !names.has(b.b);
+    return `<li class="bond-row">
+      <span class="bond-names">${escapeHtml(b.a)} ＋ ${escapeHtml(b.b)}${missing ? '<small>（有人今天沒來）</small>' : ''}</span>
+      ${cloud.viewer ? `<span class="sub">${b.on ? '綁定中' : '暫停'}</span>` : `
+      <button class="switch" role="switch" aria-checked="${Boolean(b.on)}" data-action="bond-toggle" data-index="${i}"
+        aria-label="${escapeHtml(b.a)}和${escapeHtml(b.b)}的綁定${b.on ? '：開啟中' : '：關閉中'}"><span class="switch-knob"></span></button>
+      <button class="btn-ghost" data-action="bond-remove" data-index="${i}">移除</button>`}
+    </li>`;
+  }).join('');
+  const options = (sel) => `<option value="">${sel}</option>${free.map((p) => `<option>${escapeHtml(p.name)}</option>`).join('')}`;
+  const form = cloud.viewer || free.length < 2 ? '' : `
+    <div class="row bond-add">
+      <select id="bond-a">${options('選球員')}</select><span>＋</span><select id="bond-b">${options('選搭檔')}</select>
+      <button class="btn-primary" data-action="bond-add">綁定</button>
+    </div>`;
+  if (cloud.viewer && !bonds.length) return '';
+  return `<h2>搭檔綁定</h2>
+    <p class="sub" style="margin-top:-4px">綁定的兩人會一起上場、同一隊；其中一人休息或在場上時，另一人照常排。${singles ? '<b>單打模式不適用。</b>' : ''}</p>
+    ${bonds.length ? `<ul class="bond-list">${list}</ul>` : ''}
+    ${form}`;
 }
 
 /**
@@ -8439,10 +8598,11 @@ function buildLineupText() {
     lines.push(`第${i + 1}場地：${team(court.match.teamA)} vs ${team(court.match.teamB)}（${status}）`);
   });
   const needTotal = TEAM_SIZE[state.mode] * 2;
-  const waiting = rankPlayersStable(availablePlayers()).map((p) => p.name);
-  if (waiting.length) {
-    lines.push(`⏭ 下一場（預計）：${waiting.slice(0, needTotal).join('、')}`);
-    if (waiting.length > needTotal) lines.push(`⏳ 等待中：${waiting.slice(needTotal).join('、')}`);
+  const next = nextUpPlayers(needTotal);
+  const waiting = rankPlayersStable(availablePlayers()).filter((p) => !next.includes(p)).map((p) => p.name);
+  if (next.length) {
+    lines.push(`⏭ 下一場（預計）：${next.map((p) => p.name).join('、')}`);
+    if (waiting.length) lines.push(`⏳ 等待中：${waiting.join('、')}`);
   }
   const resting = state.players.filter((p) => !p.active).map((p) => p.name);
   if (resting.length) lines.push(`😴 休息：${resting.join('、')}`);
@@ -8806,9 +8966,12 @@ function dragHitTest(x, y) {
   const fromBench = drag.source.classList.contains('bench-chip');
   let valid = null;
   if (fromBench) {
-    // 場下 → 場上任一位球員（暫停中的場地除外）
-    const chip = under && under.closest('.drag-chip');
-    if (chip && !chip.classList.contains('no-drag') && chip.dataset.pid) valid = chip;
+    // 場下 → 場上任一位球員（暫停中的場地除外），或「下一場」⇄「板凳區」互換
+    const chip = under && under.closest('.drag-chip, .bench-chip');
+    const sourceNext = Boolean(drag.source.closest('.row-next'));
+    if (chip && chip.classList.contains('drag-chip') && !chip.classList.contains('no-drag') && chip.dataset.pid) valid = chip;
+    else if (chip && chip.classList.contains('bench-chip') && chip !== drag.source
+      && Boolean(chip.closest('.row-next')) !== sourceNext) valid = chip;
   } else {
     // 場上 → 同場地換位、跨場地互換，或拖到場下球員身上換人（暫停中的場地除外）
     const chip = under && under.closest('.drag-chip, .bench-chip');
@@ -8836,7 +8999,15 @@ function dragEnd() {
   if (target) {
     const fromBench = source.classList.contains('bench-chip');
     const toBench = target.classList.contains('bench-chip');
-    if (fromBench || toBench) {
+    if (fromBench && toBench) {
+      // 下一場 ⇄ 板凳區：板凳區的人進下一場，被換的人這一場先不排
+      const sourceNext = Boolean(source.closest('.row-next'));
+      const inId = Number((sourceNext ? target : source).dataset.pid);
+      const outId = Number((sourceNext ? source : target).dataset.pid);
+      swapNextUp(inId, outId);
+      saveSession();
+      showToast(`下一場改為 ${playerName(inId)}，${playerName(outId)} 先等`);
+    } else if (fromBench || toBench) {
       const courtChip = fromBench ? target : source;
       const benchChip = fromBench ? source : target;
       const courtIndex = Number(courtChip.dataset.court);
@@ -9055,7 +9226,9 @@ function startNewDay() {
   ui.historyFilter = '';
   ui.historyExpanded = false;
   ui.manual = null;
+  const bonds = state.bonds || [];   // 搭檔綁定跨天保留（用名字記）
   state = createDefaultState();
+  state.bonds = bonds;
 }
 
 function handleAction(el) {
@@ -9769,6 +9942,31 @@ function handleAction(el) {
       break;
     case 'qr-scan': ui.scanConfirm = null; openScanner(); return;
     case 'back-to-admin': navigateTo(appBase()); return;
+    case 'next-reset': clearNextOverride(); showToast('下一場已還原為自動排序'); break;
+    case 'bond-add': {
+      const a = (document.getElementById('bond-a') || {}).value;
+      const b = (document.getElementById('bond-b') || {}).value;
+      if (!a || !b || a === b) { showToast('請選兩位不同的球員'); return; }
+      state.bonds = (state.bonds || []).concat([{ a, b, on: true }]);
+      showToast(`已綁定 ${a} ＋ ${b}`);
+      break;
+    }
+    case 'bond-toggle': {
+      const bond = (state.bonds || [])[Number(el.dataset.index)];
+      if (!bond) return;
+      // 開關先滑過去再更新（和球員上場開關同樣的手感）
+      if (!el.dataset.animating) {
+        el.dataset.animating = '1';
+        el.setAttribute('aria-checked', String(!bond.on));
+        setTimeout(() => handleAction(el), SWITCH_ANIM_MS);
+        return;
+      }
+      bond.on = !bond.on;
+      break;
+    }
+    case 'bond-remove':
+      state.bonds = (state.bonds || []).filter((_, i) => i !== Number(el.dataset.index));
+      break;
     case 'scan-join': {
       const id = ui.scanConfirm && ui.scanConfirm.id;
       ui.scanConfirm = null;
