@@ -395,6 +395,13 @@
     padding: 28px 16px; border: 2px dashed var(--floor); border-radius: var(--radius-l);
   }
   .view-only { cursor: default; }
+  /* 常用球員太多時：限制高度、可上下滑，底部淡出提示還有更多 */
+  .chips-scroll { position: relative; max-height: 232px; overflow-y: auto; overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch; padding: 2px 2px 8px;
+    -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+    mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
+  .chips-scroll.at-end, .chips-scroll.no-scroll { -webkit-mask-image: none; mask-image: none; }
+  .chips-count { margin: -8px 0 14px; font-size: 13px; }
   .bond-list { list-style: none; margin: 0 0 10px; padding: 0; background: var(--surface); border-radius: var(--radius-l); overflow: hidden; }
   .bond-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--floor); }
   .bond-row:first-child { border-top: 0; }
@@ -941,6 +948,12 @@
   tr.resting .name { text-decoration: line-through; }
   td.actions button.btn-return { background: var(--tape); font-weight: 600; }
   th.th-switch { text-align: right; }
+  /* 可排序的表頭：點一下升冪、再點降冪、第三下回到原本順序 */
+  .th-sort { background: transparent; padding: 0; border-radius: 0; font: inherit; color: inherit;
+    display: inline-flex; align-items: center; gap: 2px; white-space: nowrap; -webkit-tap-highlight-color: transparent; }
+  .th-sort.on { color: var(--ink); font-weight: 700; }
+  .th-sort .sort-ind { font-size: 10px; min-width: 0; }
+  th.th-switch .th-sort { justify-content: flex-end; width: 100%; }
   /* 球員表固定欄寬：狀態從「等待」變「休息中」時，其他欄位不會左右跑 */
   table.roster-table { table-layout: fixed; }
   .roster-table col.c-num { width: 46px; }
@@ -1201,7 +1214,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '9.0';
+const APP_VERSION = '9.2';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1747,7 +1760,7 @@ const SESSION_BEFORE_CLOUD_KEY = 'badminton-session-before-cloud';   // 被雲�
 // 觀看者可以用的操作：只看、切換分頁、調整自己手機的外觀與語音
 const VIEWER_ACTIONS = new Set([
   'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
-  'title-open', 'title-pop-close', 'player-open', 'network-mode', 'network-focus',
+  'title-open', 'title-pop-close', 'player-open', 'roster-sort', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'invite-copy-code', 'invite-copy', 'invite-share', 'cloud-invite', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
@@ -5846,12 +5859,24 @@ function renderRegularPicker() {
         <button class="btn-ghost" data-action="regular-edit">${ui.editRegulars ? '完成' : '編輯'}</button>
       </span>
     </div>
-    <div class="chips" style="margin:6px 0 ${ui.editRegulars ? 10 : 16}px">${chips}</div>
+    <div class="chips-scroll" data-keep-scroll="setup-regulars" style="margin:6px 0 ${ui.editRegulars ? 10 : 16}px">
+      <div class="chips">${chips}</div>
+    </div>
+    ${regulars.length > 12 ? `<p class="sub chips-count">共 ${regulars.length} 位・已選 ${ui.setupSelected.size} 位（名單可以上下滑動）</p>` : ''}
     ${ui.editRegulars ? `<div class="ev-add reg-add">
       <input type="text" id="regular-add" placeholder="新增常用球員（可一次輸入多個，用逗號分隔）" value="${escapeHtml(ui.regularAdd || '')}">
       <button class="btn-outline" data-action="regular-add">新增</button>
     </div>` : ''}`;
 }
+
+// 捲到底（或根本不用捲）就拿掉底部淡出
+function updateScrollFade(el) {
+  el.classList.toggle('no-scroll', el.scrollHeight <= el.clientHeight + 2);
+  el.classList.toggle('at-end', el.scrollTop + el.clientHeight >= el.scrollHeight - 2);
+}
+document.addEventListener('scroll', (e) => {
+  if (e.target && e.target.classList && e.target.classList.contains('chips-scroll')) updateScrollFade(e.target);
+}, true);
 
 function renderSetup() {
   const total = new Set([...ui.setupSelected, ...parseNames(ui.setupText)]).size;
@@ -6555,7 +6580,8 @@ function renderRoster() {
   const busy = onCourtIds();
   // 觀看者不能切換上場／休息，整個「上場」欄位不畫，避免右邊空一塊
   const canEdit = !cloud.viewer;
-  const rows = state.players.map((p) => {
+  const sort = prefs.rosterSort || null;   // {key, dir}：點表頭切換（升冪 → 降冪 → 原本順序）
+  const rows = sortRoster(state.players, sort, busy).map((p) => {
     let status = '<span class="badge badge-wait">等待</span>';
     if (!p.active) status = '<span class="badge badge-rest">休息中</span>';
     else if (busy.has(p.id)) status = '<span class="badge badge-court">場上</span>';
@@ -6579,10 +6605,43 @@ function renderRoster() {
   }).join('');
   return `<table class="roster-table">
     <colgroup><col><col class="c-num"><col class="c-wait"><col class="c-status">${canEdit ? '<col class="c-switch">' : ''}</colgroup>
-    <thead><tr><th>球員（★ 常用）</th><th>場數</th><th>累計等</th><th>狀態</th>${canEdit ? '<th class="th-switch">上場</th>' : ''}</tr></thead>
+    <thead><tr>${sortHead('name', '球員（★ 常用）', sort)}${sortHead('played', '場數', sort)}${sortHead('benched', '累計等', sort)}${sortHead('status', '狀態', sort)}${canEdit ? sortHead('active', '上場', sort, 'th-switch') : ''}</tr></thead>
     <tbody>${rows}</tbody></table>
     <p class="sub" style="margin-top:6px">綠色列為正在場上，場數只計算已完成的場次，與歷史紀錄一致。<br>
       體力：上場每分鐘 −1.5、輸球再 −5、場下每分鐘 +1，綠色充足、黃色偏累、紅色該休息了（只是好玩，不影響排場）。</p>`;
+}
+
+/* ===================== 球員表排序 ===================== */
+// 狀態的排序：場上 → 等待 → 休息
+const STATUS_ORDER = { court: 0, wait: 1, rest: 2 };
+const nameCollator = new Intl.Collator('zh-Hant-TW', { numeric: true, sensitivity: 'base' });
+
+function rosterValue(p, key, busy) {
+  if (key === 'played') return busy.has(p.id) ? p.played - 1 : p.played;
+  if (key === 'benched') return p.benched;
+  if (key === 'status') return !p.active ? STATUS_ORDER.rest : (busy.has(p.id) ? STATUS_ORDER.court : STATUS_ORDER.wait);
+  if (key === 'active') return p.active ? 0 : 1;
+  return 0;
+}
+
+function sortRoster(players, sort, busy) {
+  if (!sort || !sort.key) return players;
+  const dir = sort.dir === 'desc' ? -1 : 1;
+  const order = new Map(players.map((p, i) => [p.id, i]));
+  return players.slice().sort((a, b) => {
+    const diff = sort.key === 'name'
+      ? nameCollator.compare(a.name, b.name)
+      : rosterValue(a, sort.key, busy) - rosterValue(b, sort.key, busy);
+    return diff * dir || order.get(a.id) - order.get(b.id);   // 一樣時維持原本順序
+  });
+}
+
+function sortHead(key, label, sort, cls = '') {
+  const on = sort && sort.key === key;
+  const arrow = on ? (sort.dir === 'desc' ? '▼' : '▲') : '';
+  const aria = on ? (sort.dir === 'desc' ? 'descending' : 'ascending') : 'none';
+  return `<th class="${cls}" aria-sort="${aria}"><button class="th-sort ${on ? 'on' : ''}" data-action="roster-sort" data-key="${key}">
+    ${label}<span class="sort-ind" aria-hidden="true">${arrow}</span></button></th>`;
 }
 
 function renderConsistencyBanner() {
@@ -8242,10 +8301,17 @@ function animateNewPlayers(reset) {
 
 function render() {
   const app = document.getElementById('app');
+  // 重畫前記住可捲動區塊（例如常用球員名單）的位置，畫完放回去，點選時不會跳回最上面
+  const keptScroll = {};
+  app.querySelectorAll('[data-keep-scroll]').forEach((el) => { keptScroll[el.dataset.keepScroll] = el.scrollTop; });
   const showMain = !showHome() && state.players.length > 0;
   if (showHome()) app.innerHTML = renderHome();
   else if (showMain) app.innerHTML = renderMain() + renderTurnAlert();
   else app.innerHTML = cloud.viewer ? renderViewerWaiting() : renderSetup();
+  app.querySelectorAll('[data-keep-scroll]').forEach((el) => {
+    if (keptScroll[el.dataset.keepScroll]) el.scrollTop = keptScroll[el.dataset.keepScroll];
+    updateScrollFade(el);
+  });
   // 分頁列在 .page 外面：選單推開時 .page 會加 transform，放裡面會跟著內容捲走
   document.getElementById('tabbar-root').innerHTML = showMain ? renderTabBar() : '';
   // 換到不同的畫面（載入中 → 排場、首頁、設定…）時淡入；同一個畫面內的更新不播
@@ -9942,6 +10008,17 @@ function handleAction(el) {
       break;
     case 'qr-scan': ui.scanConfirm = null; openScanner(); return;
     case 'back-to-admin': navigateTo(appBase()); return;
+    case 'roster-sort': {
+      const key = el.dataset.key;
+      const cur = prefs.rosterSort;
+      // 同一欄：升冪 → 降冪 → 取消；換欄：從升冪開始
+      if (!cur || cur.key !== key) prefs.rosterSort = { key, dir: 'asc' };
+      else if (cur.dir === 'asc') prefs.rosterSort = { key, dir: 'desc' };
+      else prefs.rosterSort = null;
+      savePrefs();
+      sessionChanged = false;
+      break;
+    }
     case 'next-reset': clearNextOverride(); showToast('下一場已還原為自動排序'); break;
     case 'bond-add': {
       const a = (document.getElementById('bond-a') || {}).value;
