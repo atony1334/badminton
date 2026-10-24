@@ -402,6 +402,7 @@
     mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
   .chips-scroll.at-end, .chips-scroll.no-scroll { -webkit-mask-image: none; mask-image: none; }
   .chips-count { margin: -8px 0 14px; font-size: 13px; }
+  .chips-scroll.rows-2 { max-height: var(--rows2, 92px); }   /* 最多顯示兩排（實際高度由 fitTwoRows 依按鈕大小算） */
   .bond-list { list-style: none; margin: 0 0 10px; padding: 0; background: var(--surface); border-radius: var(--radius-l); overflow: hidden; }
   .bond-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--floor); }
   .bond-row:first-child { border-top: 0; }
@@ -787,6 +788,13 @@
   .sideline .seat-next { border-color: var(--tape); }
   .sideline .seat-next small { color: var(--tape); opacity: 1; }
   .sideline .seat-must { border-color: var(--danger); }
+  /* 已等幾局：框線顏色（剛下場沒有框線） */
+  .seat.w1, .sideline .seat.w1 { border-color: rgba(255, 255, 255, 0.75); }
+  .seat.w2, .sideline .seat.w2 { border-color: #F2C94C; }
+  .seat.w3, .sideline .seat.w3 { border-color: #F2994A; }
+  .sideline .seat-next:not(.w1):not(.w2):not(.w3):not(.seat-must) { border-color: rgba(255, 255, 255, 0.08); }
+  .wait-legend { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 4px 10px; margin-top: 4px; }
+  .wait-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 4px; border: 2px solid; vertical-align: -2px; margin-right: 3px; }
   .sideline .seat-rest { opacity: 0.5; }
   .sideline .bench-empty { color: var(--c-line); opacity: 0.8; }
   .sideline .seat.drop-target { background: var(--tape); color: var(--on-tape); }
@@ -1214,7 +1222,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '9.2';
+const APP_VERSION = '9.4';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -5869,8 +5877,19 @@ function renderRegularPicker() {
     </div>` : ''}`;
 }
 
+// 「兩排」的高度：依第一顆按鈕的高度和間距算，字體大小不同也剛好兩排
+function fitTwoRows(el) {
+  if (!el.classList.contains('rows-2')) return;
+  const chips = el.querySelector('.chips');
+  const first = chips && chips.firstElementChild;
+  if (!first) return;
+  const gap = parseFloat(getComputedStyle(chips).rowGap) || 8;
+  el.style.setProperty('--rows2', `${Math.ceil(first.offsetHeight * 2 + gap + 10)}px`);
+}
+
 // 捲到底（或根本不用捲）就拿掉底部淡出
 function updateScrollFade(el) {
+  fitTwoRows(el);
   el.classList.toggle('no-scroll', el.scrollHeight <= el.clientHeight + 2);
   el.classList.toggle('at-end', el.scrollTop + el.clientHeight >= el.scrollHeight - 2);
 }
@@ -6435,9 +6454,11 @@ function renderCourt(court, index) {
  */
 function renderSeat(p, { next = false, limit = Infinity } = {}) {
   const must = p.wait >= limit;
-  const note = p.wait ? `已等 ${p.wait}` : '剛下場';
-  return `<span class="seat bench-chip ${next ? 'seat-next' : ''} ${must ? 'seat-must' : ''}"
-      data-pid="${p.id}" data-name="${escapeHtml(p.name)}">
+  // 文字顯示已上幾場；已等幾局改用框線顏色表示（白 1、黃 2、橘 3 以上、紅＝必上）
+  const note = `已上 ${p.played} 場`;
+  const waitClass = must ? '' : p.wait >= 3 ? 'w3' : p.wait === 2 ? 'w2' : p.wait === 1 ? 'w1' : '';
+  return `<span class="seat bench-chip ${next ? 'seat-next' : ''} ${must ? 'seat-must' : ''} ${waitClass}"
+      data-pid="${p.id}" data-name="${escapeHtml(p.name)}" title="${p.wait ? `已等 ${p.wait} 局` : '剛下場'}">
     ${must ? '<em class="seat-flag">必上</em>' : ''}
     <b>${escapeHtml(p.name)}</b><small class="num">${note}</small>
   </span>`;
@@ -6490,7 +6511,12 @@ function renderWaiting() {
         <div class="sideline-line" aria-hidden="true"></div>
         <div class="bench-area">${html}</div>
       </div>
-      <p class="court-hint">已等 ${limit} 局必上${cloud.viewer ? '' : '｜長按名字拖到場上換人，或在「下一場」和板凳區之間互換'}</p>
+      <p class="court-hint"><span class="wait-legend">框線＝已等幾局：
+        <span><i style="border-color:rgba(255,255,255,0.75)"></i>1 局</span>
+        <span><i style="border-color:#F2C94C"></i>2 局</span>
+        <span><i style="border-color:#F2994A"></i>3 局以上</span>
+        <span><i style="border-color:var(--danger)"></i>${limit} 局必上</span></span>
+        ${cloud.viewer ? '' : '<br>長按名字拖到場上換人，或在「下一場」和板凳區之間互換'}</p>
     </div>`;
 }
 
@@ -6499,8 +6525,10 @@ function renderRegularQuickAdd() {
   const absent = regulars.filter((name) => !present.has(name));
   if (!absent.length) return '';
   return `<p class="label" style="margin:0 0 6px">常用球員（點一下加入）</p>
-    <div class="chips" style="margin-bottom:12px">
-      ${absent.map((name) => `<button class="chip" data-action="quick-add" data-name="${escapeHtml(name)}">＋ ${escapeHtml(name)}</button>`).join('')}
+    <div class="chips-scroll rows-2" data-keep-scroll="quick-add" style="margin-bottom:12px">
+      <div class="chips">
+        ${absent.map((name) => `<button class="chip" data-action="quick-add" data-name="${escapeHtml(name)}">＋ ${escapeHtml(name)}</button>`).join('')}
+      </div>
     </div>`;
 }
 
