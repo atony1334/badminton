@@ -233,6 +233,10 @@
   .mg-cell { min-height: 52px; border-radius: 10px; padding: 4px 2px; display: flex; flex-direction: column; align-items: center;
     justify-content: flex-start; gap: 2px; background: var(--surface); color: var(--ink); position: relative; font-size: 17px; }
   .mg-cell.blank { background: transparent; }
+  .ev-repeat { margin: -4px 0 6px; }
+  .ev-wds { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; margin: 4px 0 10px; }
+  .ev-wds .chip { margin: 0; padding: 8px 0; justify-content: center; text-align: center; }
+  .ev-clash { color: #b45309; }
   .mg-cell.disabled { opacity: .35; }
   .mg-cell.today { box-shadow: inset 0 0 0 2px var(--court-dark); }
   .mg-cell.selected { background: var(--court-dark); color: var(--line); }
@@ -1230,7 +1234,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '9.8';
+const APP_VERSION = '9.9';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3074,7 +3078,62 @@ function newEventForm(ev) {
     editId: null, date: localDateKey(), start: last.start || '19:00', end: last.end || '22:00',
     venue: last.venue || '', place: last.place || '', note: '', courts: Number(last.courts) || 2,
     cap: (Number(last.courts) || 2) * SIGNUP_PER_COURT, capAuto: true,
+    repeat: { on: false, days: [], weeks: REPEAT_WEEKS_DEFAULT },
   };
+}
+
+/* ---------- 重複場次（v9.9）：一次開好幾場，之後每場各自獨立 ---------- */
+const REPEAT_WEEKS_DEFAULT = 4;
+const REPEAT_WEEKS_MAX = 12;
+const REPEAT_EVENTS_MAX = 24;
+
+function weekdayOf(dateKey) {
+  const [y, m, d] = dateKey.split('-').map(Number);
+  return new Date(y, m - 1, d).getDay();
+}
+
+/** 從選的日期起算 N 週內，落在勾選星期的日子（最多 REPEAT_EVENTS_MAX 場） */
+function repeatDates(f) {
+  const r = f.repeat;
+  if (f.editId || !r || !r.on || !/^\d{4}-\d{2}-\d{2}$/.test(f.date || '')) return [f.date];
+  const [y, m, d] = f.date.split('-').map(Number);
+  const out = [];
+  for (let i = 0; i < r.weeks * 7 && out.length < REPEAT_EVENTS_MAX; i += 1) {
+    const day = new Date(y, m - 1, d + i);
+    if (r.days.includes(day.getDay())) out.push(localDateKey(day.getTime()));
+  }
+  return out;
+}
+
+function renderRepeatBox(f) {
+  if (f.editId) return '';
+  const r = f.repeat;
+  const head = `<div class="row">
+      <span class="label">每週重複</span>
+      <button class="switch" role="switch" aria-checked="${r.on}" data-action="ev-repeat"
+        aria-label="每週重複${r.on ? '：開啟中' : '：關閉中'}"><span class="switch-knob"></span></button>
+    </div>`;
+  if (!r.on) return head;
+  const dates = repeatDates(f);
+  const taken = new Set(signup.events.map((ev) => ev.date));
+  const clash = dates.filter((k) => taken.has(k)).length;
+  const days = Array.from(WEEKDAYS).map((w, i) =>
+    `<button class="chip ev-wd" data-action="ev-repeat-day" data-value="${i}" aria-pressed="${r.days.includes(i)}">${w}</button>`).join('');
+  return `${head}
+    <div class="ev-repeat">
+      <div class="ev-wds" role="group" aria-label="重複的星期">${days}</div>
+      <div class="row">
+        <span class="label">持續</span>
+        <div class="stepper">
+          <button data-action="ev-repeat-weeks" data-value="-1" aria-label="減少週數">−</button>
+          <span class="num">${r.weeks} 週</span>
+          <button data-action="ev-repeat-weeks" data-value="1" aria-label="增加週數">＋</button>
+        </div>
+      </div>
+      <p class="sub">${dates.length
+        ? `會開 <b>${dates.length}</b> 場：${dates.map((k) => `<span class="${taken.has(k) ? 'ev-clash' : ''}">${escapeHtml(eventDateText({ date: k }))}</span>`).join('、')}${clash ? `<br><span class="ev-clash">其中 ${clash} 天已經有場次</span>` : ''}`
+        : '從選的日期起，這幾週內沒有勾到的星期。'}${dates.length >= REPEAT_EVENTS_MAX ? `（一次最多 ${REPEAT_EVENTS_MAX} 場）` : ''}<br>建好後每一場都是獨立的，可以各自修改或刪除。</p>
+    </div>`;
 }
 
 async function saveEventForm() {
@@ -3101,10 +3160,15 @@ async function saveEventForm() {
       ui.signupId = f.editId;
       showToast('已更新場次');
     } else {
-      const id = `${f.date.replace(/-/g, '')}-${randomId(6)}`;
-      await setDoc(eventRef(id), Object.assign(data, { status: 'open', createdAt: serverTimestamp() }));
-      ui.signupId = id;
-      showToast('已開放報名，按「分享報名連結」貼到 LINE 群組');
+      const dates = repeatDates(f);
+      if (!dates.length) { signup.busy = false; showToast('請勾選要重複的星期'); render(); return; }
+      const ids = dates.map((date) => `${date.replace(/-/g, '')}-${randomId(6)}`);
+      await Promise.all(dates.map((date, i) => setDoc(eventRef(ids[i]),
+        Object.assign({}, data, { date, status: 'open', createdAt: serverTimestamp() }))));
+      ui.signupId = ids[0];
+      showToast(dates.length > 1
+        ? `已開 ${dates.length} 場並開放報名`
+        : '已開放報名，按「分享報名連結」貼到 LINE 群組');
     }
     ui.signupForm = null;
     ui.mapOpen = false;
@@ -3849,11 +3913,12 @@ function renderEventFormModal() {
       <p class="sub">${f.capAuto
         ? `預設每面場 ${SIGNUP_PER_COURT} 人，會跟著場地數變；`
         : `已手動設定（每面場 ${SIGNUP_PER_COURT} 人是 ${f.courts * SIGNUP_PER_COURT} 人），改場地數不會自動變；`}額滿後報名的人排候補。${renderCapWarning(f)}</p>
+      ${renderRepeatBox(f)}
       <label class="label" for="ev-note">備註（選填）</label>
       <textarea id="ev-note" maxlength="200" placeholder="例如：場地費 150 元，請自備球">${escapeHtml(f.note)}</textarea>
     </div>
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="event-save" ${signup.busy ? 'disabled' : ''}>
-      ${f.editId ? '儲存' : '建立並開放報名'}</button>
+      ${f.editId ? '儲存' : (() => { const n = repeatDates(f).length; return n > 1 ? `建立 ${n} 場並開放報名` : '建立並開放報名'; })()}</button>
     <button class="btn-ghost btn-block" data-action="event-form-cancel">取消</button>`;
 }
 
@@ -10034,12 +10099,17 @@ function handleAction(el) {
       sessionChanged = false;
       modalOnly = true;
       break;
-    case 'ev-date-pick':
-      ui.signupForm.date = el.dataset.date;
+    case 'ev-date-pick': {
+      const f = ui.signupForm;
+      const r = f.repeat;
+      // 重複只勾了原本那天的星期：跟著換成新日期的星期
+      if (r && r.days.length === 1 && r.days[0] === weekdayOf(f.date)) r.days = [weekdayOf(el.dataset.date)];
+      f.date = el.dataset.date;
       ui.formMonth = monthOf(el.dataset.date);
       sessionChanged = false;
       modalOnly = true;
       break;
+    }
     case 'ev-form-month': ui.formMonth = shiftMonth(ui.formMonth || monthOf(ui.signupForm.date), Number(el.dataset.value)); sessionChanged = false; modalOnly = true; break;
     case 'signup-view':
       prefs.signupView = el.dataset.value;
@@ -10067,6 +10137,29 @@ function handleAction(el) {
       const f = ui.signupForm;
       f.courts = Math.max(1, Math.min(MAX_COURTS, f.courts + Number(el.dataset.value)));
       if (f.capAuto) f.cap = f.courts * SIGNUP_PER_COURT;   // 沒手動改過：名額跟著場地數
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    }
+    case 'ev-repeat': {
+      const r = ui.signupForm.repeat;
+      r.on = !r.on;
+      if (r.on && !r.days.length) r.days = [weekdayOf(ui.signupForm.date)];   // 預設：選的那天的星期
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    }
+    case 'ev-repeat-day': {
+      const r = ui.signupForm.repeat;
+      const day = Number(el.dataset.value);
+      r.days = r.days.includes(day) ? r.days.filter((x) => x !== day) : r.days.concat(day).sort();
+      sessionChanged = false;
+      modalOnly = true;
+      break;
+    }
+    case 'ev-repeat-weeks': {
+      const r = ui.signupForm.repeat;
+      r.weeks = Math.max(1, Math.min(REPEAT_WEEKS_MAX, r.weeks + Number(el.dataset.value)));
       sessionChanged = false;
       modalOnly = true;
       break;
