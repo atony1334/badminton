@@ -1077,6 +1077,12 @@
   .day-ended { background: var(--soft-yellow); border: 2px solid var(--tape); border-radius: var(--radius-l);
     padding: 12px 14px; margin-bottom: 14px; }
   .day-ended .row { margin-top: 8px; }
+  .ended-card { margin-bottom: 18px; }
+  .ended-card .row { gap: 10px; flex-wrap: wrap; align-items: center; }
+  .ended-save { margin: 0; }
+  .ended-actions { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; }
+  .ended-actions .sub { margin: 0; text-align: center; }
+  .past-resume { margin: 0 0 12px; }
   .report-img { width: 100%; border-radius: var(--radius-s); border: 1px solid var(--border); display: block; }
 
   /* 勝率預測 */
@@ -1234,7 +1240,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '9.9';
+const APP_VERSION = '10.0';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -4426,7 +4432,7 @@ function renderDrawer() {
       cloudReady() ? [item('signup', 'calendar', '報名場次', badge(openSignupCount()))] : [],
       [item('ranks', 'trophy', '長期排行榜・戰績'), item('past', 'box', '歷史球局')],
       [
-        state.players.length ? item('end-day', 'flag', '結束今日打球') : '',
+        state.players.length && !state.dayEnded ? item('end-day', 'flag', '結束今日打球') : '',
         item('data', 'box', '長期紀錄與資料'),
         item('backup', 'save', '備份與還原'),
       ],
@@ -4657,6 +4663,38 @@ function renderPastListModal() {
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
 }
 
+/** 歷史球局裡最近的一場（只有它可以繼續排場） */
+function latestPastId() {
+  const list = ranks.list.slice().sort((a, b) => (b.date || 0) - (a.date || 0));
+  return list.length ? list[0].sessionId : null;
+}
+
+function canResumePast(id) {
+  return !cloud.viewer && cloudReady() && id && id === latestPastId();
+}
+
+/** 從歷史球局繼續：同一局就解除結束；別的局要等目前的球局沒有進行中的紀錄 */
+function resumePastSession(id) {
+  if (!canResumePast(id)) return false;
+  if (state.sessionId !== id) {
+    const saved = past.cache[id];
+    if (!saved) { showToast('紀錄還在讀取中'); return false; }
+    if (state.history.length && !(state.dayEnded && state.archived)) {
+      showToast(state.dayEnded ? '目前的球局還沒存入長期紀錄，先存或開始新的排場' : '目前還有進行中的球局，先結束才能繼續別天');
+      return false;
+    }
+    const bonds = state.bonds || [];
+    state = normalizeState(JSON.parse(JSON.stringify(saved)));
+    if (!state.bonds || !state.bonds.length) state.bonds = bonds;
+  }
+  resumeDay();
+  ui.pastId = null;
+  ui.pastList = false;
+  closeDrawer();
+  showToast('已回到這一天的排場');
+  return true;
+}
+
 function renderPastSessionModal() {
   const id = ui.pastId;
   const head = `<button class="btn-ghost past-back" data-action="past-back">‹ 歷史球局</button>`;
@@ -4687,6 +4725,8 @@ function renderPastSessionModal() {
     <h3>${pastDateText(starts.length ? Math.min(...starts) : Date.now())}</h3>
     <p class="sub" style="margin:0 0 10px">${span}${day.players.length} 人・${day.history.length} 場・${MODE_LABEL[day.mode] || ''}</p>
     ${renderPastRename(day)}
+    ${canResumePast(id) ? `<button class="btn-outline btn-block past-resume" data-action="past-resume" data-id="${escapeHtml(id)}">
+      ${state.sessionId === id ? '繼續這天的排場' : '接續這天繼續排場'}</button>` : ''}
     <div class="past-view">${html}</div>
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="past-back">返回歷史球局</button>`;
 }
@@ -6965,6 +7005,63 @@ function renderHistory() {
     </div>`;
 }
 
+/**
+ * v10.0 今日已結束：排場畫面整個收起來，只留報名場次。
+ * 管理者可以「開始排場」（開新球局），或「繼續今天的排場」；球友看到同一個畫面。
+ */
+function renderEndedScreen() {
+  const admin = !cloud.viewer;
+  const count = state.history.length;
+  const canSave = admin && cloudReady() && count > 0;
+  const saveLine = !canSave ? ''
+    : state.archived ? '<p class="sub ended-save">✓ 已存入長期紀錄</p>'
+      : '<button class="btn-ghost" data-action="archive-now">補存入長期紀錄</button>';
+  const events = upcomingEvents();
+  const signupBlock = !cloudConfigured() || isLocalMode() ? ''
+    : events.length ? renderEventCards()
+      : `<section class="ev-section"><h2 class="ev-h">報名場次</h2>
+          <p class="sub ev-empty">目前沒有開放報名的場次。</p>
+          ${admin ? '<button class="btn-ghost" data-action="drawer-go" data-target="signup">開報名場次</button>' : ''}</section>`;
+  const startArmed = ui.dayNewArmed;
+  return `
+    <header class="top">
+      ${menuButton()}
+      <div class="top-title">
+        <h1>${appTitle()}</h1>
+        <p class="sub">${cloud.teamName ? `${escapeHtml(cloud.teamName)}・` : ''}今日已結束</p>
+        ${admin ? syncChip() : ''}
+      </div>
+    </header>
+    <div class="day-ended ended-card">
+      <strong>🏁 今日打球已結束</strong>
+      <p class="sub" style="margin:4px 0 0">共完成 ${count} 場${state.players.length ? `・${state.players.length} 人參加` : ''}</p>
+      <div class="row">
+        <button class="btn-tape" data-action="report-open">查看戰報</button>
+        ${saveLine}
+      </div>
+    </div>
+    ${signupBlock}
+    ${admin ? `
+    <div class="ended-actions">
+      ${startArmed ? `<p class="sub">${canSave && !state.archived ? '今天的紀錄還沒存入長期紀錄，開始後就找不回來了。' : '今天的場地和紀錄會清掉（已存的長期紀錄不受影響）。'}</p>` : ''}
+      <button class="${startArmed ? 'btn-danger' : 'btn-primary'} btn-block" data-action="day-new">${startArmed ? '再按一次，開始新的排場' : '開始排場'}</button>
+      <button class="btn-ghost btn-block" data-action="day-resume">繼續今天的排場</button>
+    </div>` : `
+    <div class="wait-links">
+      <button class="btn-ghost" data-action="drawer-go" data-target="${cloud.user ? 'account' : 'ranks'}">${icon('user')}${cloud.user ? '我的戰績' : '長期排行榜'}</button>
+      <button class="btn-ghost" data-action="drawer-go" data-target="past">${icon('box')}歷史球局</button>
+    </div>`}`;
+}
+
+/** 繼續排場：解除「已結束」，回到場地分頁（再結束時會覆蓋同一份長期紀錄，不會重複計算） */
+function resumeDay() {
+  state.dayEnded = false;
+  state.archived = false;   // 之後多打的場次要再存一次（存的時候覆蓋同一份）
+  state.updatedAt = Date.now();
+  ui.tab = 'courts';
+  ui.dayNewArmed = false;
+}
+
 function renderDayEndedBanner() {
   if (!state.dayEnded) return '';
   return `<div class="day-ended">
@@ -6977,7 +7074,7 @@ function renderDayEndedBanner() {
 }
 
 function renderCourtsTab() {
-  return `${renderDayEndedBanner()}<div class="courts-layout">
+  return `<div class="courts-layout">
     <div class="courts-main">
       <div class="courts">${state.courts.map(renderCourt).join('')}</div>
       ${state.courts.some((c) => !c.match)
@@ -8548,8 +8645,10 @@ function render() {
   // 重畫前記住可捲動區塊（例如常用球員名單）的位置，畫完放回去，點選時不會跳回最上面
   const keptScroll = {};
   app.querySelectorAll('[data-keep-scroll]').forEach((el) => { keptScroll[el.dataset.keepScroll] = el.scrollTop; });
-  const showMain = !showHome() && state.players.length > 0;
+  const showEnded = !showHome() && state.players.length > 0 && state.dayEnded;
+  const showMain = !showHome() && state.players.length > 0 && !state.dayEnded;
   if (showHome()) app.innerHTML = renderHome();
+  else if (showEnded) app.innerHTML = renderEndedScreen();
   else if (showMain) app.innerHTML = renderMain() + renderTurnAlert();
   else app.innerHTML = cloud.viewer ? renderViewerWaiting() : renderSetup();
   app.querySelectorAll('[data-keep-scroll]').forEach((el) => {
@@ -8559,7 +8658,7 @@ function render() {
   // 分頁列在 .page 外面：選單推開時 .page 會加 transform，放裡面會跟著內容捲走
   document.getElementById('tabbar-root').innerHTML = showMain ? renderTabBar() : '';
   // 換到不同的畫面（載入中 → 排場、首頁、設定…）時淡入；同一個畫面內的更新不播
-  const viewKey = showHome() ? 'home' : showMain ? 'main' : (cloud.viewer ? `viewer-${cloud.viewerStatus}` : 'setup');
+  const viewKey = showHome() ? 'home' : showEnded ? 'ended' : showMain ? 'main' : (cloud.viewer ? `viewer-${cloud.viewerStatus}` : 'setup');
   const prevViewKey = ui.viewKey;
   const viewChanged = viewKey !== prevViewKey;
   // 剛打開 App、剛進球團：場上的人本來就在，不播上場動畫；按「開始」排出第一輪則要播
@@ -9849,6 +9948,25 @@ function handleAction(el) {
       openReport();
       return;
     case 'end-day-cancel': ui.endDayArmed = false; sessionChanged = false; break;
+    case 'day-new':
+      if (!ui.dayNewArmed) {
+        ui.dayNewArmed = true;
+        sessionChanged = false;
+        setTimeout(() => { if (ui.dayNewArmed) { ui.dayNewArmed = false; render(); } }, 5000);
+        break;
+      }
+      ui.dayNewArmed = false;
+      startNewDay();
+      ui.tab = 'courts';
+      break;
+    case 'day-resume':
+      resumeDay();
+      showToast('已回到今天的排場');
+      break;
+    case 'past-resume': {
+      if (!resumePastSession(el.dataset.id)) { sessionChanged = false; break; }
+      break;
+    }
     case 'archive-now': archiveSession('end-day'); return;
     case 'past-open': openPastSession(el.dataset.id); return;
     case 'past-open-from-settings':
