@@ -1230,7 +1230,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '9.7';
+const APP_VERSION = '9.8';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -8186,7 +8186,15 @@ function renderModal() {
     modalLeaveTimer = null;
     root.innerHTML = '';
   }
-  const previous = root.querySelector('.modal');
+  let previous = root.querySelector('.modal');
+  // 被手指往下拉出畫面、但還有上一層要顯示（例如開新場次 → 報名列表）：
+  // 舊面板已經在畫面外、背景也透明了，留著會變成一層看不見的遮罩擋住所有點擊，所以重建並重新滑上來
+  if (previous && content && /110%/.test(previous.style.transform || '')) {
+    root.innerHTML = '';
+    delete root.dataset.key;
+    lastModalContent = '';
+    previous = null;
+  }
 
   if (!content) {
     document.body.classList.toggle('modal-open', false);
