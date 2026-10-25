@@ -221,6 +221,12 @@
   .mgrid-wrap { margin: 8px 0; }
   .mg-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
   .mg-head b { font-size: 17px; }
+  /* 月份上下連續捲動：框內固定高度，停下時對齊到月份開頭；捲到頭尾才帶動整個視窗 */
+  .mg-week { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .mg-scroll { position: relative; max-height: 372px; overflow-y: auto; scroll-snap-type: y proximity;
+    -webkit-overflow-scrolling: touch; border-radius: 10px; }
+  .mg-month { scroll-snap-align: start; padding-bottom: 10px; }
+  .mg-mlabel { font-size: 14px; font-weight: 700; color: var(--muted); padding: 6px 4px 6px; }
   .mg-nav { font-size: 26px; line-height: 1; padding: 4px 16px; text-decoration: none; }
   .mgrid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
   .mg-wd { text-align: center; font-size: 13px; color: var(--muted); padding: 4px 0; }
@@ -1224,7 +1230,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '9.5';
+const APP_VERSION = '9.7';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3409,29 +3415,137 @@ function shiftMonth(monthKey, delta) {
  * @param {(dateKey: string, day: number) => {html: string, cls?: string, action?: string, disabled?: boolean}} cell
  */
 function renderMonthGrid(monthKey, navAction, cell) {
-  const [y, m] = monthKey.split('-').map(Number);
-  const first = new Date(y, m - 1, 1).getDay();
-  const days = new Date(y, m, 0).getDate();
+  // v9.7：像 iPhone 行事曆，好幾個月上下連在一起捲；‹ › 和左右滑會捲到上／下個月
   const today = localDateKey();
-  const cells = [];
-  for (let i = 0; i < first; i += 1) cells.push('<span class="mg-cell blank"></span>');
-  for (let d = 1; d <= days; d += 1) {
-    const key = `${y}-${pad2(m)}-${pad2(d)}`;
-    const c = cell(key, d);
-    const cls = ['mg-cell', c.cls || '', key === today ? 'today' : ''].join(' ').trim();
-    cells.push(c.disabled || !c.action
-      ? `<span class="${cls}${c.disabled ? ' disabled' : ''}">${c.html}</span>`
-      : `<button class="${cls}" data-action="${c.action}" data-date="${key}">${c.html}</button>`);
+  const todayMonth = monthOf(today);
+  const from = shiftMonth(monthKey < todayMonth ? monthKey : todayMonth, -MONTHS_BEFORE);
+  const to = shiftMonth(monthKey > todayMonth ? monthKey : todayMonth, MONTHS_AFTER);
+  const blocks = [];
+  for (let key = from; key <= to; key = shiftMonth(key, 1)) {
+    const [y, m] = key.split('-').map(Number);
+    const first = new Date(y, m - 1, 1).getDay();
+    const days = new Date(y, m, 0).getDate();
+    const cells = [];
+    for (let i = 0; i < first; i += 1) cells.push('<span class="mg-cell blank"></span>');
+    for (let d = 1; d <= days; d += 1) {
+      const dateKey = `${y}-${pad2(m)}-${pad2(d)}`;
+      const c = cell(dateKey, d);
+      const cls = ['mg-cell', c.cls || '', dateKey === today ? 'today' : ''].join(' ').trim();
+      cells.push(c.disabled || !c.action
+        ? `<span class="${cls}${c.disabled ? ' disabled' : ''}">${c.html}</span>`
+        : `<button class="${cls}" data-action="${c.action}" data-date="${dateKey}">${c.html}</button>`);
+    }
+    blocks.push(`<section class="mg-month" data-month="${key}">
+        <div class="mg-mlabel">${m === 1 || key === from ? `${y} 年 ` : ''}${m} 月</div>
+        <div class="mgrid">${cells.join('')}</div>
+      </section>`);
   }
-  return `<div class="mgrid-wrap">
+  const [cy, cm] = monthKey.split('-').map(Number);
+  return `<div class="mgrid-wrap" data-nav="${navAction}" data-current="${monthKey}">
       <div class="mg-head">
         <button class="btn-ghost mg-nav" data-action="${navAction}" data-value="-1" aria-label="上個月">‹</button>
-        <b>${y} 年 ${m} 月</b>
+        <b class="mg-title">${cy} 年 ${cm} 月</b>
         <button class="btn-ghost mg-nav" data-action="${navAction}" data-value="1" aria-label="下個月">›</button>
       </div>
-      <div class="mgrid">${Array.from(WEEKDAYS).map((w) => `<span class="mg-wd">${w}</span>`).join('')}${cells.join('')}</div>
+      <div class="mg-week">${Array.from(WEEKDAYS).map((w) => `<span class="mg-wd">${w}</span>`).join('')}</div>
+      <div class="mg-scroll">${blocks.join('')}</div>
     </div>`;
 }
+
+const MONTHS_BEFORE = 6;    // 往前可以捲幾個月
+const MONTHS_AFTER = 12;    // 往後可以捲幾個月
+const monthScrollPos = {};  // 每個月曆（依 navAction）上次捲到的位置 {month, top}
+
+function setMonthState(nav, key) {
+  if (nav === 'ev-form-month') ui.formMonth = key;
+  else if (nav === 'signup-month') ui.signupMonth = key;
+}
+
+function monthBlockAt(scroller) {
+  const blocks = scroller.querySelectorAll('.mg-month');
+  let current = blocks[0];
+  blocks.forEach((b) => { if (b.offsetTop <= scroller.scrollTop + 40) current = b; });
+  return current;
+}
+
+/** 畫面更新後：新的月曆捲到目前的月份（或上次的位置），並跟著捲動更新標題 */
+function syncMonthScrollers() {
+  document.querySelectorAll('.mgrid-wrap[data-nav]').forEach((wrap) => {
+    const scroller = wrap.querySelector('.mg-scroll');
+    if (!scroller || scroller.dataset.init) return;
+    scroller.dataset.init = '1';
+    const nav = wrap.dataset.nav;
+    const saved = monthScrollPos[nav];
+    const target = scroller.querySelector(`.mg-month[data-month="${wrap.dataset.current}"]`);
+    if (saved && saved.month === wrap.dataset.current) scroller.scrollTop = saved.top;
+    else if (target) scroller.scrollTop = target.offsetTop;
+    const title = wrap.querySelector('.mg-title');
+    const update = () => {
+      const block = monthBlockAt(scroller);
+      if (!block) return;
+      const key = block.dataset.month;
+      const [y, m] = key.split('-').map(Number);
+      if (title) title.textContent = `${y} 年 ${m} 月`;
+      wrap.dataset.current = key;
+      setMonthState(nav, key);
+      monthScrollPos[nav] = { month: key, top: scroller.scrollTop };
+    };
+    scroller.addEventListener('scroll', update, { passive: true });
+    update();
+  });
+}
+
+// ‹ ›：平順捲到上／下個月（不重畫整個視窗）
+document.addEventListener('click', (e) => {
+  const nav = e.target.closest('.mg-nav');
+  const wrap = nav && nav.closest('.mgrid-wrap');
+  const scroller = wrap && wrap.querySelector('.mg-scroll');
+  if (!scroller) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const blocks = Array.from(scroller.querySelectorAll('.mg-month'));
+  const index = blocks.indexOf(monthBlockAt(scroller));
+  const next = blocks[Math.max(0, Math.min(blocks.length - 1, index + Number(nav.dataset.value)))];
+  if (next) scroller.scrollTo({ top: next.offsetTop, behavior: reduceMotion() ? 'auto' : 'smooth' });
+}, true);
+
+// 在月曆上左右滑：換到上／下個月（往左＝下個月）
+const monthSwipe = { box: null, startX: 0, startY: 0, dx: 0, decided: false, t0: 0 };
+document.addEventListener('touchstart', (e) => {
+  monthSwipe.box = null;
+  const box = e.touches.length === 1 && e.target.closest('.mg-scroll');
+  if (!box) return;
+  Object.assign(monthSwipe, { box, startX: e.touches[0].clientX, startY: e.touches[0].clientY, dx: 0, decided: false, t0: Date.now() });
+}, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  const box = monthSwipe.box;
+  if (!box) return;
+  const dx = e.touches[0].clientX - monthSwipe.startX;
+  const dy = e.touches[0].clientY - monthSwipe.startY;
+  if (!monthSwipe.decided) {
+    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return;
+    monthSwipe.decided = true;
+    if (Math.abs(dx) < Math.abs(dy) * 1.3) { monthSwipe.box = null; return; }   // 上下：交給月曆本身捲動
+  }
+  e.preventDefault();
+  monthSwipe.dx = dx;
+  box.style.transition = 'none';
+  box.style.transform = `translateX(${dx * 0.3}px)`;
+}, { passive: false });
+function monthSwipeEnd() {
+  const { box, dx, decided, t0 } = monthSwipe;
+  monthSwipe.box = null;
+  if (!box || !decided) return;
+  box.style.transition = 'transform 0.25s cubic-bezier(0.32, 0.72, 0, 1)';
+  box.style.transform = '';
+  const fast = Math.abs(dx) > 30 && Math.abs(dx) / Math.max(1, Date.now() - t0) > 0.4;
+  if (Math.abs(dx) >= 50 || fast) {
+    const btn = box.closest('.mgrid-wrap').querySelector(`.mg-nav[data-value="${dx < 0 ? 1 : -1}"]`);
+    if (btn) btn.click();
+  }
+}
+document.addEventListener('touchend', monthSwipeEnd);
+document.addEventListener('touchcancel', monthSwipeEnd);
 
 // 開場次表單的日期：大格子點選，過去的日子不能選
 function renderDatePicker(f) {
@@ -9202,6 +9316,9 @@ document.addEventListener('touchstart', (e) => {
   const modal = e.target.closest('.modal');
   if (!modal || e.touches.length !== 1) return;
   if (e.target.closest('textarea, input, select')) return;
+  // 在可以往上捲的內層區塊（月曆、常用球員）裡：先讓它自己捲，捲到頂才算下拉關閉
+  const inner = e.target.closest('.mg-scroll, .chips-scroll');
+  if (inner && inner.scrollTop > 0) return;
   Object.assign(sheet, {
     active: true, decided: false, el: modal, dy: 0, t0: Date.now(),
     startY: e.touches[0].clientY, startX: e.touches[0].clientX,
@@ -10455,7 +10572,7 @@ let segSyncQueued = false;
 new MutationObserver(() => {
   if (segSyncQueued) return;
   segSyncQueued = true;
-  requestAnimationFrame(() => { segSyncQueued = false; syncSegs(); });
+  requestAnimationFrame(() => { segSyncQueued = false; syncSegs(); syncMonthScrollers(); });
 }).observe(document.body, { childList: true, subtree: true });
 
 // 點切換鈕：記下方向，重畫後內容往那個方向滑進來
@@ -10547,7 +10664,7 @@ document.addEventListener('touchstart', (e) => { lastTouchY = e.touches.length ?
 document.addEventListener('touchstart', (e) => {
   segSwipe.seg = null;
   if (e.touches.length !== 1 || ui.drawer) return;
-  if (e.target.closest('.seg, input, textarea, select, iframe, .ev-map, .home-team, .tabbar')) return;
+  if (e.target.closest('.seg, input, textarea, select, iframe, .ev-map, .home-team, .tabbar, .mg-scroll')) return;
   const found = segForTarget(e.target);
   if (!found) return;
   Object.assign(segSwipe, {
@@ -10606,7 +10723,7 @@ document.addEventListener('touchstart', (e) => {
   backSwipe.page = null;
   if (e.touches.length !== 1 || ui.titlePop) return;
   const modal = e.target.closest('.modal');
-  if (!modal || e.target.closest('.seg, input, textarea, select, iframe, .ev-map') || segForTarget(e.target)) return;
+  if (!modal || e.target.closest('.seg, input, textarea, select, iframe, .ev-map, .mg-scroll') || segForTarget(e.target)) return;
   const page = modal.querySelector('.modal-page');
   const button = page && page.querySelector('.past-back');
   if (!button) return;
