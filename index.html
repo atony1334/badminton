@@ -251,6 +251,7 @@
   .btn-outline { background: transparent; border: 1.5px solid var(--border); color: var(--ink); font-weight: 600;
     display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 12px; text-decoration: none; }
   .btn-outline svg { width: 18px; height: 18px; }
+  a.btn-outline { border-radius: var(--radius-s); display: inline-flex; align-items: center; justify-content: center; }   /* 連結做成的按鈕（行事曆）也要圓角 */
   .btn-outline.danger { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 45%, transparent); }
   .danger-text { color: var(--danger) !important; }
   .icon-btn { background: transparent; padding: 4px 8px; color: var(--muted); }
@@ -403,6 +404,7 @@
   .chips-scroll.at-end, .chips-scroll.no-scroll { -webkit-mask-image: none; mask-image: none; }
   .chips-count { margin: -8px 0 14px; font-size: 13px; }
   .chips-scroll.rows-2 { max-height: var(--rows2, 92px); }   /* 最多顯示兩排（實際高度由 fitTwoRows 依按鈕大小算） */
+  .ev-danger-zone { margin-top: 28px; padding-top: 14px; border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
   .bond-list { list-style: none; margin: 0 0 10px; padding: 0; background: var(--surface); border-radius: var(--radius-l); overflow: hidden; }
   .bond-row { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-top: 1px solid var(--floor); }
   .bond-row:first-child { border-top: 0; }
@@ -1222,7 +1224,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '9.4';
+const APP_VERSION = '9.5';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2885,7 +2887,7 @@ let VIEW_EVENT = (() => {
   const id = new URLSearchParams(window.location.search).get('event');
   return id && /^[A-Za-z0-9-]{6,40}$/.test(id) ? id : null;
 })();
-const signup = { events: [], ready: false, unsub: null, lists: {}, listUnsubs: {}, dirty: false, busy: false };
+const signup = { events: [], ready: false, unsub: null, lists: {}, listUnsubs: {}, dirty: false, busy: false, pastCounts: {} };
 
 function signupTeamId() {
   return cloud.viewer ? VIEW_TEAM : cloud.teamId;
@@ -2976,7 +2978,7 @@ function watchEvents() {
 function stopWatchEvents() {
   if (signup.unsub) signup.unsub();
   Object.values(signup.listUnsubs).forEach((unsub) => unsub());
-  Object.assign(signup, { unsub: null, listUnsubs: {}, lists: {}, events: [], ready: false });
+  Object.assign(signup, { unsub: null, listUnsubs: {}, lists: {}, events: [], ready: false, pastCounts: {} });
 }
 
 // 只即時追蹤還沒過的場次＋正在看的那一場，舊場次不佔連線
@@ -3489,18 +3491,36 @@ function renderSignupCalendar() {
 
 /* ---------- 畫面 ---------- */
 function eventStatusTag(ev, ranked) {
+  if (!eventUpcoming(ev)) return '<span class="ev-tag closed">已結束</span>';
   if (ev.status !== 'open') return '<span class="ev-tag closed">已截止</span>';
   if (ranked.main.length >= ranked.cap) return '<span class="ev-tag full">額滿・可候補</span>';
   return '<span class="ev-tag open">報名中</span>';
 }
 
+/** 已過去的場次：名單沒有即時追蹤，讀一次人數存起來 */
+function loadPastCounts(events) {
+  if (!cloud.fb || !signupTeamId()) return;
+  signup.pastCounts = signup.pastCounts || {};
+  const { collection, getDocs } = cloud.fb;
+  events.forEach((ev) => {
+    if (signup.lists[ev.id] || ev.id in signup.pastCounts) return;
+    signup.pastCounts[ev.id] = null;   // 讀取中
+    getDocs(collection(cloud.db, 'teams', signupTeamId(), 'events', ev.id, 'signups'))
+      .then((snap) => { signup.pastCounts[ev.id] = snap.docs.length; refreshSignupUi(); })
+      .catch(() => { delete signup.pastCounts[ev.id]; });
+  });
+}
+
 function renderEventCard(ev) {
   const ranked = signupRanked(ev);
+  // 過去的場次：用讀一次的人數（正取最多到上限）
+  const pastCount = !signup.lists[ev.id] && signup.pastCounts ? signup.pastCounts[ev.id] : undefined;
+  const shown = pastCount === undefined ? ranked.main.length : pastCount === null ? '…' : Math.min(pastCount, ranked.cap);
   const place = myPlace(ev, ranked);
   return `<button class="ev-card" data-action="signup-event" data-id="${escapeHtml(ev.id)}">
       <span class="ev-main"><b>${escapeHtml(eventTitle(ev))}</b><small>${escapeHtml(ev.venue || '地點未定')}</small>
         ${place ? `<small class="ev-mine ${place.main ? 'ok' : ''}">你是${escapeHtml(place.text)}</small>` : ''}</span>
-      <span class="ev-side"><span class="ev-count num">${ranked.main.length}/${ranked.cap}</span>${eventStatusTag(ev, ranked)}
+      <span class="ev-side"><span class="ev-count num">${shown}/${ranked.cap}</span>${eventStatusTag(ev, ranked)}
         ${ranked.wait.length ? `<small class="num">候補 ${ranked.wait.length}</small>` : ''}</span>
     </button>`;
 }
@@ -3518,6 +3538,7 @@ function renderSignupListModal() {
   const past = admin
     ? signup.events.filter((ev) => !eventUpcoming(ev)).sort((a, b) => String(b.date).localeCompare(String(a.date))).slice(0, SIGNUP_PAST_SHOWN)
     : [];
+  loadPastCounts(past);
   const body = !signup.ready
     ? '<p class="sub">讀取中…</p>'
     : upcoming.length
@@ -3577,7 +3598,6 @@ function renderSignupMine(ev, ranked) {
 }
 
 function renderSignupAdminTools(ev) {
-  const armedDelete = ui.signupArmed === `delete:${ev.id}`;
   return `
     <div class="ev-box">
       <button class="btn-primary btn-block" data-action="event-share">分享報名連結</button>
@@ -3592,7 +3612,15 @@ function renderSignupAdminTools(ev) {
         <input type="text" id="signup-add" maxlength="${SIGNUP_NAME_MAX}" placeholder="幫人報名：輸入名字" value="${escapeHtml(ui.signupAdd || '')}">
         <button class="btn-outline" data-action="signup-admin-add">加入</button>
       </div>
+    </div>`;
+}
+
+// 刪除場次放在整頁最下面（名單之後），避免和常用按鈕擠在一起誤按
+function renderEventDeleteZone(ev) {
+  const armedDelete = ui.signupArmed === `delete:${ev.id}`;
+  return `<div class="ev-danger-zone">
       <button class="${armedDelete ? 'btn-danger' : 'btn-ghost danger-text'} btn-block" data-action="event-delete">${armedDelete ? '再按一次確認刪除場次' : '刪除場次'}</button>
+      ${armedDelete ? '<p class="sub" style="text-align:center;margin:4px 0 0">報名名單會一起刪除，無法復原。</p>' : ''}
     </div>`;
 }
 
@@ -3668,7 +3696,8 @@ function renderSignupEventModal() {
     ${ranked.main.length ? `<ol class="ev-list">${renderSignupRows(ranked.main, 1, ev)}</ol>` : '<p class="sub">還沒有人報名。</p>'}
     ${ranked.wait.length ? `<div class="ev-list-head"><h4>候補 <span class="num">${ranked.wait.length}</span></h4></div>
       <ol class="ev-list wait">${renderSignupRows(ranked.wait, 1, ev)}</ol>` : ''}
-    <button class="btn-primary btn-block" style="margin-top:16px" data-action="modal-close">關閉</button>`;
+    <button class="btn-primary btn-block" style="margin-top:16px" data-action="modal-close">關閉</button>
+    ${cloud.viewer ? '' : renderEventDeleteZone(ev)}`;
 }
 
 function renderEventFormModal() {
