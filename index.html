@@ -449,6 +449,7 @@
   .past-row small { color: var(--muted); font-size: 12px; }
   .past-count { font-weight: 700; }
   .past-back { padding: 4px 6px; margin: -4px 0 4px -6px; font-size: 14px; }
+  .past-back.ev-back { margin: 16px 0 0; padding: 12px; font-size: 16px; }
   .past-view h2 { font-size: 16px; margin: 20px 0 8px; }
   .past-link { background: transparent; padding: 0; text-align: left; color: var(--ink); }
   .profile-seg { margin: 6px 0 10px; }
@@ -1240,7 +1241,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '10.0';
+const APP_VERSION = '10.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3853,15 +3854,14 @@ function renderSignupEventModal() {
   const ev = signup.events.find((e) => e.id === ui.signupId);
   if (!ev) {
     return `
-      <button class="btn-ghost past-back" data-action="signup-back">← 所有場次</button>
       <p class="sub">${signup.ready ? '找不到這個場次，可能已經被刪除。' : '讀取中…'}</p>
-      <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
+      <button class="btn-outline btn-block past-back ev-back" data-action="signup-back">← 所有場次</button>
+      <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">關閉</button>`;
   }
   const ranked = signupRanked(ev);
   const open = mapOpenUrl(ev);
   const pct = Math.min(100, Math.round((ranked.main.length / ranked.cap) * 100));
   return `
-    <button class="btn-ghost past-back" data-action="signup-back">← 所有場次</button>
     <div class="ev-title"><h3>${escapeHtml(eventTitle(ev))}</h3>${eventStatusTag(ev, ranked)}</div>
     <ul class="ev-info">
       <li>${icon('pin')}<span class="ev-info-main">${escapeHtml(ev.venue || '地點未定')}</span>
@@ -3880,7 +3880,8 @@ function renderSignupEventModal() {
     ${ranked.main.length ? `<ol class="ev-list">${renderSignupRows(ranked.main, 1, ev)}</ol>` : '<p class="sub">還沒有人報名。</p>'}
     ${ranked.wait.length ? `<div class="ev-list-head"><h4>候補 <span class="num">${ranked.wait.length}</span></h4></div>
       <ol class="ev-list wait">${renderSignupRows(ranked.wait, 1, ev)}</ol>` : ''}
-    <button class="btn-primary btn-block" style="margin-top:16px" data-action="modal-close">關閉</button>
+    <button class="btn-outline btn-block past-back ev-back" data-action="signup-back">← 所有場次</button>
+    <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">關閉</button>
     ${cloud.viewer ? '' : renderEventDeleteZone(ev)}`;
 }
 
