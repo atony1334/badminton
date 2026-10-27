@@ -1079,6 +1079,43 @@
     padding: 12px 14px; margin-bottom: 14px; }
   .day-ended .row { margin-top: 8px; }
   .ended-card { margin-bottom: 18px; }
+  .pf-g { font-size: .78em; margin-left: 3px; font-weight: 700; }
+  .pf-g.m { color: #3b82c4; }
+  .pf-g.f { color: #d0558f; }
+  .pf-box { margin: 4px 0 12px; display: flex; flex-direction: column; gap: 8px; }
+  .pf-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 8px; }
+  .pf-row .label { margin: 0; }
+  .pf-seg { width: 100%; }
+  .pf-seg button { flex: 1; padding: 7px 4px; }
+  .pf-note { margin: 0; font-size: 13px; }
+  .pf-text { margin: -4px 0 4px; color: var(--muted, #667); }
+  .pf-desc { margin: 0 0 10px; font-size: 13px; }
+  .pf-row-top { align-items: start; }
+  .pf-row-top .label { padding-top: 10px; }
+  .pf-grade { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; padding: 8px 10px;
+    border-radius: 12px; background: color-mix(in srgb, var(--court-dark) 8%, var(--floor)); color: var(--ink); }
+  .pf-grade-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .pf-grade-text small { color: var(--muted); font-size: 12px; line-height: 1.35; }
+  .pf-caret { color: var(--muted); }
+  .pf-grade-badge { flex: none; width: 30px; height: 30px; border-radius: 8px; display: inline-flex; align-items: center; justify-content: center;
+    font-weight: 800; font-variant-numeric: tabular-nums; color: #1d2a22; }
+  .t1 .pf-grade-badge, .pf-grade-badge.t1 { background: #9fd27c; }
+  .pf-grade-badge.t2 { background: #f6c6c6; }
+  .pf-grade-badge.t3 { background: #f59ac8; }
+  .pf-grade-badge.t4 { background: #fbe6b0; }
+  .pf-grade-badge.t5 { background: #f8d266; }
+  .pf-grade-badge.t6 { background: #22a8e0; color: #fff; }
+  .pf-grade-badge.t7 { background: #fff; box-shadow: inset 0 0 0 1.5px #c9cfc9; }
+  .pf-grade-badge.t8 { background: #111; color: #fff; }
+  .grade-list { list-style: none; margin: 0; padding: 0; max-height: 340px; overflow-y: auto; border-radius: 12px;
+    border: 1px solid color-mix(in srgb, var(--court-dark) 15%, transparent); overscroll-behavior: contain; }
+  .gl-tier { position: sticky; top: 0; z-index: 1; padding: 6px 12px; display: flex; gap: 8px; align-items: baseline;
+    background: var(--surface); border-bottom: 1px solid color-mix(in srgb, var(--court-dark) 10%, transparent); }
+  .gl-tier small { color: var(--muted); font-size: 12px; }
+  .gl-row { display: flex; gap: 10px; align-items: flex-start; width: 100%; text-align: left; padding: 9px 12px; background: none; color: var(--ink); }
+  .gl-row[aria-pressed="true"] { background: color-mix(in srgb, var(--court-dark) 12%, transparent); font-weight: 600; }
+  .gl-desc { font-size: 13.5px; line-height: 1.45; padding-top: 5px; }
+  .gl-clear { color: var(--muted); }
   .ended-card .row { gap: 10px; flex-wrap: wrap; align-items: center; }
   .ended-save { margin: 0; }
   .ended-actions { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; }
@@ -1241,7 +1278,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '10.1';
+const APP_VERSION = '11.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1792,7 +1829,7 @@ const VIEWER_ACTIONS = new Set([
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'invite-copy-code', 'invite-copy', 'invite-share', 'cloud-invite', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
-  'signup-view', 'signup-month', 'signup-day',
+  'signup-view', 'signup-month', 'signup-day', 'pf-set', 'grade-pick',
 ]);
 
 const cloud = {
@@ -2878,11 +2915,192 @@ function renderAccountCard(all) {
     <p>${who}・已認領 <b>${escapeHtml(cloud.claim.name)}</b>
       <span class="claim-badge ${approved ? 'ok' : ''}">${approved ? '已確認' : '等待管理者確認'}</span></p>
     ${renderPushControl()}
+    ${approved ? `<h4 class="profile-h">個人資料</h4>${renderProfileFields(cloud.claim.name)}` : '<p class="sub">管理者確認後就可以填個人資料（性別、程度）。</p>'}
     <span class="member-btns">
       <button class="btn-ghost" data-action="claim-cancel">${approved ? '解除認領' : '取消認領'}</button>
       <button class="btn-ghost" data-action="google-logout">登出</button>
     </span>
   </div>`;
+}
+
+/* ===================== 個人資料（v11.0） =====================
+ * teams/{teamId}/profiles/{p_名字}  { name, gender: 'm' | 'f' | '', grade: 0–18, level: 0–4（v11.0 舊欄位）, updatedAt, by }
+ * grade：台灣羽球推廣協會羽球程度分級（1–18 級，v11.1）；level 是 v11.0 的四段，選了新級數就不再用
+ * - 用名字當鑰匙：沒登入、管理者手動加的球員也能有資料
+ * - 已確認的球友只能改自己認領的名字；管理者可以改任何人
+ * - 大家都看得到（名字旁邊的性別記號、個人頁的程度）
+ */
+const GENDER_LABEL = { m: '男', f: '女' };
+const LEVEL_LABEL = ['', '新手', '初階', '中階', '進階'];   // v11.0 舊的四段，只用來顯示還沒重選的人
+// 台灣羽球推廣協會羽球程度分級制度（21.04.19 更新）
+const GRADE_TIERS = [
+  { name: '新手階', note: '球齡一年內，對於規則、場地、發力皆不熟悉', cls: 't1', grades: [1, 2, 3] },
+  { name: '初階', note: '球齡 1～3 年，一般零打團之初階', cls: 't2', grades: [4, 5] },
+  { name: '初中階', note: '球齡 3～5 年，一般零打團之中下', cls: 't3', grades: [6] },
+  { name: '初中階', note: '球齡 3～5 年，一般零打團之中下', cls: 't4', grades: [7] },
+  { name: '中階', note: '球齡 5～10 年，一般零打團之中階', cls: 't5', grades: [8, 9] },
+  { name: '中進階', note: '球齡 10 年以上，一般零打團之中上', cls: 't6', grades: [10, 11, 12] },
+  { name: '高階', note: '校隊前段、體保、社會甲組等', cls: 't7', grades: [13, 14, 15] },
+  { name: '職業級', note: '甲組、國家代表選手', cls: 't8', grades: [16, 17, 18] },
+];
+const GRADE_DESC = {
+  1: '剛接觸羽球，學會比賽規則，並懂得比賽禮儀',
+  2: '在中場距離中高球來回 10 拍，發球有一半以上成功率',
+  3: '定點有一半可以打到 2/3 場後，發球有九成以上成功率',
+  4: '清楚正確握拍法。長球男生定點可以打到後場，女生可以打到中後場；會基本平推；正反轉拍不順暢',
+  5: '清楚正確握拍法，略懂基本腳步，基本球路在非受迫時有一定的表現',
+  6: '略懂基本腳步並懂得基本輪轉（尚不熟練），已開始會殺球及切球，非受迫時移動長球可至中後場',
+  7: '殺球、切球或長球不論定點或移動，成功率及穩定性有七成以上。已有基本防守能力，但無變化',
+  8: '有基本戰略及打點，熟悉輪轉概念，切殺長吊均有七成以上準確性，防守有些微變化',
+  9: '切殺長吊中有三種球路有九成以上準確性及質量，發力及力道已有強度，防守要有一定程度的變化及穩定性',
+  10: '輪轉概念熟念並能活化運用，策略性戰略及打點皆能有效得分',
+  11: '切殺長吊皆具準確性，發力及速度、策略兼具，輕鬆完成反拍各球路。防守具有威脅性',
+  12: '有高速度移位及靈敏地走位與步法，殺切吊都具有高強度侵略性，常有一擊必殺的球路',
+  13: '各種球路都穩定熟練，防守無死角、球速快質量高、戰略組織、爆發力都屬上等',
+  16: '各種球路、戰術、步法已爐火純青，且發展出個人獨特球路風格',
+};
+GRADE_DESC[14] = GRADE_DESC[13]; GRADE_DESC[15] = GRADE_DESC[13];
+GRADE_DESC[17] = GRADE_DESC[16]; GRADE_DESC[18] = GRADE_DESC[16];
+
+function gradeTier(grade) {
+  return GRADE_TIERS.find((t) => t.grades.includes(grade)) || null;
+}
+
+/** 「8 級・中階」；沒選新級數但有舊的四段，顯示舊的 */
+function gradeText(pf) {
+  const g = Number(pf && pf.grade) || 0;
+  if (g) return `${g} 級・${gradeTier(g).name}`;
+  const old = Number(pf && pf.level) || 0;
+  return old ? LEVEL_LABEL[old] : '';
+}
+const profiles = { map: {}, unsub: null };
+
+function profileId(name) {
+  return `p_${encodeURIComponent(name).replace(/\./g, '%2E')}`;
+}
+
+function profileOf(name) {
+  return profiles.map[name] || null;
+}
+
+function watchProfiles() {
+  if (profiles.unsub || !cloud.fb || !signupTeamId()) return;
+  const { collection, onSnapshot } = cloud.fb;
+  profiles.unsub = onSnapshot(collection(cloud.db, 'teams', signupTeamId(), 'profiles'), (snap) => {
+    const map = {};
+    snap.docs.forEach((d) => {
+      const data = d.data();
+      if (!data || !data.name) return;
+      // 同名有兩份時（理論上不會）以正規 id 那份為準
+      if (!map[data.name] || d.id === profileId(data.name)) map[data.name] = data;
+    });
+    profiles.map = map;
+    if (isTyping()) return;
+    render();
+  }, (err) => console.warn('讀取個人資料失敗:', err));
+}
+
+function stopWatchProfiles() {
+  if (profiles.unsub) profiles.unsub();
+  profiles.unsub = null;
+  profiles.map = {};
+}
+
+/** 這支手機能不能改這個人的資料 */
+function canEditProfile(name) {
+  if (!name || !cloud.fb || isLocalMode()) return false;
+  if (!cloud.viewer) return cloudReady();
+  return Boolean(cloud.user && cloud.claim && cloud.claim.status === 'approved' && cloud.claim.name === name);
+}
+
+async function saveProfile(name, patch) {
+  if (!canEditProfile(name)) return;
+  const before = profiles.map[name] || null;
+  const next = Object.assign({ name, gender: '', grade: 0, level: 0 }, before, patch);
+  profiles.map = Object.assign({}, profiles.map, { [name]: next });
+  render();
+  try {
+    const { doc, setDoc, serverTimestamp } = cloud.fb;
+    await setDoc(doc(cloud.db, 'teams', signupTeamId(), 'profiles', profileId(name)), {
+      name,
+      gender: next.gender || '',
+      grade: Number(next.grade) || 0,
+      level: Number(next.grade) ? 0 : Number(next.level) || 0,   // 選了新級數就不再留舊的四段
+      updatedAt: serverTimestamp(),
+      by: cloud.user ? cloud.user.uid : '',
+    });
+  } catch (err) {
+    console.warn('儲存個人資料失敗:', err);
+    profiles.map = Object.assign({}, profiles.map, { [name]: before });
+    if (!before) delete profiles.map[name];
+    showToast(`沒有存到：${cloudErrorText(err)}`);
+    render();
+  }
+}
+
+// 管理者改名字：個人資料跟著搬過去
+async function moveProfile(from, to) {
+  const pf = profiles.map[from];
+  if (!pf || !cloudReady()) return;
+  try {
+    const { doc, setDoc, deleteDoc, serverTimestamp } = cloud.fb;
+    await setDoc(doc(cloud.db, 'teams', cloud.teamId, 'profiles', profileId(to)), {
+      name: to, gender: pf.gender || '', grade: Number(pf.grade) || 0, level: Number(pf.level) || 0, updatedAt: serverTimestamp(), by: cloud.user ? cloud.user.uid : '',
+    });
+    await deleteDoc(doc(cloud.db, 'teams', cloud.teamId, 'profiles', profileId(from)));
+  } catch (err) {
+    console.warn('搬移個人資料失敗:', err);
+  }
+}
+
+/** 名字旁邊的小記號（只有性別；沒填就不顯示） */
+function genderMark(name) {
+  const pf = profileOf(name);
+  const g = pf && pf.gender;
+  return g ? `<span class="pf-g ${g}" aria-label="${GENDER_LABEL[g]}">${g === 'm' ? '♂' : '♀'}</span>` : '';
+}
+
+function profileText(name) {
+  const pf = profileOf(name);
+  if (!pf) return '';
+  return [GENDER_LABEL[pf.gender], gradeText(pf)].filter(Boolean).join('・');
+}
+
+/** 個人資料區塊：能改就給按鈕，不能改就只顯示 */
+function renderProfileFields(name) {
+  const pf = profileOf(name) || {};
+  if (!canEditProfile(name)) {
+    const text = profileText(name);
+    const g = Number(pf.grade) || 0;
+    return text ? `<p class="pf-text">${escapeHtml(text)}</p>${g ? `<p class="sub pf-desc">${escapeHtml(GRADE_DESC[g])}</p>` : ''}` : '';
+  }
+  const gender = pf.gender || '';
+  const grade = Number(pf.grade) || 0;
+  const g = (v, label) => `<button data-action="pf-set" data-name="${escapeHtml(name)}" data-field="gender" data-value="${v}" aria-pressed="${gender === v}">${label}</button>`;
+  const open = ui.gradePick === name;
+  const tier = grade ? gradeTier(grade) : null;
+  const current = grade
+    ? `<span class="pf-grade-badge ${tier.cls}">${grade}</span><span class="pf-grade-text"><b>${escapeHtml(tier.name)}</b><small>${escapeHtml(GRADE_DESC[grade])}</small></span>`
+    : `<span class="pf-grade-text"><b>${pf.level ? `${escapeHtml(LEVEL_LABEL[pf.level])}（請重新選級數）` : '還沒選'}</b><small>點這裡選 1～18 級</small></span>`;
+  return `<div class="pf-box">
+    <div class="pf-row"><span class="label">性別</span>
+      <div class="seg pf-seg" role="group" aria-label="性別">${g('m', '男')}${g('f', '女')}${g('', '不填')}</div></div>
+    <div class="pf-row pf-row-top"><span class="label">程度</span>
+      <button class="pf-grade" data-action="grade-pick" data-name="${escapeHtml(name)}" aria-expanded="${open}">${current}<span class="pf-caret" aria-hidden="true">${open ? '▴' : '▾'}</span></button></div>
+    ${open ? renderGradeList(name, grade) : ''}
+    <p class="sub pf-note">程度依台灣羽球推廣協會的分級，自己評估。大家都看得到這些資料。</p>
+  </div>`;
+}
+
+function renderGradeList(name, grade) {
+  const n = escapeHtml(name);
+  const rows = GRADE_TIERS.map((t) => `
+    <li class="gl-tier ${t.cls}"><b>${escapeHtml(t.name)}</b><small>${escapeHtml(t.note)}</small></li>
+    ${t.grades.map((v) => `<li><button class="gl-row" data-action="pf-set" data-name="${n}" data-field="grade" data-value="${v}" aria-pressed="${grade === v}">
+      <span class="pf-grade-badge ${t.cls}">${v}</span><span class="gl-desc">${escapeHtml(GRADE_DESC[v])}</span></button></li>`).join('')}`).join('');
+  return `<ul class="grade-list" data-keep-scroll="grade-${n}">
+    <li><button class="gl-row gl-clear" data-action="pf-set" data-name="${n}" data-field="grade" data-value="0" aria-pressed="${grade === 0}">不填</button></li>
+    ${rows}</ul>`;
 }
 
 /* ===================== 報名 ===================== */
@@ -2982,6 +3200,7 @@ function openSignupCount() {
 
 /* ---------- 即時資料 ---------- */
 function watchEvents() {
+  watchProfiles();
   if (signup.unsub || !cloud.fb || !signupTeamId()) return;
   const { collection, onSnapshot } = cloud.fb;
   signup.unsub = onSnapshot(collection(cloud.db, 'teams', signupTeamId(), 'events'), (snap) => {
@@ -2993,6 +3212,7 @@ function watchEvents() {
 }
 
 function stopWatchEvents() {
+  stopWatchProfiles();
   if (signup.unsub) signup.unsub();
   Object.values(signup.listUnsubs).forEach((unsub) => unsub());
   Object.assign(signup, { unsub: null, listUnsubs: {}, lists: {}, events: [], ready: false, pastCounts: {} });
@@ -3846,7 +4066,7 @@ function renderSignupRows(rows, start, ev) {
     const remove = cloud.viewer ? ''
       : `<button class="${armed ? 'btn-danger' : 'btn-ghost'} ev-remove" data-action="signup-cancel" data-id="${escapeHtml(s.id)}">${armed ? '確認移除' : '移除'}</button>`;
     return `<li class="${s.id === mine ? 'mine' : ''}"><span class="num ev-no">${start + i}</span>
-      <span class="ev-name">${escapeHtml(s.name || '')}${signupByText(s)}</span>${remove}</li>`;
+      <span class="ev-name">${escapeHtml(s.name || '')}${genderMark(s.name || '')}${signupByText(s)}</span>${remove}</li>`;
   }).join('');
 }
 
@@ -4093,6 +4313,7 @@ async function renamePlayer(from, toRaw) {
     }
   }
 
+  moveProfile(from, to);
   if (ui.profileName === from) ui.profileName = to;
   if (ui.rankProfile === from) ui.rankProfile = to;
   ui.renameFrom = null;
@@ -6868,7 +7089,7 @@ function renderRoster() {
       <td>
         <button class="star" data-action="toggle-regular" data-name="${escapeHtml(p.name)}"
           aria-pressed="${starred}" aria-label="${starred ? '移出' : '加入'}常用名單">${starred ? '★' : '☆'}</button>
-        <button class="name name-btn" data-action="player-open" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}</button>
+        <button class="name name-btn" data-action="player-open" data-name="${escapeHtml(p.name)}">${escapeHtml(p.name)}${genderMark(p.name)}</button>
         ${renderStamina(p)}
       </td>
       <td class="num">${busy.has(p.id) ? p.played - 1 : p.played}</td>
@@ -8288,7 +8509,8 @@ function renderPlayerModal() {
   const view = isLocalMode() ? 'today' : ui.profileView || (ui.rankProfile ? 'long' : 'today');
   const showMeSet = myName() !== name && !(cloud.viewer && cloud.user);
   return `
-    <h3>${escapeHtml(name)}</h3>
+    <h3>${escapeHtml(name)}${genderMark(name)}</h3>
+    ${renderProfileFields(name)}
     ${isLocalMode() ? '' : profileViewSeg(view, 'profile-view')}
     <div class="profile-body">${view === 'today' ? renderTodayProfileBody(name) : renderLongProfileBody(name)}</div>
     ${showMeSet && ui.rankProfile ? `<button class="btn-ghost btn-block" data-action="me-set" data-name="${escapeHtml(name)}">這是我（在這支手機記住）</button>` : ''}
@@ -9490,7 +9712,7 @@ document.addEventListener('touchstart', (e) => {
   if (!modal || e.touches.length !== 1) return;
   if (e.target.closest('textarea, input, select')) return;
   // 在可以往上捲的內層區塊（月曆、常用球員）裡：先讓它自己捲，捲到頂才算下拉關閉
-  const inner = e.target.closest('.mg-scroll, .chips-scroll');
+  const inner = e.target.closest('.mg-scroll, .chips-scroll, .grade-list');
   if (inner && inner.scrollTop > 0) return;
   Object.assign(sheet, {
     active: true, decided: false, el: modal, dy: 0, t0: Date.now(),
@@ -9949,6 +10171,20 @@ function handleAction(el) {
       openReport();
       return;
     case 'end-day-cancel': ui.endDayArmed = false; sessionChanged = false; break;
+    case 'pf-set': {
+      const field = el.dataset.field;
+      const pf = profileOf(el.dataset.name) || {};
+      void pf;
+      const value = field === 'grade' ? Number(el.dataset.value) : el.dataset.value;
+      if (field === 'grade') ui.gradePick = null;   // 選好就收起清單
+      saveProfile(el.dataset.name, { [field]: value });
+      return;
+    }
+    case 'grade-pick':
+      ui.gradePick = ui.gradePick === el.dataset.name ? null : el.dataset.name;
+      sessionChanged = false;
+      modalOnly = Boolean(document.querySelector('.modal .pf-grade'));
+      break;
     case 'day-new':
       if (!ui.dayNewArmed) {
         ui.dayNewArmed = true;
