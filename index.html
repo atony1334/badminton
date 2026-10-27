@@ -114,6 +114,11 @@
   .d-account { display: flex; flex-direction: column; gap: 1px; padding: 6px 10px 12px; border-bottom: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
   .d-account b { font-size: 17px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .d-account small { color: var(--muted); font-size: 13px; }
+  button.d-me { width: 100%; text-align: left; background: none; color: var(--ink); border-radius: 0; font: inherit; align-items: stretch; }
+  button.d-me:active, .d-me-avatar:active { opacity: .6; }
+  .d-me-avatar { border: 0; padding: 0; font: inherit; }
+  .d-me-link { margin-top: 6px; display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; color: var(--court-dark); }
+  .d-me-link span { font-size: 18px; line-height: 1; }
   .d-group { display: flex; flex-direction: column; padding: 6px 0; border-bottom: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
   .d-group:last-of-type { border-bottom: 0; }
   .d-item {
@@ -1278,7 +1283,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '11.1';
+const APP_VERSION = '11.2';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -4612,6 +4617,8 @@ function drawerAccount() {
 function renderDrawer() {
   if (!ui.drawer) return '';
   const acc = drawerAccount();
+  // 球友：上面的頭像和名字就是「我的帳號」入口（v11.2，取代選單裡的那一項）
+  const meLink = cloud.viewer && !isPasswordUser() ? (cloud.user ? '我的帳號・上場通知・個人資料' : '登入／認領球員') : '';
   const item = (target, ico, label, extra = '') => `
     <button class="d-item" data-action="drawer-go" data-target="${target}">${icon(ico)}<span>${label}</span>${extra}</button>`;
   const badge = (n) => (n ? `<span class="d-badge">${n}</span>` : '');
@@ -4668,7 +4675,6 @@ function renderDrawer() {
       [
         isPasswordUser() ? item('admin-home', 'court', '回到管理畫面') : '',
         item('signup', 'calendar', '報名場次', badge(openSignupCount())),
-        isPasswordUser() ? '' : item('account', 'user', cloud.user ? '我的帳號・上場通知' : '登入 / 認領球員'),
         item('ranks', 'trophy', '長期排行榜・我的戰績'),
         item('past', 'box', '歷史球局'),
       ],
@@ -4681,6 +4687,16 @@ function renderDrawer() {
   return `
     <div class="drawer-bg ${ui.drawerAnim || ''}" data-action="drawer-close"></div>
     <nav class="drawer ${ui.drawerAnim || ''}" aria-label="選單">
+      ${meLink ? `
+      <div class="d-head">
+        <button class="d-avatar d-me-avatar" data-action="drawer-go" data-target="account" aria-label="${meLink}">${escapeHtml(acc.initial)}</button>
+        <button class="d-close" data-action="drawer-close" aria-label="關閉選單">✕</button>
+      </div>
+      <button class="d-account d-me" data-action="drawer-go" data-target="account">
+        <b>${escapeHtml(acc.title)}</b>
+        ${acc.lines.map((l) => `<small>${escapeHtml(l)}</small>`).join('')}
+        <span class="d-me-link">${meLink}<span aria-hidden="true">›</span></span>
+      </button>` : `
       <div class="d-head">
         <span class="d-avatar">${escapeHtml(acc.initial)}</span>
         <button class="d-close" data-action="drawer-close" aria-label="關閉選單">✕</button>
@@ -4688,7 +4704,7 @@ function renderDrawer() {
       <div class="d-account">
         <b>${escapeHtml(acc.title)}</b>
         ${acc.lines.map((l) => `<small>${escapeHtml(l)}</small>`).join('')}
-      </div>
+      </div>`}
       ${groups.filter((g) => g.join('').trim()).map((g) => `<div class="d-group">${g.join('')}</div>`).join('')}
       <p class="d-version num">羽球輪轉排場 v${APP_VERSION}</p>
     </nav>`;
