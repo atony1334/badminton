@@ -183,12 +183,53 @@
 
   /* 報名 */
   .ev-section { margin-top: 20px; }
+  .ev-h-soft { color: var(--muted); font-size: 15px; margin-left: 4px; }
+  .ev-card.ev-card2 { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; gap: 14px; align-items: center; border-radius: 16px; padding: 12px 14px; border-color: transparent; }
+  .ev-card2 .ev-main { gap: 4px; }
+  .ev-card2 .ev-main > b { font-size: 16px; }
+  .ev-date { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 58px; border-radius: 12px;
+    background: #DCEBE0; color: #1B4332; }
+  .ev-date b { font-size: 24px; line-height: 1; font-weight: 800; }
+  .ev-date small { font-size: 11px; font-weight: 700; margin-top: 3px; }
+  .ev-date.full { background: #FCE7CF; color: #8A4A00; }
+  .ev-date.closed { background: #E6E8E5; color: #59625C; }
+  :root[data-appearance="dark"] .ev-date { background: #23402F; color: #CDEBD8; }
+  :root[data-appearance="dark"] .ev-date.full { background: #4A3520; color: #FCD9B0; }
+  :root[data-appearance="dark"] .ev-date.closed { background: #2A302C; color: #A3AEA7; }
+  .ev-mini-bar { display: block; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 10%, transparent); overflow: hidden; }
+  .ev-mini-bar span { display: block; height: 4px; border-radius: 2px; background: var(--court-dark); }
+  .ev-chip { font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px; white-space: nowrap; background: #DCEBE0; color: #1B4332; }
+  .ev-chip.wait { background: #FCE7CF; color: #8A4A00; }
+  :root[data-appearance="dark"] .ev-chip { background: #23402F; color: #CDEBD8; }
+  :root[data-appearance="dark"] .ev-chip.wait { background: #4A3520; color: #FCD9B0; }
+  .ev-hero { position: relative; overflow: hidden; margin-top: 6px; border-radius: 22px; padding: 18px 18px 16px;
+    background: #1B4332; color: #fff; display: flex; flex-direction: column; gap: 12px; }
+  :root[data-appearance="dark"] .ev-hero { background: #1F4A35; }
+  .hero-court { position: absolute; right: -40px; top: -20px; width: 220px; height: 150px; stroke: rgba(255,255,255,.12); stroke-width: 2; pointer-events: none; }
+  .hero-open { position: relative; display: flex; flex-direction: column; gap: 10px; background: none; color: inherit; padding: 0; text-align: left; width: 100%; border: 0; }
+  .hero-top { display: flex; align-items: center; gap: 8px; }
+  .hero-label { font-size: 13px; font-weight: 700; letter-spacing: .04em; opacity: .85; }
+  .hero-count { font-size: 12px; font-weight: 700; padding: 3px 9px; border-radius: 999px; background: rgba(255,255,255,.16); }
+  .hero-date { font-size: 30px; font-weight: 900; line-height: 1.15; margin-top: -4px; }
+  .hero-where { font-size: 17px; font-weight: 500; margin-top: -8px; }
+  .hero-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .hero-chip { font-size: 14px; font-weight: 700; padding: 6px 12px; border-radius: 10px; background: var(--tape); color: #14261C; }
+  .hero-chip.ghost { background: rgba(255,255,255,.16); color: #fff; }
+  .hero-num { font-size: 13px; opacity: .85; }
+  .hero-bar { display: block; height: 6px; border-radius: 3px; background: rgba(255,255,255,.18); overflow: hidden; }
+  .hero-bar span { display: block; height: 6px; border-radius: 3px; background: var(--tape); }
+  .hero-acts { position: relative; display: flex; gap: 8px; }
+  .hero-acts > * { flex: 1 1 0; min-width: 0; }
+  .hero-btn { display: flex; align-items: center; justify-content: center; height: 44px; border: 0; border-radius: 12px;
+    background: rgba(255,255,255,.14); color: #fff; font-size: 15px; font-weight: 700; text-decoration: none; }
+  .hero-btn:active { background: rgba(255,255,255,.24); }
   .ev-h { font-size: 16px; margin: 0 0 8px; }
   .ev-cards { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
   .ev-cards.past { opacity: .7; }
   .ev-card { display: flex; justify-content: space-between; align-items: center; gap: 10px; width: 100%; padding: 12px 14px;
     background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-l); color: var(--ink); text-align: left; }
-  .ev-section .ev-card + .ev-card { margin-top: 8px; }
+  .ev-section > .ev-card + .ev-card { margin-top: 8px; }
+  .modal .ev-card.ev-card2 { border-color: var(--border); }
   .ev-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .ev-main small { color: var(--muted); font-size: 13px; }
   .ev-main .ev-mine { color: #8A5A00; font-weight: 600; }
@@ -1290,7 +1331,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '11.4';
+const APP_VERSION = '11.5';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1842,7 +1883,7 @@ const VIEWER_ACTIONS = new Set([
   'invite-copy-code', 'invite-copy', 'invite-share', 'cloud-invite', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
   'signup-view', 'signup-month', 'signup-day', 'pf-set', 'grade-pick',
-  'my-rename-open', 'my-rename-close', 'my-rename-submit', 'my-rename-cancel',
+  'my-rename-open', 'my-rename-close', 'my-rename-submit', 'my-rename-cancel', 'ext',
 ]);
 
 const cloud = {
@@ -2471,18 +2512,21 @@ function renderViewerWaiting() {
     error: cloud.error || '連線失敗，請重新整理',
     live: '管理者還沒開始排場，開始後這裡會自動更新',
   }[cloud.viewerStatus];
+  // v11.5：有報名場次時，標題用球團名，「還沒開始排場」縮成副標，最上面放下一場的大卡片
+  const idle = ['empty', 'live'].includes(cloud.viewerStatus);
+  const hasEvents = idle && upcomingEvents().length > 0;
   return `
     <header class="top">
       ${menuButton()}
       <div class="top-title">
-        <h1>羽球輪轉排場</h1>
-        <p class="sub">${cloud.teamName ? `${escapeHtml(cloud.teamName)}・` : ''}觀看模式</p>
+        <h1>${hasEvents && cloud.teamName ? escapeHtml(cloud.teamName) : '羽球輪轉排場'}</h1>
+        <p class="sub">${hasEvents ? '觀看模式・今天還沒開始排場' : `${cloud.teamName ? `${escapeHtml(cloud.teamName)}・` : ''}觀看模式`}</p>
       </div>
     </header>
     ${cloud.viewerStatus === 'loading'
       ? `<div aria-busy="true"><div class="sk sk-court"></div><div class="sk sk-court"></div><div class="sk sk-bench"></div>
          <p class="sk-note">${escapeHtml(text)}</p></div>`
-      : `<div class="viewer-wait">${escapeHtml(text)}</div>`}
+      : hasEvents ? '' : `<div class="viewer-wait">${escapeHtml(text)}</div>`}
     ${cloud.viewerStatus === 'loading' ? '' : renderEventCards()}
     ${['empty', 'live'].includes(cloud.viewerStatus) ? `
     <div class="wait-links">
@@ -4021,25 +4065,96 @@ function loadPastCounts(events) {
   });
 }
 
-function renderEventCard(ev) {
-  const ranked = signupRanked(ev);
+/** 場次狀態：給日期格和標籤配色用 */
+function eventTone(ev, ranked) {
+  if (!eventUpcoming(ev) || ev.status !== 'open') return 'closed';
+  return ranked.main.length >= ranked.cap ? 'full' : 'open';
+}
+
+function eventDateParts(ev) {
+  const [y, m, d] = String(ev.date || '').split('-').map(Number);
+  if (!y || !m || !d) return { day: '?', sub: '日期未定' };
+  return { day: String(d), sub: `${m}月・${'日一二三四五六'[new Date(y, m - 1, d).getDay()]}` };
+}
+
+function eventTimeText(ev) {
+  return ev.start ? `${ev.start}${ev.end ? `–${ev.end}` : ''}` : '時間未定';
+}
+
+/** 「今天」「明天」「還有 4 天」 */
+function eventCountdown(ev) {
+  const [y, m, d] = String(ev.date || '').split('-').map(Number);
+  if (!y) return '';
+  const now = new Date();
+  const days = Math.round((new Date(y, m - 1, d) - new Date(now.getFullYear(), now.getMonth(), now.getDate())) / 86400000);
+  if (days <= 0) return '今天';
+  if (days === 1) return '明天';
+  return `還有 ${days} 天`;
+}
+
+function eventCounts(ev, ranked) {
   // 過去的場次：用讀一次的人數（正取最多到上限）
   const pastCount = !signup.lists[ev.id] && signup.pastCounts ? signup.pastCounts[ev.id] : undefined;
   const shown = pastCount === undefined ? ranked.main.length : pastCount === null ? '…' : Math.min(pastCount, ranked.cap);
+  const pct = typeof shown === 'number' ? Math.min(100, Math.round((shown / ranked.cap) * 100)) : 0;
+  return { shown, pct };
+}
+
+// v11.5 場次卡：左邊一大格日期（顏色代表狀態），右邊時間、地點、正取進度
+function renderEventCard(ev) {
+  const ranked = signupRanked(ev);
+  const { shown, pct } = eventCounts(ev, ranked);
   const place = myPlace(ev, ranked);
-  return `<button class="ev-card" data-action="signup-event" data-id="${escapeHtml(ev.id)}">
-      <span class="ev-main"><b>${escapeHtml(eventTitle(ev))}</b><small>${escapeHtml(ev.venue || '地點未定')}</small>
-        ${place ? `<small class="ev-mine ${place.main ? 'ok' : ''}">你是${escapeHtml(place.text)}</small>` : ''}</span>
-      <span class="ev-side"><span class="ev-count num">${shown}/${ranked.cap}</span>${eventStatusTag(ev, ranked)}
-        ${ranked.wait.length ? `<small class="num">候補 ${ranked.wait.length}</small>` : ''}</span>
+  const tone = eventTone(ev, ranked);
+  const date = eventDateParts(ev);
+  const side = place
+    ? `<span class="ev-chip ${place.main ? 'ok' : 'wait'}">${escapeHtml(place.main ? `第 ${place.no} 位` : `候補 ${place.no}`)}</span>`
+    : eventStatusTag(ev, ranked);
+  return `<button class="ev-card ev-card2" data-action="signup-event" data-id="${escapeHtml(ev.id)}">
+      <span class="ev-date ${tone}"><b class="num">${escapeHtml(date.day)}</b><small>${escapeHtml(date.sub)}</small></span>
+      <span class="ev-main"><b class="num">${escapeHtml(eventTimeText(ev))}</b>
+        <small>${escapeHtml(ev.venue || '地點未定')}・<span class="num">正取 ${shown}/${ranked.cap}</span>${ranked.wait.length ? `<span class="num">・候補 ${ranked.wait.length}</span>` : ''}</small>
+        <span class="ev-mini-bar" aria-hidden="true"><span style="width:${pct}%"></span></span></span>
+      <span class="ev-side">${side}</span>
     </button>`;
 }
 
-// 等待開場畫面：直接列出可以報名的場次
+// 首頁最上面：最近一場的大卡片（倒數、我的順位、導航、行事曆）
+function renderEventHero(ev) {
+  const ranked = signupRanked(ev);
+  const { shown, pct } = eventCounts(ev, ranked);
+  const place = myPlace(ev, ranked);
+  const open = mapOpenUrl(ev);
+  const cal = place ? googleCalUrl(ev) : '';
+  const tone = eventTone(ev, ranked);
+  const chip = place
+    ? `<span class="hero-chip">你是${escapeHtml(place.text)}</span>`
+    : `<span class="hero-chip ghost">${tone === 'open' ? '報名中' : tone === 'full' ? '額滿・可候補' : '已截止'}</span>`;
+  return `<section class="ev-hero" aria-label="下一場">
+    <svg class="hero-court" viewBox="0 0 220 150" fill="none" aria-hidden="true">
+      <rect x="10" y="10" width="200" height="130"></rect><path d="M110 10v130M10 40h200M10 110h200M40 10v130M180 10v130"></path></svg>
+    <button class="hero-open" data-action="signup-event" data-id="${escapeHtml(ev.id)}">
+      <span class="hero-top"><span class="hero-label">下一場</span><span class="hero-count">${escapeHtml(eventCountdown(ev))}</span></span>
+      <b class="hero-date num">${escapeHtml(eventDateText(ev))}</b>
+      <span class="hero-where"><span class="num">${escapeHtml(eventTimeText(ev))}</span>・${escapeHtml(ev.venue || '地點未定')}</span>
+      <span class="hero-row">${chip}<span class="hero-num num">正取 ${shown}/${ranked.cap}${ranked.wait.length ? `・候補 ${ranked.wait.length}` : ''}</span></span>
+      <span class="hero-bar" aria-hidden="true"><span style="width:${pct}%"></span></span>
+    </button>
+    <div class="hero-acts">
+      ${open ? `<a class="hero-btn" data-action="ext" href="${escapeHtml(open)}" target="_blank" rel="noopener">導航</a>` : ''}
+      ${cal ? `<a class="hero-btn" data-action="ext" href="${escapeHtml(cal)}" target="_blank" rel="noopener">加入行事曆</a>`
+        : `<button class="hero-btn" data-action="signup-event" data-id="${escapeHtml(ev.id)}">${place || cloud.viewer ? (tone === 'closed' ? '看名單' : '去報名') : '看報名名單'}</button>`}
+    </div>
+  </section>`;
+}
+
+// 首頁（等待開場、今日已結束）：最近一場放大，其他列在下面
 function renderEventCards() {
   const list = upcomingEvents();
   if (!list.length) return '';
-  return `<section class="ev-section"><h2 class="ev-h">報名場次</h2>${list.map(renderEventCard).join('')}</section>`;
+  const [first, ...rest] = list;
+  return `${renderEventHero(first)}
+    ${rest.length ? `<section class="ev-section"><h2 class="ev-h ev-h-soft">接下來</h2><div class="ev-cards">${rest.map(renderEventCard).join('')}</div></section>` : ''}`;
 }
 
 function renderSignupListModal() {
