@@ -183,6 +183,82 @@
 
   /* 報名 */
   .ev-section { margin-top: 20px; }
+  .hs-top { align-items: center; }
+  .hs-team { margin: 0; font-size: 15px; font-weight: 700; color: var(--muted); }
+  .hs-avatar { margin-left: auto; width: 44px; height: 44px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center;
+    background: var(--surface); color: var(--ink); font-weight: 900; font-size: 17px; box-shadow: inset 0 0 0 3px var(--border); flex-shrink: 0; }
+  .hs-avatar.t1 { box-shadow: inset 0 0 0 3px #9fd27c; } .hs-avatar.t2 { box-shadow: inset 0 0 0 3px #f6c6c6; }
+  .hs-avatar.t3 { box-shadow: inset 0 0 0 3px #f59ac8; } .hs-avatar.t4 { box-shadow: inset 0 0 0 3px #fbe6b0; }
+  .hs-avatar.t5 { box-shadow: inset 0 0 0 3px #f8d266; } .hs-avatar.t6 { box-shadow: inset 0 0 0 3px #22a8e0; }
+  .hs-avatar.t7 { box-shadow: inset 0 0 0 3px #c9cfc9; } .hs-avatar.t8 { box-shadow: inset 0 0 0 3px #111; }
+  .hs-hello { padding: 2px 4px 14px; }
+  .hs-hello h1 { margin: 0; font-size: 28px; font-weight: 900; }
+  .hs-meta { margin: 6px 0 0; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
+  .pf-grade-badge.hs-grade { width: auto; height: 24px; padding: 0 8px; font-size: 13px; border-radius: 7px; }
+  .hs-sep { margin: 0 -4px; }
+  .hs-set { font-weight: 700; color: var(--court-dark); }
+  .hs-meta .pf-g { font-size: 16px; margin: 0; }
+  .hs-card-head .link-btn { color: var(--court-dark); font-weight: 700; }
+  .hs-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; }
+  .hs-stat { background: var(--surface); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
+  .hs-stat b { font-size: 26px; font-weight: 900; line-height: 1.2; }
+  .hs-stat small { font-size: 12px; color: var(--muted); }
+  .hs-stat.accent { background: var(--court); color: #fff; }
+  .hs-stat.accent small { color: rgba(255,255,255,.88); }
+  .hs-card { background: var(--surface); border-radius: 20px; padding: 16px 16px 6px; }
+  .hs-card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
+  .hs-card-head h2 { margin: 0; font-size: 17px; font-weight: 900; }
+  .hs-timeline { list-style: none; margin: 0; padding: 0; }
+  .hs-row { width: 100%; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 12px; padding: 10px 0; background: none; color: var(--ink); text-align: left; border-radius: 0; position: relative; }
+  .hs-dot { width: 12px; height: 12px; border-radius: 50%; margin: 5px 0 0 3px; box-shadow: inset 0 0 0 2px var(--court); background: var(--surface); }
+  .hs-dot.first { background: var(--court); }
+  .hs-timeline li:not(:last-child) .hs-row::before { content: ''; position: absolute; left: 8px; top: 31px; bottom: -6px; width: 2px; background: var(--border); }
+  .hs-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .hs-row-main b { font-size: 16px; }
+  .hs-row-main small { font-size: 13px; color: var(--muted); }
+  .hs-row .ev-chip { align-self: center; }
+  .hs-empty { margin: 4px 0 12px; }
+  .hs-note { margin: 18px 0 0; text-align: center; font-size: 13px; color: var(--muted); }
+  .ev-head2 { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 14px; align-items: center; margin: 4px 0 14px; }
+  .ev-date.big { height: 72px; border-radius: 16px; }
+  .ev-date.big b { font-size: 32px; }
+  .ev-date.big small { font-size: 12px; }
+  .ev-head2-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .ev-head2-tags { display: flex; gap: 6px; flex-wrap: wrap; }
+  .ev-head2 h3 { margin: 0; font-size: 24px; font-weight: 900; }
+  .ev-tag.soft { background: var(--floor); color: var(--muted); }
+  .ev-tiles { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; margin-bottom: 14px; }
+  .ev-tile { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: 16px; background: var(--floor); min-width: 0; }
+  .ev-tile.wide { grid-column: 1 / -1; }
+  .ev-tile small { color: var(--muted); font-size: 12px; }
+  .ev-tile > b { font-size: 17px; }
+  .ev-tile-place { flex-direction: row; align-items: center; gap: 10px; }
+  .ev-tile-place > svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--court-dark); }
+  .ev-tile-venue { flex: 1; min-width: 0; font-size: 16px; }
+  .ev-tile-map { padding: 4px 8px; }
+  .ev-tile-map .ev-map { margin: 4px 0; }
+  .ev-mini-bar.thick { height: 6px; border-radius: 3px; margin: 8px 0 4px; background: color-mix(in srgb, var(--ink) 12%, transparent); }
+  .ev-mini-bar.thick span { height: 6px; border-radius: 3px; }
+  .ev-tile .ev-tile-left { font-size: 11px; }
+  .ev-note-text { white-space: pre-line; font-size: 15px; line-height: 1.6; }
+  .ev-me2 { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 18px; margin-bottom: 14px; background: #1B4332; color: #fff; }
+  :root[data-appearance="dark"] .ev-me2 { background: #1F4A35; }
+  .ev-me2 .ev-me-head small { color: rgba(255,255,255,.8); }
+  .ev-me2 .ev-me-place { background: var(--tape); color: #14261C; border-radius: 10px; }
+  .ev-me2.wait .ev-me-place { background: #FFB86B; color: #14261C; }
+  .ev-me-note { margin: 0; font-size: 13px; color: rgba(255,255,255,.85); }
+  .ev-me-btns { display: flex; gap: 8px; }
+  .ev-me-btn { flex: 1 1 0; min-width: 0; height: 42px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 12px;
+    background: rgba(255,255,255,.14); color: #fff; font-size: 15px; font-weight: 700; text-decoration: none; padding: 0 8px; }
+  .ev-me-btn.cancel { color: #FFD3CC; }
+  .ev-me-btn.armed { background: #C0392B; color: #fff; }
+  .ev-me2 .cal-panel { color: var(--ink); }
+  .guest-box2 { display: flex; flex-direction: column; gap: 6px; margin-bottom: 16px; }
+  .guest-box2 .ev-add { margin: 0; }
+  .guest-box2 .guest-h { font-size: 14px; }
+  .guest-btn { width: 76px; border-color: var(--court-dark); color: var(--court-dark); font-weight: 700; }
+  .guest-note { margin: 0; font-size: 12px; }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
   .ev-h-soft { color: var(--muted); font-size: 15px; margin-left: 4px; }
   .ev-card.ev-card2 { display: grid; grid-template-columns: 58px minmax(0, 1fr) auto; gap: 14px; align-items: center; border-radius: 16px; padding: 12px 14px; border-color: transparent; }
   .ev-card2 .ev-main { gap: 4px; }
@@ -1331,7 +1407,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '11.5';
+const APP_VERSION = '11.7';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1876,7 +1952,7 @@ const CLOUD_TEAM_KEY = 'badminton-cloud-team';
 const SESSION_BEFORE_CLOUD_KEY = 'badminton-session-before-cloud';   // 被雲端資料取代前的本機排場
 // 觀看者可以用的操作：只看、切換分頁、調整自己手機的外觀與語音
 const VIEWER_ACTIONS = new Set([
-  'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
+  'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake', 'set-home-style',
   'title-open', 'title-pop-close', 'player-open', 'roster-sort', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
@@ -2512,8 +2588,10 @@ function renderViewerWaiting() {
     error: cloud.error || '連線失敗，請重新整理',
     live: '管理者還沒開始排場，開始後這裡會自動更新',
   }[cloud.viewerStatus];
-  // v11.5：有報名場次時，標題用球團名，「還沒開始排場」縮成副標，最上面放下一場的大卡片
+  // v11.7：已確認的球友可以選「我的數據」首頁（設計稿方案 2）
   const idle = ['empty', 'live'].includes(cloud.viewerStatus);
+  if (idle && homeStyle() === 'stats' && cloud.user && cloud.claim && cloud.claim.status === 'approved') return renderStatsHome();
+  // v11.5：有報名場次時，標題用球團名，「還沒開始排場」縮成副標，最上面放下一場的大卡片
   const hasEvents = idle && upcomingEvents().length > 0;
   return `
     <header class="top">
@@ -4148,6 +4226,62 @@ function renderEventHero(ev) {
   </section>`;
 }
 
+function homeStyle() {
+  return prefs.homeStyle === 'hero' ? 'hero' : 'stats';
+}
+
+/* v11.7 球友首頁「我的數據」：打招呼＋程度、三格數據、我的報名時間軸、其他可報名的場次 */
+function renderStatsHome() {
+  const name = cloud.claim.name;
+  const pf = profileOf(name) || {};
+  const grade = Number(pf.grade) || 0;
+  const tier = grade ? gradeTier(grade) : null;
+  if (ranks.status !== 'ready' && ranks.status !== 'loading' && ranksAvailable()) {
+    ui.homeStatsWaiting = true;
+    setTimeout(() => loadRanks(), 0);
+  }
+  const me = ranks.status === 'ready' ? aggregateRanks().find((p) => p.n === name) : null;
+  const events = upcomingEvents();
+  const mine = events.map((ev) => ({ ev, ranked: signupRanked(ev) }))
+    .map((x) => Object.assign(x, { place: myPlace(x.ev, x.ranked) })).filter((x) => x.place);
+  const others = events.filter((ev) => !mine.some((x) => x.ev.id === ev.id));
+  const stat = (value, label, cls = '') => `<div class="hs-stat ${cls}"><b class="num">${value}</b><small>${label}</small></div>`;
+  const loadingVal = ranks.status === 'ready' ? '0' : '…';
+  const timeline = mine.map(({ ev, place }, i) => `
+    <li><button class="hs-row" data-action="signup-event" data-id="${escapeHtml(ev.id)}">
+      <span class="hs-dot ${i === 0 ? 'first' : ''}" aria-hidden="true"></span>
+      <span class="hs-row-main"><b class="num">${escapeHtml(eventDateText(ev))} ${escapeHtml(ev.start || '')}</b>
+        <small>${escapeHtml(ev.venue || '地點未定')}${i === 0 ? `・${escapeHtml(eventCountdown(ev))}` : ''}</small></span>
+      <span class="ev-chip ${place.main ? 'ok' : 'wait'}">${place.main ? `正取 ${place.no}` : `候補 ${place.no}`}</span>
+    </button></li>`).join('');
+  const gradeChip = tier ? `<span class="pf-grade-badge hs-grade ${tier.cls}">${grade} 級</span>${escapeHtml(tier.name)}` : '<a href="#" class="hs-set" data-action="drawer-go" data-target="account">設定程度 ›</a>';
+  return `
+    <header class="top hs-top">
+      ${menuButton()}
+      <div class="top-title"><p class="hs-team">${escapeHtml(cloud.teamName || '球團')}</p></div>
+      <button class="hs-avatar ${tier ? tier.cls : ''}" data-action="drawer-go" data-target="account" aria-label="我的帳號">${escapeHtml(name.slice(0, 1))}</button>
+    </header>
+    <section class="hs-hello">
+      <h1>嗨，${escapeHtml(name)}</h1>
+      <p class="hs-meta">${gradeChip}${pf.gender ? `<span class="hs-sep">・</span>${genderMark(name)}` : ''}</p>
+    </section>
+    <section class="hs-stats" aria-label="我的數據">
+      ${stat(me ? me.g : loadingVal, '長期場數')}
+      ${stat(me && me.rec ? `${Math.round((me.w / me.rec) * 100)}%` : (ranks.status === 'ready' ? '—' : '…'), '勝率')}
+      ${stat(mine.length, '已報名場次', 'accent')}
+    </section>
+    <section class="hs-card" aria-label="我的報名">
+      <div class="hs-card-head"><h2>我的報名</h2><button class="link-btn strong" data-action="drawer-go" data-target="signup">全部場次</button></div>
+      ${timeline ? `<ol class="hs-timeline">${timeline}</ol>` : '<p class="sub hs-empty">還沒有報名任何場次。</p>'}
+    </section>
+    ${others.length ? `<section class="ev-section"><h2 class="ev-h ev-h-soft">還可以報名</h2><div class="ev-cards">${others.map(renderEventCard).join('')}</div></section>` : ''}
+    <p class="hs-note">今天沒有排場，管理者開始後這裡會自動切換</p>
+    <div class="wait-links">
+      <button class="btn-ghost" data-action="drawer-go" data-target="ranks">${icon('trophy')}我的戰績</button>
+      <button class="btn-ghost" data-action="drawer-go" data-target="past">${icon('box')}歷史球局</button>
+    </div>`;
+}
+
 // 首頁（等待開場、今日已結束）：最近一場放大，其他列在下面
 function renderEventCards() {
   const list = upcomingEvents();
@@ -4194,19 +4328,21 @@ function renderSignupMine(ev, ranked) {
   const place = myPlace(ev, ranked);
   if (place) {
     const armed = ui.signupArmed === place.entry.id;
-    return `<div class="ev-box ev-me ${place.main ? 'ok' : 'wait'}">
+    const cal = googleCalUrl(ev);
+    // v11.6：深綠色區塊＋黃色順位標籤（候補是橘色）
+    return `<div class="ev-me2 ${place.main ? 'ok' : 'wait'}">
       <div class="ev-me-head">
         <span><small>你已報名</small><b>${escapeHtml(place.entry.name)}</b></span>
         <span class="ev-me-place">${escapeHtml(place.text)}</span>
       </div>
-      ${place.main ? '' : '<p class="ev-box-text sub">前面有人取消就會自動遞補，並通知你。</p>'}
+      ${place.main ? '' : '<p class="ev-me-note">前面有人取消就會自動遞補，並通知你。</p>'}
       ${ui.calFor === ev.id ? renderCalPanel(ev) : ''}
-      <div class="${ui.calFor === ev.id ? 'btn-one' : 'btn-pair'}">
-        ${ui.calFor === ev.id ? '' : renderCalButton(ev)}
-        <button class="${armed ? 'btn-danger' : 'btn-outline danger'}" data-action="signup-cancel" data-id="${escapeHtml(place.entry.id)}">
+      <div class="ev-me-btns">
+        ${ui.calFor === ev.id || !cal ? '' : `<a class="ev-me-btn" data-action="ext" href="${escapeHtml(cal)}" target="_blank" rel="noopener">加入行事曆</a>`}
+        <button class="ev-me-btn ${armed ? 'armed' : 'cancel'}" data-action="signup-cancel" data-id="${escapeHtml(place.entry.id)}">
           ${armed ? '確定取消？' : '取消報名'}</button>
       </div>
-      ${armed ? '<p class="ev-box-text sub">再按一次就會取消，名額會讓給下一位。</p>' : ''}
+      ${armed ? '<p class="ev-me-note">再按一次就會取消，名額會讓給下一位。</p>' : ''}
     </div>`;
   }
   if (ev.status !== 'open') {
@@ -4268,14 +4404,14 @@ function renderGuestBox(ev, ranked) {
       <button class="${armed ? 'btn-danger' : 'btn-outline danger'} ev-remove" data-action="signup-cancel" data-id="${escapeHtml(g.id)}">${armed ? '確定取消？' : '取消'}</button></li>`;
   }).join('');
   const canAdd = ev.status === 'open' && guests.length < SIGNUP_GUEST_MAX;
-  return `<div class="ev-box guest-box">
-      <b>幫朋友報名</b>
-      ${rows ? `<ul class="ev-list guest-list">${rows}</ul>` : ''}
+  return `<div class="guest-box2">
+      ${rows ? `<b class="guest-h">我幫朋友報的</b><ul class="ev-list guest-list">${rows}</ul>` : ''}
       ${canAdd ? `<div class="ev-add">
-        <input type="text" id="guest-name" maxlength="${SIGNUP_NAME_MAX}" placeholder="朋友的名字" value="${escapeHtml(ui.guestName || '')}">
-        <button class="btn-outline" data-action="guest-submit" ${signup.busy ? 'disabled' : ''}>報名</button>
+        <label class="sr-only" for="guest-name">幫朋友報名</label>
+        <input type="text" id="guest-name" maxlength="${SIGNUP_NAME_MAX}" placeholder="幫朋友報名（最多 ${SIGNUP_GUEST_MAX} 位）" value="${escapeHtml(ui.guestName || '')}">
+        <button class="btn-outline guest-btn" data-action="guest-submit" ${signup.busy ? 'disabled' : ''}>報名</button>
       </div>
-      <p class="sub ev-box-text">最多 ${SIGNUP_GUEST_MAX} 位，照報名時間排序，跟大家一樣。朋友不能來時請記得幫他取消。</p>` : ''}
+      <p class="sub guest-note">照報名時間排序；朋友不能來時請記得幫他取消。</p>` : ''}
     </div>`;
 }
 
@@ -4301,21 +4437,33 @@ function renderSignupEventModal() {
   const ranked = signupRanked(ev);
   const open = mapOpenUrl(ev);
   const pct = Math.min(100, Math.round((ranked.main.length / ranked.cap) * 100));
+  const date = eventDateParts(ev);
+  const tone = eventTone(ev, ranked);
+  const left = ranked.cap - ranked.main.length;
+  // v11.6（設計稿 B）：左邊日期格＋右邊狀態、時間；下面地點、場地、正取、備註拆成小方格
   return `
-    <div class="ev-title"><h3>${escapeHtml(eventTitle(ev))}</h3>${eventStatusTag(ev, ranked)}</div>
-    <ul class="ev-info">
-      <li>${icon('pin')}<span class="ev-info-main">${escapeHtml(ev.venue || '地點未定')}</span>
+    <div class="ev-head2">
+      <span class="ev-date big ${tone}"><b class="num">${escapeHtml(date.day)}</b><small>${escapeHtml(date.sub)}</small></span>
+      <span class="ev-head2-main">
+        <span class="ev-head2-tags">${eventStatusTag(ev, ranked)}${eventUpcoming(ev) ? `<span class="ev-tag soft">${escapeHtml(eventCountdown(ev))}</span>` : ''}</span>
+        <h3 class="num">${escapeHtml(eventTimeText(ev))}</h3>
+      </span>
+    </div>
+    <div class="ev-tiles">
+      <div class="ev-tile wide ev-tile-place">${icon('pin')}<b class="ev-tile-venue">${escapeHtml(ev.venue || '地點未定')}</b>
         ${open ? `<span class="ev-info-act">
           ${mapEmbedUrl(ev) ? `<button class="link-btn" data-action="map-toggle">${ui.mapOpen ? '收起' : '地圖'}</button>` : ''}
-          <a class="link-btn strong" href="${escapeHtml(open)}" target="_blank" rel="noopener">導航</a></span>` : ''}</li>
-      ${renderEventMap(ev) ? `<li class="ev-info-map">${renderEventMap(ev)}</li>` : ''}
-      <li>${icon('court')}<span class="ev-info-main">${ev.courts} 面場・上限 ${ranked.cap} 人</span></li>
-      ${ev.note ? `<li>${icon('note')}<span class="ev-info-main ev-note-text">${escapeHtml(ev.note)}</span></li>` : ''}
-    </ul>
+          <a class="link-btn strong" data-action="ext" href="${escapeHtml(open)}" target="_blank" rel="noopener">導航 ›</a></span>` : ''}</div>
+      ${renderEventMap(ev) ? `<div class="ev-tile wide ev-tile-map">${renderEventMap(ev)}</div>` : ''}
+      <div class="ev-tile"><small>場地</small><b class="num">${ev.courts} 面場</b></div>
+      <div class="ev-tile"><small class="num">正取 ${ranked.main.length}/${ranked.cap}${ranked.wait.length ? `・候補 ${ranked.wait.length}` : ''}</small>
+        <span class="ev-mini-bar thick" aria-hidden="true"><span style="width:${pct}%"></span></span>
+        <small class="ev-tile-left">${left > 0 ? `還有 ${left} 個位子` : '額滿，可排候補'}</small></div>
+      ${ev.note ? `<div class="ev-tile wide"><small>備註</small><span class="ev-note-text">${escapeHtml(ev.note)}</span></div>` : ''}
+    </div>
     ${cloud.viewer ? renderSignupMine(ev, ranked) + renderGuestBox(ev, ranked) : renderSignupAdminTools(ev)}
     <div class="ev-list-head">
-      <h4>正取 <span class="num">${ranked.main.length}/${ranked.cap}</span></h4>
-      <span class="ev-bar" aria-hidden="true"><span style="width:${pct}%"></span></span>
+      <h4>正取名單 <span class="num">${ranked.main.length}/${ranked.cap}</span></h4>
     </div>
     ${ranked.main.length ? `<ol class="ev-list">${renderSignupRows(ranked.main, 1, ev)}</ol>` : '<p class="sub">還沒有人報名。</p>'}
     ${ranked.wait.length ? `<div class="ev-list-head"><h4>候補 <span class="num">${ranked.wait.length}</span></h4></div>
@@ -5384,7 +5532,7 @@ async function loadRanks(force = false) {
     ranks.status = 'error';
     ranks.error = cloudErrorText(err);
   }
-  if (ui.ranksOpen || ui.rankProfile || ui.profileName || ui.pastList) render();
+  if (ui.ranksOpen || ui.rankProfile || ui.profileName || ui.pastList || ui.homeStatsWaiting) { ui.homeStatsWaiting = false; render(); }
   else if (ui.settings) renderModal();
 }
 
@@ -8497,6 +8645,13 @@ function renderLookSettings() {
             <button data-action="set-appearance" data-value="${key}" aria-pressed="${prefs.appearance === key}">${APPEARANCE_LABEL[key]}</button>`).join('')}
         </div>
       </div>
+      ${cloud.viewer ? `<div class="row">
+        <span class="label">首頁樣式</span>
+        <div class="seg" role="group" aria-label="首頁樣式">
+          <button data-action="set-home-style" data-value="stats" aria-pressed="${homeStyle() === 'stats'}">我的數據</button>
+          <button data-action="set-home-style" data-value="hero" aria-pressed="${homeStyle() === 'hero'}">下一場大卡</button>
+        </div>
+      </div>` : ''}
       <div class="row">
         <span class="label">場地配色</span>
         <div class="theme-swatches" role="group" aria-label="場地配色">
@@ -10519,6 +10674,11 @@ function handleAction(el) {
       renderPop();
       return;
     case 'settings-open': ui.settings = true; ui.settingsOnly = null; sessionChanged = false; break;
+    case 'set-home-style':
+      prefs.homeStyle = el.dataset.value;
+      savePrefs();
+      sessionChanged = false;
+      break;
     case 'set-appearance':
       prefs.appearance = el.dataset.value;
       applyAppearance();
