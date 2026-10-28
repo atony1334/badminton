@@ -335,6 +335,18 @@
   .mg-mark.closed { background: var(--floor); color: var(--muted); }
   .mg-mine { position: absolute; top: 2px; right: 4px; font-size: 9px; color: #E5484D; }
   .mg-below { margin-top: 12px; }
+  /* v11.9 開場次表單的月曆縮小：格子變矮、一次大約看到一個月 */
+  .date-picker .mgrid-wrap { margin: 4px 0; }
+  .date-picker .mg-head { margin-bottom: 2px; }
+  .date-picker .mg-head b { font-size: 15px; }
+  .date-picker .mg-nav { font-size: 22px; padding: 2px 12px; }
+  .date-picker .mg-wd { font-size: 12px; padding: 2px 0; }
+  .date-picker .mgrid, .date-picker .mg-week { gap: 2px; }
+  .date-picker .mg-cell { min-height: 36px; padding: 2px; justify-content: center; border-radius: 9px; }
+  .date-picker .mg-day { font-size: 15px; }
+  .date-picker .mg-mlabel { font-size: 12px; padding: 4px 4px 2px; }
+  .date-picker .mg-month { padding-bottom: 4px; }
+  .date-picker .mg-scroll { max-height: 250px; }
   .date-picker { display: flex; flex-direction: column; gap: 6px; }
   .dp-top { display: flex; align-items: baseline; gap: 10px; }
   .dp-picked { font-size: 20px; }
@@ -1316,6 +1328,53 @@
     .court-actions button { padding: 6px 10px; }
     .modal { max-height: 92vh; }
   }
+  /* ===================== v12.0 統一風格 =====================
+   * 按鈕四種：主要＝深綠實心（.btn-primary，非場地上的 .btn-tape 也一樣）、次要＝淺綠底（.btn-outline）、
+   * 文字＝綠色粗體不加底線（.btn-ghost、.link-btn）、危險＝紅字或紅底。
+   * 黃色只留在場地卡（結束這場等）和「輪到你上場」提醒。
+   * 卡片：頁面上白底圓角 16 沒有框；彈出視窗裡用淺灰底方格。標籤：圓角小標籤，綠／橘／灰。 */
+  :root { --soft-green: #DCEBE0; --on-soft-green: #1B4332; --soft-orange: #FCE7CF; --on-soft-orange: #8A4A00;
+    --soft-gray: #E6E8E5; --on-soft-gray: #59625C; --radius-card: 16px; }
+  :root[data-appearance="dark"] { --soft-green: #23402F; --on-soft-green: #CDEBD8; --soft-orange: #4A3520; --on-soft-orange: #FCD9B0;
+    --soft-gray: #2A302C; --on-soft-gray: #A3AEA7; }
+  .btn-primary { background: var(--court-dark); color: #fff; font-weight: 700; border-radius: 12px; }
+  .btn-tape { background: var(--court-dark); color: #fff; font-weight: 700; border-radius: 12px; }
+  .court .btn-tape, .sideline .btn-tape, .turn-card .btn-tape { background: var(--tape); color: var(--on-tape); }
+  .btn-outline { background: var(--soft-green); border: 0; color: var(--on-soft-green); font-weight: 700; border-radius: 12px; }
+  a.btn-outline { border-radius: 12px; }
+  .btn-outline.danger { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); border: 0; }
+  .btn-ghost { text-decoration: none; color: var(--court-dark); font-weight: 700; }
+  .btn-ghost.danger-text { color: var(--danger); }
+  .history-delete { background: transparent; color: var(--danger); font-weight: 700; }
+  .history-delete.armed { background: var(--danger); color: #fff; }
+  .history-result { background: var(--soft-green); color: var(--on-soft-green); font-weight: 700; border-radius: 10px; }
+  .link-btn { color: var(--court-dark); font-weight: 700; }
+  .btn-danger { border-radius: 12px; font-weight: 700; }
+  .btn-block { border-radius: 12px; }
+  .panel { border-radius: var(--radius-card); border: 0; }
+  .ev-card { border-radius: var(--radius-card); }
+  .modal .set-group { border: 0; background: var(--floor); border-radius: var(--radius-card); }
+  .badge { font-size: 12px; font-weight: 700; padding: 3px 9px; }
+  .badge-court { background: var(--soft-green); color: var(--on-soft-green); }
+  .badge-wait { background: var(--soft-orange); color: var(--on-soft-orange); }
+  .badge-rest { background: var(--soft-gray); color: var(--on-soft-gray); }
+  .sync-chip { background: var(--soft-green); color: var(--on-soft-green); font-weight: 700; padding: 2px 9px; }
+  .sync-chip.sync-pending { background: var(--soft-gray); color: var(--on-soft-gray); }
+  .sync-chip.sync-offline, .sync-chip.sync-error { background: var(--soft-orange); color: var(--on-soft-orange); }
+  .top { align-items: center; }
+  .top-actions button { width: 44px; height: 44px; padding: 0; border: 0; border-radius: 12px; display: inline-flex; align-items: center; justify-content: center;
+    background: var(--surface); color: var(--court-dark); }
+  .top-actions .btn-copy { background: var(--surface); }
+  .top-actions .btn-voice { padding: 0; }
+  .top-actions .d-ico, .top-actions svg { width: 20px; height: 20px; }
+  .d-ico.inline { width: 18px; height: 18px; vertical-align: -3px; margin-right: 4px; }
+  .btn-tape > .d-ico, .btn-danger > .d-ico, .day-ended strong > .d-ico { width: 18px; height: 18px; vertical-align: -3px; margin-right: 6px; display: inline-block; }
+  input[type="checkbox"] { -webkit-appearance: none; appearance: none; flex-shrink: 0; width: 46px; height: 28px; margin: 0; border-radius: 14px;
+    background: var(--border); position: relative; cursor: pointer; transition: background .2s ease; }
+  input[type="checkbox"]::after { content: ''; position: absolute; left: 2px; top: 2px; width: 24px; height: 24px; border-radius: 50%; background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.25); transition: transform .25s cubic-bezier(.32,.72,0,1); }
+  input[type="checkbox"]:checked { background: var(--court-dark); }
+  input[type="checkbox"]:checked::after { transform: translateX(18px); }
 </style>
 </head>
 <body>
@@ -1371,7 +1430,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '11.8';
+const APP_VERSION = '12.0';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -4814,6 +4873,7 @@ function renderTurnAlert() {
  * 點設定項目會開出只有那一區的設定視窗，不用在長長的設定頁裡找。
  */
 const ICONS = {
+  copy: '<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>',
   pin: '<path d="M12 21s-6-5.6-6-11a6 6 0 0 1 12 0c0 5.4-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/>',
   logout: '<path d="M10 4H5v16h5M14 8l4 4-4 4M18 12H9"/>',
   trash: '<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/>',
@@ -7508,7 +7568,7 @@ function renderHistory() {
     ${filtered.length ? `<ul class="history">${items}</ul>` : '<p class="sub">這位球員還沒有完成的場次。</p>'}
     ${more}
     <div style="margin-top:10px;text-align:right">
-      <button class="${ui.clearHistoryArmed ? 'btn-danger' : 'btn-ghost'}" data-action="history-clear">
+      <button class="${ui.clearHistoryArmed ? 'btn-danger' : 'btn-ghost danger-text'}" data-action="history-clear">
         ${ui.clearHistoryArmed
           ? `再按一次，刪除全部 ${state.history.length} 場並回退場數與等待`
           : `全部刪除（${state.history.length} 場）`}
@@ -7544,7 +7604,7 @@ function renderEndedScreen() {
       </div>
     </header>
     <div class="day-ended ended-card">
-      <strong>🏁 今日打球已結束</strong>
+      <strong>${icon('flag')}今日打球已結束</strong>
       <p class="sub" style="margin:4px 0 0">共完成 ${count} 場${state.players.length ? `・${state.players.length} 人參加` : ''}</p>
       <div class="row">
         <button class="btn-tape" data-action="report-open">查看戰報</button>
@@ -7576,7 +7636,7 @@ function resumeDay() {
 function renderDayEndedBanner() {
   if (!state.dayEnded) return '';
   return `<div class="day-ended">
-    <strong>🏁 今日打球已結束</strong>
+    <strong>${icon('flag')}今日打球已結束</strong>
     <p class="sub" style="margin:4px 0 0">資料都還保留著。要繼續打可以直接排場；要開始新的一天請到「設定」開新球局。</p>
     <div class="row">
       <button class="btn-tape" data-action="report-open">查看戰報</button>
@@ -8216,7 +8276,7 @@ function renderEndDay() {
   return `<div class="end-day">
     <p class="sub">${ui.endDayArmed && live ? `場上 ${live} 場會直接取消、不列入紀錄` : '打完了嗎？結束後可以分享今日戰報圖片'}</p>
     <button class="${ui.endDayArmed ? 'btn-danger' : 'btn-tape'}" data-action="end-day">
-      ${ui.endDayArmed ? '再按一次確認' : '🏁 結束今日打球'}</button>
+      ${ui.endDayArmed ? '再按一次確認' : `${icon('flag')}結束今日打球`}</button>
   </div>`;
 }
 
@@ -8373,8 +8433,8 @@ function renderMain() {
     <header class="top">
       ${menuButton()}
       <div class="top-title">
-        <h1>${appTitle()}</h1>
-        <p class="sub num">${cloud.viewer ? `<span class="live-dot" aria-hidden="true"></span>觀看中${cloud.teamName ? `・${escapeHtml(cloud.teamName)}` : ''}・<span id="viewer-stamp">${viewerStampText()}</span><br>` : ''}${state.players.filter((p) => p.active).length} 人在場館，已完成 ${state.history.length} 場</p>
+        <h1>${cloud.teamName && !isLocalMode() ? escapeHtml(cloud.teamName) : appTitle()}</h1>
+        <p class="sub num">${cloud.viewer ? `<span class="live-dot" aria-hidden="true"></span>觀看中・<span id="viewer-stamp">${viewerStampText()}</span><br>` : ''}${state.players.filter((p) => p.active).length} 人在場館，已完成 ${state.history.length} 場</p>
         ${syncChip()}${notifyOffChip()}
       </div>
       <div class="top-actions">
@@ -8382,7 +8442,7 @@ function renderMain() {
           ? `<button class="btn-voice" data-action="toggle-voice" aria-pressed="${prefs.voice.enabled}"
                aria-label="${prefs.voice.enabled ? '關閉' : '開啟'}語音唸名">${prefs.voice.enabled ? SPEAKER_SVG : SPEAKER_OFF_SVG}</button>`
           : ''}
-        <button class="btn-copy" data-action="copy-lineup">複製排場</button>
+        <button class="btn-copy" data-action="copy-lineup" aria-label="複製排場" title="複製排場">${icon('copy')}</button>
       </div>
     </header>
     ${renderStorageBanner()}
