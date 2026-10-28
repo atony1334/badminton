@@ -183,42 +183,6 @@
 
   /* 報名 */
   .ev-section { margin-top: 20px; }
-  .hs-top { align-items: center; }
-  .hs-team { margin: 0; font-size: 15px; font-weight: 700; color: var(--muted); }
-  .hs-avatar { margin-left: auto; width: 44px; height: 44px; border-radius: 50%; padding: 0; display: flex; align-items: center; justify-content: center;
-    background: var(--surface); color: var(--ink); font-weight: 900; font-size: 17px; box-shadow: inset 0 0 0 3px var(--border); flex-shrink: 0; }
-  .hs-avatar.t1 { box-shadow: inset 0 0 0 3px #9fd27c; } .hs-avatar.t2 { box-shadow: inset 0 0 0 3px #f6c6c6; }
-  .hs-avatar.t3 { box-shadow: inset 0 0 0 3px #f59ac8; } .hs-avatar.t4 { box-shadow: inset 0 0 0 3px #fbe6b0; }
-  .hs-avatar.t5 { box-shadow: inset 0 0 0 3px #f8d266; } .hs-avatar.t6 { box-shadow: inset 0 0 0 3px #22a8e0; }
-  .hs-avatar.t7 { box-shadow: inset 0 0 0 3px #c9cfc9; } .hs-avatar.t8 { box-shadow: inset 0 0 0 3px #111; }
-  .hs-hello { padding: 2px 4px 14px; }
-  .hs-hello h1 { margin: 0; font-size: 28px; font-weight: 900; }
-  .hs-meta { margin: 6px 0 0; display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 14px; }
-  .pf-grade-badge.hs-grade { width: auto; height: 24px; padding: 0 8px; font-size: 13px; border-radius: 7px; }
-  .hs-sep { margin: 0 -4px; }
-  .hs-set { font-weight: 700; color: var(--court-dark); }
-  .hs-meta .pf-g { font-size: 16px; margin: 0; }
-  .hs-card-head .link-btn { color: var(--court-dark); font-weight: 700; }
-  .hs-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin-bottom: 16px; }
-  .hs-stat { background: var(--surface); border-radius: 16px; padding: 12px; display: flex; flex-direction: column; gap: 2px; }
-  .hs-stat b { font-size: 26px; font-weight: 900; line-height: 1.2; }
-  .hs-stat small { font-size: 12px; color: var(--muted); }
-  .hs-stat.accent { background: var(--court); color: #fff; }
-  .hs-stat.accent small { color: rgba(255,255,255,.88); }
-  .hs-card { background: var(--surface); border-radius: 20px; padding: 16px 16px 6px; }
-  .hs-card-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px; }
-  .hs-card-head h2 { margin: 0; font-size: 17px; font-weight: 900; }
-  .hs-timeline { list-style: none; margin: 0; padding: 0; }
-  .hs-row { width: 100%; display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; gap: 12px; padding: 10px 0; background: none; color: var(--ink); text-align: left; border-radius: 0; position: relative; }
-  .hs-dot { width: 12px; height: 12px; border-radius: 50%; margin: 5px 0 0 3px; box-shadow: inset 0 0 0 2px var(--court); background: var(--surface); }
-  .hs-dot.first { background: var(--court); }
-  .hs-timeline li:not(:last-child) .hs-row::before { content: ''; position: absolute; left: 8px; top: 31px; bottom: -6px; width: 2px; background: var(--border); }
-  .hs-row-main { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-  .hs-row-main b { font-size: 16px; }
-  .hs-row-main small { font-size: 13px; color: var(--muted); }
-  .hs-row .ev-chip { align-self: center; }
-  .hs-empty { margin: 4px 0 12px; }
-  .hs-note { margin: 18px 0 0; text-align: center; font-size: 13px; color: var(--muted); }
   .ev-head2 { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 14px; align-items: center; margin: 4px 0 14px; }
   .ev-date.big { height: 72px; border-radius: 16px; }
   .ev-date.big b { font-size: 32px; }
@@ -1407,7 +1371,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '11.7';
+const APP_VERSION = '11.8';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1952,7 +1916,7 @@ const CLOUD_TEAM_KEY = 'badminton-cloud-team';
 const SESSION_BEFORE_CLOUD_KEY = 'badminton-session-before-cloud';   // 被雲端資料取代前的本機排場
 // 觀看者可以用的操作：只看、切換分頁、調整自己手機的外觀與語音
 const VIEWER_ACTIONS = new Set([
-  'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake', 'set-home-style',
+  'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
   'title-open', 'title-pop-close', 'player-open', 'roster-sort', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
@@ -2588,10 +2552,8 @@ function renderViewerWaiting() {
     error: cloud.error || '連線失敗，請重新整理',
     live: '管理者還沒開始排場，開始後這裡會自動更新',
   }[cloud.viewerStatus];
-  // v11.7：已確認的球友可以選「我的數據」首頁（設計稿方案 2）
-  const idle = ['empty', 'live'].includes(cloud.viewerStatus);
-  if (idle && homeStyle() === 'stats' && cloud.user && cloud.claim && cloud.claim.status === 'approved') return renderStatsHome();
   // v11.5：有報名場次時，標題用球團名，「還沒開始排場」縮成副標，最上面放下一場的大卡片
+  const idle = ['empty', 'live'].includes(cloud.viewerStatus);
   const hasEvents = idle && upcomingEvents().length > 0;
   return `
     <header class="top">
@@ -4226,62 +4188,6 @@ function renderEventHero(ev) {
   </section>`;
 }
 
-function homeStyle() {
-  return prefs.homeStyle === 'hero' ? 'hero' : 'stats';
-}
-
-/* v11.7 球友首頁「我的數據」：打招呼＋程度、三格數據、我的報名時間軸、其他可報名的場次 */
-function renderStatsHome() {
-  const name = cloud.claim.name;
-  const pf = profileOf(name) || {};
-  const grade = Number(pf.grade) || 0;
-  const tier = grade ? gradeTier(grade) : null;
-  if (ranks.status !== 'ready' && ranks.status !== 'loading' && ranksAvailable()) {
-    ui.homeStatsWaiting = true;
-    setTimeout(() => loadRanks(), 0);
-  }
-  const me = ranks.status === 'ready' ? aggregateRanks().find((p) => p.n === name) : null;
-  const events = upcomingEvents();
-  const mine = events.map((ev) => ({ ev, ranked: signupRanked(ev) }))
-    .map((x) => Object.assign(x, { place: myPlace(x.ev, x.ranked) })).filter((x) => x.place);
-  const others = events.filter((ev) => !mine.some((x) => x.ev.id === ev.id));
-  const stat = (value, label, cls = '') => `<div class="hs-stat ${cls}"><b class="num">${value}</b><small>${label}</small></div>`;
-  const loadingVal = ranks.status === 'ready' ? '0' : '…';
-  const timeline = mine.map(({ ev, place }, i) => `
-    <li><button class="hs-row" data-action="signup-event" data-id="${escapeHtml(ev.id)}">
-      <span class="hs-dot ${i === 0 ? 'first' : ''}" aria-hidden="true"></span>
-      <span class="hs-row-main"><b class="num">${escapeHtml(eventDateText(ev))} ${escapeHtml(ev.start || '')}</b>
-        <small>${escapeHtml(ev.venue || '地點未定')}${i === 0 ? `・${escapeHtml(eventCountdown(ev))}` : ''}</small></span>
-      <span class="ev-chip ${place.main ? 'ok' : 'wait'}">${place.main ? `正取 ${place.no}` : `候補 ${place.no}`}</span>
-    </button></li>`).join('');
-  const gradeChip = tier ? `<span class="pf-grade-badge hs-grade ${tier.cls}">${grade} 級</span>${escapeHtml(tier.name)}` : '<a href="#" class="hs-set" data-action="drawer-go" data-target="account">設定程度 ›</a>';
-  return `
-    <header class="top hs-top">
-      ${menuButton()}
-      <div class="top-title"><p class="hs-team">${escapeHtml(cloud.teamName || '球團')}</p></div>
-      <button class="hs-avatar ${tier ? tier.cls : ''}" data-action="drawer-go" data-target="account" aria-label="我的帳號">${escapeHtml(name.slice(0, 1))}</button>
-    </header>
-    <section class="hs-hello">
-      <h1>嗨，${escapeHtml(name)}</h1>
-      <p class="hs-meta">${gradeChip}${pf.gender ? `<span class="hs-sep">・</span>${genderMark(name)}` : ''}</p>
-    </section>
-    <section class="hs-stats" aria-label="我的數據">
-      ${stat(me ? me.g : loadingVal, '長期場數')}
-      ${stat(me && me.rec ? `${Math.round((me.w / me.rec) * 100)}%` : (ranks.status === 'ready' ? '—' : '…'), '勝率')}
-      ${stat(mine.length, '已報名場次', 'accent')}
-    </section>
-    <section class="hs-card" aria-label="我的報名">
-      <div class="hs-card-head"><h2>我的報名</h2><button class="link-btn strong" data-action="drawer-go" data-target="signup">全部場次</button></div>
-      ${timeline ? `<ol class="hs-timeline">${timeline}</ol>` : '<p class="sub hs-empty">還沒有報名任何場次。</p>'}
-    </section>
-    ${others.length ? `<section class="ev-section"><h2 class="ev-h ev-h-soft">還可以報名</h2><div class="ev-cards">${others.map(renderEventCard).join('')}</div></section>` : ''}
-    <p class="hs-note">今天沒有排場，管理者開始後這裡會自動切換</p>
-    <div class="wait-links">
-      <button class="btn-ghost" data-action="drawer-go" data-target="ranks">${icon('trophy')}我的戰績</button>
-      <button class="btn-ghost" data-action="drawer-go" data-target="past">${icon('box')}歷史球局</button>
-    </div>`;
-}
-
 // 首頁（等待開場、今日已結束）：最近一場放大，其他列在下面
 function renderEventCards() {
   const list = upcomingEvents();
@@ -5532,7 +5438,7 @@ async function loadRanks(force = false) {
     ranks.status = 'error';
     ranks.error = cloudErrorText(err);
   }
-  if (ui.ranksOpen || ui.rankProfile || ui.profileName || ui.pastList || ui.homeStatsWaiting) { ui.homeStatsWaiting = false; render(); }
+  if (ui.ranksOpen || ui.rankProfile || ui.profileName || ui.pastList) render();
   else if (ui.settings) renderModal();
 }
 
@@ -8645,13 +8551,6 @@ function renderLookSettings() {
             <button data-action="set-appearance" data-value="${key}" aria-pressed="${prefs.appearance === key}">${APPEARANCE_LABEL[key]}</button>`).join('')}
         </div>
       </div>
-      ${cloud.viewer ? `<div class="row">
-        <span class="label">首頁樣式</span>
-        <div class="seg" role="group" aria-label="首頁樣式">
-          <button data-action="set-home-style" data-value="stats" aria-pressed="${homeStyle() === 'stats'}">我的數據</button>
-          <button data-action="set-home-style" data-value="hero" aria-pressed="${homeStyle() === 'hero'}">下一場大卡</button>
-        </div>
-      </div>` : ''}
       <div class="row">
         <span class="label">場地配色</span>
         <div class="theme-swatches" role="group" aria-label="場地配色">
@@ -10674,11 +10573,6 @@ function handleAction(el) {
       renderPop();
       return;
     case 'settings-open': ui.settings = true; ui.settingsOnly = null; sessionChanged = false; break;
-    case 'set-home-style':
-      prefs.homeStyle = el.dataset.value;
-      savePrefs();
-      sessionChanged = false;
-      break;
     case 'set-appearance':
       prefs.appearance = el.dataset.value;
       applyAppearance();
