@@ -1084,6 +1084,13 @@
     padding: 12px 14px; margin-bottom: 14px; }
   .day-ended .row { margin-top: 8px; }
   .ended-card { margin-bottom: 18px; }
+  .my-rename { margin: 0 0 12px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  .my-rename .me-pick { width: 100%; }
+  .my-rename .me-pick input { flex: 1; min-width: 0; }
+  .my-rename .sub { margin: 0; }
+  .my-rename-open { margin: 0 0 8px; padding-left: 0; }
+  .member-rename { flex-wrap: wrap; }
+  .member-rename small { flex-basis: 100%; }
   .pf-g { font-size: .78em; margin-left: 3px; font-weight: 700; }
   .pf-g.m { color: #3b82c4; }
   .pf-g.f { color: #d0558f; }
@@ -1283,7 +1290,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '11.2';
+const APP_VERSION = '11.4';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1835,6 +1842,7 @@ const VIEWER_ACTIONS = new Set([
   'invite-copy-code', 'invite-copy', 'invite-share', 'cloud-invite', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
   'signup-view', 'signup-month', 'signup-day', 'pf-set', 'grade-pick',
+  'my-rename-open', 'my-rename-close', 'my-rename-submit', 'my-rename-cancel',
 ]);
 
 const cloud = {
@@ -2817,7 +2825,94 @@ function stopWatchMembers() {
 }
 
 function pendingMembers() {
-  return members.list.filter((m) => m.status !== 'approved');
+  return members.list.filter((m) => m.status !== 'approved' || m.renameTo);
+}
+
+/* ---------- 球友申請改名字（v11.4）----------
+ * 球友在 members/{uid} 寫 renameTo（只能改這兩個欄位），管理者確認後用 renamePlayer 改：
+ * 今天的排場、常用名單、所有長期紀錄、認領、報名名單、個人資料都會一起換。 */
+function renameRequestProblem(to) {
+  const claim = cloud.claim;
+  const name = String(to || '').trim();
+  if (!name) return '請輸入新的名字';
+  if (name.length > NAME_MAX) return `名字最多 ${NAME_MAX} 個字`;
+  if (claim && name === claim.name) return '跟現在的名字一樣';
+  const used = new Set(state.players.map((p) => p.name));
+  if (ranks.status === 'ready') aggregateRanks().forEach((p) => used.add(p.n));
+  if (used.has(name)) return '這個名字已經有人用了，換一個吧';
+  return '';
+}
+
+async function requestRename() {
+  const to = String(ui.myRenameTo || '').trim();
+  const problem = renameRequestProblem(to);
+  if (problem) { showToast(problem); return; }
+  try {
+    const { doc, updateDoc, serverTimestamp } = cloud.fb;
+    await updateDoc(doc(cloud.db, 'teams', VIEW_TEAM, 'members', cloud.user.uid), { renameTo: to, renameAt: serverTimestamp() });
+    ui.myRenameOpen = false;
+    ui.myRenameTo = '';
+    showToast('已送出，等管理者確認');
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+  render();
+}
+
+document.addEventListener('input', (e) => {
+  if (e.target && e.target.id === 'my-rename-input') ui.myRenameTo = e.target.value;
+});
+
+async function cancelRenameRequest() {
+  try {
+    const { doc, updateDoc, serverTimestamp } = cloud.fb;
+    await updateDoc(doc(cloud.db, 'teams', VIEW_TEAM, 'members', cloud.user.uid), { renameTo: '', renameAt: serverTimestamp() });
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+}
+
+/** 管理者：確認或拒絕改名申請 */
+async function answerRename(uid, ok) {
+  const m = members.list.find((x) => x.uid === uid);
+  if (!m || !m.renameTo) return;
+  const { doc, updateDoc } = cloud.fb;
+  const ref = doc(cloud.db, 'teams', cloud.teamId, 'members', uid);
+  try {
+    if (ok) {
+      const to = m.renameTo;
+      if (knownPlayerNames().has(to)) { showToast(`「${to}」已經有人用了，請按拒絕`); return; }
+      await updateDoc(ref, { renameTo: '' });
+      await renamePlayer(m.name, to);   // 會順便把這位球友的認領改成新名字
+    } else {
+      await updateDoc(ref, { renameTo: '' });
+      showToast('已拒絕改名');
+    }
+  } catch (err) {
+    showToast(cloudErrorText(err));
+  }
+}
+
+function renderMyRename() {
+  const claim = cloud.claim;
+  if (claim.renameTo) {
+    return `<div class="my-rename">
+      <p class="sub">已申請改成「<b>${escapeHtml(claim.renameTo)}</b>」，等管理者確認。</p>
+      <button class="btn-ghost" data-action="my-rename-cancel">取消申請</button>
+    </div>`;
+  }
+  if (!ui.myRenameOpen) {
+    return `<button class="btn-ghost my-rename-open" data-action="my-rename-open">改我的名字</button>`;
+  }
+  return `<div class="my-rename">
+    <label class="label" for="my-rename-input">新的名字</label>
+    <div class="me-pick" style="padding:0;background:none">
+      <input type="text" id="my-rename-input" maxlength="${NAME_MAX}" value="${escapeHtml(ui.myRenameTo || '')}" placeholder="${escapeHtml(claim.name)}">
+      <button class="btn-primary" data-action="my-rename-submit">送出</button>
+    </div>
+    <p class="sub">管理者確認後才會換，排場、報名、排行榜和歷史紀錄都會一起改成新名字。</p>
+    <button class="btn-ghost" data-action="my-rename-close">取消</button>
+  </div>`;
 }
 
 // 只有擁有者可以設定共同管理者（球友要先用 Google 登入、認領並確認過）
@@ -2864,7 +2959,12 @@ function renderMembersAdmin() {
       <span class="member-info"><b>${escapeHtml(m.name)}${coAdmin ? '<span class="claim-badge ok coadmin-badge">共同管理者</span>' : ''}</b>
         <small>${escapeHtml(m.displayName || '')} ${escapeHtml(m.email || '')}</small>
         ${clash ? '<small class="cloud-error">這個名字已經被其他帳號認領</small>' : ''}</span>
-      ${m.status === 'approved'
+      ${m.status === 'approved' && m.renameTo
+        ? `<span class="member-btns member-rename">
+            <small>申請改名：${escapeHtml(m.name)} → <b>${escapeHtml(m.renameTo)}</b>${knownPlayerNames().has(m.renameTo) ? '<span class="cloud-error" style="display:block">這個名字已經有人用了</span>' : ''}</small>
+            <button class="btn-primary" data-action="member-rename-ok" data-uid="${escapeHtml(m.uid)}" ${knownPlayerNames().has(m.renameTo) || ui.renameBusy ? 'disabled' : ''}>確認改名</button>
+            <button class="btn-ghost" data-action="member-rename-no" data-uid="${escapeHtml(m.uid)}">拒絕</button></span>`
+        : m.status === 'approved'
         ? `<span class="member-btns">
             ${isTeamOwner() ? `<button class="${coAdmin ? 'btn-outline' : 'btn-ghost'}" data-action="coadmin-toggle" data-uid="${escapeHtml(m.uid)}">${coAdmin ? '取消共同管理' : '設為共同管理者'}</button>` : ''}
             <button class="btn-ghost" data-action="member-remove" data-uid="${escapeHtml(m.uid)}">移除</button></span>`
@@ -2874,7 +2974,7 @@ function renderMembersAdmin() {
     </li>`;
   };
   const pending = pendingMembers();
-  const approved = members.list.filter((m) => m.status === 'approved');
+  const approved = members.list.filter((m) => m.status === 'approved' && !m.renameTo);
   return `
     ${pending.length ? `<h5 class="member-h">待確認</h5><ul class="member-list">${pending.map(row).join('')}</ul>` : ''}
     ${approved.length ? `<h5 class="member-h">已確認</h5><ul class="member-list">${approved.map(row).join('')}</ul>` : ''}`;
@@ -2920,7 +3020,7 @@ function renderAccountCard(all) {
     <p>${who}・已認領 <b>${escapeHtml(cloud.claim.name)}</b>
       <span class="claim-badge ${approved ? 'ok' : ''}">${approved ? '已確認' : '等待管理者確認'}</span></p>
     ${renderPushControl()}
-    ${approved ? `<h4 class="profile-h">個人資料</h4>${renderProfileFields(cloud.claim.name)}` : '<p class="sub">管理者確認後就可以填個人資料（性別、程度）。</p>'}
+    ${approved ? `<h4 class="profile-h">個人資料</h4>${renderMyRename()}${renderProfileFields(cloud.claim.name)}` : '<p class="sub">管理者確認後就可以改名字、填個人資料（性別、程度）。</p>'}
     <span class="member-btns">
       <button class="btn-ghost" data-action="claim-cancel">${approved ? '解除認領' : '取消認領'}</button>
       <button class="btn-ghost" data-action="google-logout">登出</button>
@@ -4786,6 +4886,8 @@ function renderDrawerRoot() {
 function drawerGo(target) {
   closeDrawer(() => {
     if (SETTINGS_SECTIONS[target]) {
+      ui.ranksOpen = false;   // 從「我的戰績」按「登入」過來：換成帳號頁
+      ui.rankProfile = null;
       ui.settings = true;
       ui.settingsOnly = target;
     } else if (target === 'all') {
@@ -5310,7 +5412,9 @@ function renderRanksTab() {
 
   return `
     <h2>我的戰績</h2>
-    ${renderAccountCard(all)}
+    ${cloud.viewer && cloud.auth && !isPasswordUser() && (!cloud.user || !cloud.claim)
+      ? `<button class="btn-ghost me-login-link" data-action="drawer-go" data-target="account">${cloud.user ? '還沒認領球員，去認領 ›' : '登入看自己的戰績 ›'}</button>`
+      : ''}
     ${myself ? renderMyStats(myself) : pick || (cloud.viewer && cloud.user ? '' : '<p class="sub">還沒有紀錄</p>')}
     <h2>長期排行榜</h2>
     <p class="sub" style="margin-top:-4px">累計 ${sessions.length} 次球局、${sessions.reduce((n, s) => n + s.matchCount, 0)} 場比賽${sessions.length ? `・最近存入 ${(() => { const d = new Date(Math.max(...sessions.map((x) => x.date || 0))); return `${d.getMonth() + 1}/${d.getDate()}`; })()}` : ''}${ranks.status === 'error' ? `・<span class="cloud-error" style="display:inline">${escapeHtml(ranks.error)}</span>` : ''}</p>
@@ -10201,6 +10305,17 @@ function handleAction(el) {
       sessionChanged = false;
       modalOnly = Boolean(document.querySelector('.modal .pf-grade'));
       break;
+    case 'my-rename-open': ui.myRenameOpen = true; ui.myRenameTo = cloud.claim ? cloud.claim.name : ''; sessionChanged = false; break;
+    case 'my-rename-close': ui.myRenameOpen = false; ui.myRenameTo = ''; sessionChanged = false; break;
+    case 'my-rename-submit': {
+      const input = document.getElementById('my-rename-input');
+      if (input) ui.myRenameTo = input.value;
+      requestRename();
+      return;
+    }
+    case 'my-rename-cancel': cancelRenameRequest(); return;
+    case 'member-rename-ok': answerRename(el.dataset.uid, true); return;
+    case 'member-rename-no': answerRename(el.dataset.uid, false); return;
     case 'day-new':
       if (!ui.dayNewArmed) {
         ui.dayNewArmed = true;
