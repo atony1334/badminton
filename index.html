@@ -230,7 +230,14 @@
   .ev-date { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 58px; border-radius: 12px;
     background: #DCEBE0; color: #1B4332; }
   .ev-date b { font-size: 24px; line-height: 1; font-weight: 800; }
-  .ev-date small { font-size: 11px; font-weight: 700; margin-top: 3px; }
+  .ev-date small { font-size: 11px; font-weight: 700; margin-bottom: 2px; }
+  .ev-place-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
+  .ev-place-line > small { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ev-place-line .ev-tag, .ev-place-line .ev-chip { flex-shrink: 0; font-size: 11px; padding: 2px 8px; }
+  .ev-count2 { display: flex; flex-direction: column; align-items: flex-end; gap: 0; min-width: 52px; }
+  .ev-count2 small { font-size: 11px; color: var(--muted); }
+  .ev-count2 b { font-size: 20px; font-weight: 800; line-height: 1.2; }
+  .ev-count2 b span { font-size: 13px; font-weight: 600; color: var(--muted); }
   .ev-date.full { background: #FCE7CF; color: #8A4A00; }
   .ev-date.closed { background: #E6E8E5; color: #59625C; }
   :root[data-appearance="dark"] .ev-date { background: #23402F; color: #CDEBD8; }
@@ -1430,7 +1437,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '12.0';
+const APP_VERSION = '12.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -4172,8 +4179,8 @@ function eventTone(ev, ranked) {
 
 function eventDateParts(ev) {
   const [y, m, d] = String(ev.date || '').split('-').map(Number);
-  if (!y || !m || !d) return { day: '?', sub: '日期未定' };
-  return { day: String(d), sub: `${m}月・${'日一二三四五六'[new Date(y, m - 1, d).getDay()]}` };
+  if (!y || !m || !d) return { day: '?', month: '未定' };
+  return { day: String(d), month: `${m}月` };   // v12.1：月份在上、日期在下，不寫星期
 }
 
 function eventTimeText(ev) {
@@ -4210,11 +4217,11 @@ function renderEventCard(ev) {
     ? `<span class="ev-chip ${place.main ? 'ok' : 'wait'}">${escapeHtml(place.main ? `第 ${place.no} 位` : `候補 ${place.no}`)}</span>`
     : eventStatusTag(ev, ranked);
   return `<button class="ev-card ev-card2" data-action="signup-event" data-id="${escapeHtml(ev.id)}">
-      <span class="ev-date ${tone}"><b class="num">${escapeHtml(date.day)}</b><small>${escapeHtml(date.sub)}</small></span>
+      <span class="ev-date ${tone}"><small>${escapeHtml(date.month)}</small><b class="num">${escapeHtml(date.day)}</b></span>
       <span class="ev-main"><b class="num">${escapeHtml(eventTimeText(ev))}</b>
-        <small>${escapeHtml(ev.venue || '地點未定')}・<span class="num">正取 ${shown}/${ranked.cap}</span>${ranked.wait.length ? `<span class="num">・候補 ${ranked.wait.length}</span>` : ''}</small>
+        <span class="ev-place-line"><small>${escapeHtml(ev.venue || '地點未定')}</small>${side}</span>
         <span class="ev-mini-bar" aria-hidden="true"><span style="width:${pct}%"></span></span></span>
-      <span class="ev-side">${side}</span>
+      <span class="ev-count2"><small>正取</small><b class="num">${shown}<span>/${ranked.cap}</span></b>${ranked.wait.length ? `<small class="num">候補 ${ranked.wait.length}</small>` : ''}</span>
     </button>`;
 }
 
@@ -4408,7 +4415,7 @@ function renderSignupEventModal() {
   // v11.6（設計稿 B）：左邊日期格＋右邊狀態、時間；下面地點、場地、正取、備註拆成小方格
   return `
     <div class="ev-head2">
-      <span class="ev-date big ${tone}"><b class="num">${escapeHtml(date.day)}</b><small>${escapeHtml(date.sub)}</small></span>
+      <span class="ev-date big ${tone}"><small>${escapeHtml(date.month)}</small><b class="num">${escapeHtml(date.day)}</b></span>
       <span class="ev-head2-main">
         <span class="ev-head2-tags">${eventStatusTag(ev, ranked)}${eventUpcoming(ev) ? `<span class="ev-tag soft">${escapeHtml(eventCountdown(ev))}</span>` : ''}</span>
         <h3 class="num">${escapeHtml(eventTimeText(ev))}</h3>
