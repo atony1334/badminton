@@ -1134,6 +1134,9 @@
   /* 下拉關閉：頂端的小橫條提示可以往下推 */
   .sheet-handle { width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: -8px auto 12px; }
   .modal.dragging { transition: none; }
+  .modal.sheet-full { max-height: none; height: calc(100vh - env(safe-area-inset-top, 0px) - 10px); height: calc(100dvh - env(safe-area-inset-top, 0px) - 10px); }
+  .sheet-handle { position: relative; }
+  .sheet-handle::before { content: ''; position: absolute; left: -40px; right: -40px; top: -16px; bottom: -14px; }
   .modal-page { will-change: transform; }
   .modal.sheet-release { transition: transform 0.2s ease; }
   .modal-bg.sheet-fade { transition: background 0.2s ease; }
@@ -1437,7 +1440,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '12.1';
+const APP_VERSION = '12.2';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -10059,7 +10062,23 @@ document.addEventListener('contextmenu', (e) => { if (e.target.closest('.drag-ch
 /* ===================== 彈窗下拉關閉 =====================
  * 在彈窗內往下推：彈窗內容已捲到最上方時才開始拖動，避免和內容捲動衝突。
  * 放開時拖超過 100px 或快速往下甩就關閉，否則彈回原位。 */
-const sheet = { active: false, decided: false, startY: 0, startX: 0, dy: 0, t0: 0, el: null };
+const sheet = { active: false, decided: false, startY: 0, startX: 0, dy: 0, t0: 0, el: null, mode: 'down', zone: false, h0: 0 };
+const SHEET_EXPAND_PX = 50;
+
+/** v12.2 面板往上拉滿整個螢幕（.sheet-full）；再往下拉回原本高度 */
+function setSheetFull(el, on) {
+  if (!el || el.classList.contains('sheet-full') === on) return;
+  const from = el.offsetHeight;
+  el.style.maxHeight = '';
+  el.classList.toggle('sheet-full', on);
+  const to = el.offsetHeight;
+  if (reduceMotion() || Math.abs(to - from) < 4) return;
+  el.style.height = `${from}px`;
+  void el.offsetHeight;
+  el.style.transition = 'height 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
+  el.style.height = `${to}px`;
+  setTimeout(() => { el.style.height = ''; el.style.transition = ''; }, 320);
+}
 const SHEET_CLOSE_PX = 100;
 const SHEET_FLICK_SPEED = 0.6;   // px/ms
 
@@ -10070,8 +10089,10 @@ document.addEventListener('touchstart', (e) => {
   // 在可以往上捲的內層區塊（月曆、常用球員）裡：先讓它自己捲，捲到頂才算下拉關閉
   const inner = e.target.closest('.mg-scroll, .chips-scroll, .grade-list');
   if (inner && inner.scrollTop > 0) return;
+  // 頂端把手附近（上方 56px）才能往上拉滿；其他地方往上滑是正常捲動
+  const zone = Boolean(e.target.closest('.sheet-handle')) || e.touches[0].clientY - modal.getBoundingClientRect().top < 56;
   Object.assign(sheet, {
-    active: true, decided: false, el: modal, dy: 0, t0: Date.now(),
+    active: true, decided: false, el: modal, dy: 0, t0: Date.now(), mode: 'down', zone, h0: modal.offsetHeight,
     startY: e.touches[0].clientY, startX: e.touches[0].clientX,
   });
 }, { passive: true });
@@ -10085,7 +10106,12 @@ document.addEventListener('touchmove', (e) => {
     sheet.decided = true;
     // 只有「往下、偏垂直、內容在最上方」才當成下拉關閉；其他交給正常捲動
     const atTop = sheet.el.scrollTop <= 0;
-    if (!(dy > 0 && Math.abs(dy) > Math.abs(dx) && atTop)) {
+    const vertical = Math.abs(dy) > Math.abs(dx);
+    const noScroll = sheet.el.scrollHeight <= sheet.el.clientHeight + 2;
+    const canExpand = !sheet.el.classList.contains('sheet-full') && (sheet.zone || noScroll);
+    if (dy < 0 && vertical && canExpand) {
+      sheet.mode = 'up';
+    } else if (!(dy > 0 && vertical && atTop)) {
       sheet.active = false;
       return;
     }
@@ -10094,6 +10120,12 @@ document.addEventListener('touchmove', (e) => {
     sheet.t0 = Date.now();
   }
   e.preventDefault();
+  if (sheet.mode === 'up') {
+    sheet.dy = Math.min(0, e.touches[0].clientY - sheet.startY);
+    sheet.el.style.maxHeight = `${Math.min(window.innerHeight, sheet.h0 - sheet.dy)}px`;
+    sheet.el.style.height = `${Math.min(window.innerHeight, sheet.h0 - sheet.dy)}px`;
+    return;
+  }
   sheet.dy = Math.max(0, e.touches[0].clientY - sheet.startY);
   sheet.el.style.transform = `translateY(${sheet.dy}px)`;
   const bg = sheet.el.parentElement;
@@ -10108,6 +10140,31 @@ function sheetEnd() {
   el.classList.remove('dragging');
   const speed = dy / Math.max(1, Date.now() - sheet.t0);
   const bg = el.parentElement;
+  if (sheet.mode === 'up') {
+    const grow = -dy > SHEET_EXPAND_PX || (-dy > 20 && -speed > SHEET_FLICK_SPEED);
+    const now = el.offsetHeight;
+    el.style.maxHeight = '';
+    el.style.height = '';
+    el.classList.toggle('sheet-full', grow);
+    const to = el.offsetHeight;
+    if (!reduceMotion() && Math.abs(to - now) > 4) {
+      el.style.height = `${now}px`;
+      void el.offsetHeight;
+      el.style.transition = 'height 0.28s cubic-bezier(0.32, 0.72, 0, 1)';
+      el.style.height = `${to}px`;
+      setTimeout(() => { el.style.height = ''; el.style.transition = ''; }, 300);
+    }
+    return;
+  }
+  // 拉滿的時候往下拉：先回到原本高度，不直接關掉（快速甩到很下面才關）
+  if (el.classList.contains('sheet-full') && dy > 40 && !(dy > 320 && speed > SHEET_FLICK_SPEED)) {
+    el.classList.add('sheet-release');
+    el.style.transform = '';
+    if (bg) bg.style.background = '';
+    setSheetFull(el, false);
+    setTimeout(() => el.classList.remove('sheet-release'), 220);
+    return;
+  }
   if (dy > SHEET_CLOSE_PX || (dy > 30 && speed > SHEET_FLICK_SPEED)) {
     el.classList.add('sheet-release');
     el.style.transform = 'translateY(110%)';
