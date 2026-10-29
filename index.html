@@ -1134,7 +1134,8 @@
   /* 下拉關閉：頂端的小橫條提示可以往下推 */
   .sheet-handle { width: 40px; height: 5px; border-radius: 3px; background: var(--border); margin: -8px auto 12px; }
   .modal.dragging { transition: none; }
-  .modal.sheet-full { max-height: none; height: calc(100vh - env(safe-area-inset-top, 0px) - 10px); height: calc(100dvh - env(safe-area-inset-top, 0px) - 10px); }
+  /* v12.4：拉滿只是放寬最高高度；內容比螢幕短時面板就停在內容的高度，關閉鈕不會浮在半空 */
+  .modal.sheet-full { max-height: calc(100vh - env(safe-area-inset-top, 0px) - 10px); max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 10px); }
   .sheet-handle { position: relative; }
   .sheet-handle::before { content: ''; position: absolute; left: -40px; right: -40px; top: -16px; bottom: -14px; }
   .modal-page { will-change: transform; }
@@ -1440,7 +1441,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '12.3';
+const APP_VERSION = '12.4';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
