@@ -1136,8 +1136,21 @@
   .modal.dragging { transition: none; }
   /* v12.4：拉滿只是放寬最高高度；內容比螢幕短時面板就停在內容的高度，關閉鈕不會浮在半空 */
   .modal.sheet-full { max-height: calc(100vh - env(safe-area-inset-top, 0px) - 10px); max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 10px); }
-  .sheet-handle { position: relative; }
-  .sheet-handle::before { content: ''; position: absolute; left: -40px; right: -40px; top: -16px; bottom: -14px; }
+  /* v12.5 參考 IG：圓角更大、頂端把手和標題固定在上面、標題置中 */
+  .modal { border-radius: 24px 24px 0 0; padding-top: 0; }
+  .sheet-handle { position: sticky; top: 0; z-index: 4; width: auto; height: 26px; margin: 0 -16px; border-radius: 0;
+    background: color-mix(in srgb, var(--surface) 82%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+  .sheet-handle::after { content: ''; position: absolute; left: 50%; top: 10px; width: 38px; height: 4px; margin-left: -19px; border-radius: 2px;
+    background: color-mix(in srgb, var(--ink) 22%, transparent); }
+  .modal-page > h3:first-child { position: sticky; top: 26px; z-index: 3; margin: 0 -16px 10px; padding: 2px 16px 12px;
+    background: color-mix(in srgb, var(--surface) 82%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    text-align: center; font-size: 17px; font-weight: 800; }
+  /* 往下捲時標題下方的內容漸漸淡出（像 IG） */
+  .modal-page > h3:first-child::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 22px; pointer-events: none;
+    background: linear-gradient(color-mix(in srgb, var(--surface) 82%, transparent), transparent); opacity: 0; transition: opacity .2s ease; }
+  .modal.is-scrolled .modal-page > h3:first-child::after { opacity: 1; }
+  /* v12.5 手機上拿掉「關閉／完成」，往下拉或點背景關閉；平板、電腦的置中對話框保留 */
+  @media (max-width: 699px) { [data-sheet-close] { display: none !important; } .modal { padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); } }
   .modal-page { will-change: transform; }
   .modal.sheet-release { transition: transform 0.2s ease; }
   .modal-bg.sheet-fade { transition: background 0.2s ease; }
@@ -1441,7 +1454,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '12.4';
+const APP_VERSION = '12.5';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2708,7 +2721,7 @@ function renderInviteModal() {
       <button class="btn-primary" data-action="invite-copy">複製連結</button>
       ${navigator.share ? '<button class="btn-ghost" data-action="invite-share">分享</button>' : ''}
     </div>
-    <button class="btn-ghost btn-block" style="margin-top:10px" data-action="modal-close">完成</button>`;
+    <button class="btn-ghost btn-block" style="margin-top:10px" data-action="modal-close" data-sheet-close>完成</button>`;
 }
 
 function copyInviteLink() {
@@ -2873,7 +2886,7 @@ function renderViewerSettings() {
     </div></section>
     ${renderLookSettings()}
     ${renderUpdateFooter()}
-    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">完成</button>`;
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close" data-sheet-close>完成</button>`;
 }
 
 /* ===================== 球友帳號（Google 登入＋認領球員） ===================== */
@@ -4290,7 +4303,7 @@ function renderSignupListModal() {
     ${view === 'calendar' ? (signup.ready ? renderSignupCalendar() : '<p class="sub">讀取中…</p>') : `
     <div class="ev-cards">${body}</div>
     ${past.length ? `<h4 class="profile-h">已經過去的場次</h4><div class="ev-cards past">${past.map(renderEventCard).join('')}</div>` : ''}`}
-    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close" data-sheet-close>關閉</button>`;
 }
 
 function renderSignupMine(ev, ranked) {
@@ -4408,7 +4421,7 @@ function renderSignupEventModal() {
     return `
       <p class="sub">${signup.ready ? '找不到這個場次，可能已經被刪除。' : '讀取中…'}</p>
       <button class="btn-outline btn-block past-back ev-back" data-action="signup-back">← 所有場次</button>
-      <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">關閉</button>`;
+      <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close" data-sheet-close>關閉</button>`;
   }
   const ranked = signupRanked(ev);
   const open = mapOpenUrl(ev);
@@ -4445,7 +4458,7 @@ function renderSignupEventModal() {
     ${ranked.wait.length ? `<div class="ev-list-head"><h4>候補 <span class="num">${ranked.wait.length}</span></h4></div>
       <ol class="ev-list wait">${renderSignupRows(ranked.wait, 1, ev)}</ol>` : ''}
     <button class="btn-outline btn-block past-back ev-back" data-action="signup-back">← 所有場次</button>
-    <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">關閉</button>
+    <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close" data-sheet-close>關閉</button>
     ${cloud.viewer ? '' : renderEventDeleteZone(ev)}`;
 }
 
@@ -5180,7 +5193,7 @@ function renderSettingsSection(key) {
   return `
     <h3>${SETTINGS_SECTIONS[key]}</h3>
     <div class="settings-only">${body ? body() : ''}</div>
-    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">完成</button>`;
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close" data-sheet-close>完成</button>`;
 }
 
 /* ===================== 歷史球局 ===================== */
@@ -5240,7 +5253,7 @@ function renderPastListModal() {
     <h3>歷史球局</h3>
     <p class="sub" style="margin:0 0 10px">點日期可以看那天的完整紀錄。</p>
     ${body}
-    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close" data-sheet-close>關閉</button>`;
 }
 
 /** 歷史球局裡最近的一場（只有它可以繼續排場） */
@@ -5720,7 +5733,7 @@ function renderMyStats(name) {
 function renderRanksModal() {
   return `
     <div class="ranks-sheet">${renderRanksTab()}</div>
-    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">關閉</button>`;
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close" data-sheet-close>關閉</button>`;
 }
 
 /* ===================== 工具函式 ===================== */
@@ -8487,7 +8500,7 @@ function renderManualModal() {
       <button data-action="manual-auto-split">依紀錄分隊</button>
       <button class="btn-primary" data-action="manual-confirm">確認上場</button>
     </div>
-    <button class="btn-ghost btn-block" data-action="modal-close">關閉</button>`;
+    <button class="btn-ghost btn-block" data-action="modal-close" data-sheet-close>關閉</button>`;
 }
 
 // 取得勝負彈窗要顯示的球員：結束中的比賽或某筆紀錄
@@ -8514,7 +8527,7 @@ function resultContext() {
 
 function renderResultModal() {
   const ctx = resultContext();
-  if (!ctx) return '<p class="sub">這場比賽已不存在。</p><button class="btn-ghost btn-block" data-action="modal-close">關閉</button>';
+  if (!ctx) return '<p class="sub">這場比賽已不存在。</p><button class="btn-ghost btn-block" data-action="modal-close" data-sheet-close>關閉</button>';
   const need = ctx.teamA.length;
   const picked = ui.result.selected;
   const players = ctx.teamA.concat(ctx.teamB);
@@ -8535,7 +8548,7 @@ function renderResultModal() {
         ${ctx.hasResult ? '<button data-action="result-clear">清除勝負</button>' : ''}
         <button class="btn-primary" data-action="result-confirm" ${ready ? '' : 'disabled'}>確認</button>
       </div>
-      <button class="btn-ghost btn-block" data-action="modal-close">關閉</button>`;
+      <button class="btn-ghost btn-block" data-action="modal-close" data-sheet-close>關閉</button>`;
 
   return `
     <h3>${ctx.title}</h3>
@@ -8555,7 +8568,7 @@ function renderBackupModal() {
       <button data-action="backup-copy">複製</button>
       <button class="btn-primary" data-action="backup-restore">還原</button>
     </div>
-    <button class="btn-ghost btn-block" data-action="modal-close">關閉</button>`;
+    <button class="btn-ghost btn-block" data-action="modal-close" data-sheet-close>關閉</button>`;
 }
 
 function wakeLockSupported() {
@@ -8705,7 +8718,7 @@ function renderSettingsModal() {
     ${renderLookSettings()}
     ${renderDataSettings()}
     ${renderUpdateFooter()}
-    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close">完成</button>`;
+    <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close" data-sheet-close>完成</button>`;
 }
 
 function renderVoiceSettings() {
@@ -8765,7 +8778,7 @@ function renderCopyModal() {
     <h3>複製排場</h3>
     <p class="sub">無法自動複製，請長按下方文字全選後複製，再貼到 LINE。</p>
     <textarea id="copy-text" style="min-height:180px">${escapeHtml(ui.copyText)}</textarea>
-    <button class="btn-primary btn-block" style="margin-top:12px" data-action="modal-close">完成</button>`;
+    <button class="btn-primary btn-block" style="margin-top:12px" data-action="modal-close" data-sheet-close>完成</button>`;
 }
 
 function titleHolders(t) {
@@ -8875,7 +8888,7 @@ function renderPlayerModal() {
     <div class="profile-body">${view === 'today' ? renderTodayProfileBody(name) : renderLongProfileBody(name)}</div>
     ${showMeSet && ui.rankProfile ? `<button class="btn-ghost btn-block" data-action="me-set" data-name="${escapeHtml(name)}">這是我（在這支手機記住）</button>` : ''}
     ${renderRenameBox(name)}
-    <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">${ui.rankProfile && ui.ranksOpen ? '返回排行榜' : '關閉'}</button>`;
+    <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close" ${ui.rankProfile && ui.ranksOpen ? '' : 'data-sheet-close'}>${ui.rankProfile && ui.ranksOpen ? '返回排行榜' : '關閉'}</button>`;
 }
 
 /* 彈窗的「層級」：數字大的是從數字小的點進去的（例如報名列表 1 → 場次 2 → 編輯 3），
@@ -9549,7 +9562,7 @@ function renderReportModal() {
     <img class="report-img" src="${ui.report.url}" alt="今日戰報">
     <div class="modal-foot">
       ${canShare ? '<button class="btn-tape" data-action="report-share">分享圖片</button>' : ''}
-      <button class="btn-primary" data-action="modal-close">關閉</button>
+      <button class="btn-primary" data-action="modal-close" data-sheet-close>關閉</button>
     </div>`;
 }
 
@@ -10065,6 +10078,12 @@ document.addEventListener('contextmenu', (e) => { if (e.target.closest('.drag-ch
  * 放開時拖超過 100px 或快速往下甩就關閉，否則彈回原位。 */
 const sheet = { active: false, decided: false, startY: 0, startX: 0, dy: 0, t0: 0, el: null, mode: 'down', zone: false, h0: 0 };
 const SHEET_EXPAND_PX = 50;
+
+// 彈窗捲動後標題下方出現細線（像 IG 留言面板）
+document.addEventListener('scroll', (e) => {
+  const el = e.target;
+  if (el && el.classList && el.classList.contains('modal')) el.classList.toggle('is-scrolled', el.scrollTop > 4);
+}, true);
 
 /** v12.2 面板往上拉滿整個螢幕（.sheet-full）；再往下拉回原本高度 */
 function setSheetFull(el, on) {
