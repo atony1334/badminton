@@ -1440,7 +1440,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '12.2';
+const APP_VERSION = '12.3';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -10107,8 +10107,9 @@ document.addEventListener('touchmove', (e) => {
     // 只有「往下、偏垂直、內容在最上方」才當成下拉關閉；其他交給正常捲動
     const atTop = sheet.el.scrollTop <= 0;
     const vertical = Math.abs(dy) > Math.abs(dx);
-    const noScroll = sheet.el.scrollHeight <= sheet.el.clientHeight + 2;
-    const canExpand = !sheet.el.classList.contains('sheet-full') && (sheet.zone || noScroll);
+    // v12.3：內容需要捲動時，往上滑先把面板拉滿，拉滿後才是一般捲動；內容不用捲就不拉滿
+    const scrollable = sheet.el.scrollHeight > sheet.el.clientHeight + 2;
+    const canExpand = !sheet.el.classList.contains('sheet-full') && scrollable;
     if (dy < 0 && vertical && canExpand) {
       sheet.mode = 'up';
     } else if (!(dy > 0 && vertical && atTop)) {
