@@ -1467,7 +1467,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '12.7';
+const APP_VERSION = '12.8';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -10114,8 +10114,10 @@ function setSheetFull(el, on) {
   el.style.height = `${to}px`;
   setTimeout(() => { el.style.height = ''; el.style.transition = ''; }, 470);
 }
-const SHEET_CLOSE_PX = 100;
-const SHEET_FLICK_SPEED = 0.6;   // px/ms
+const SHEET_CLOSE_PX = 140;          // v12.8：拉超過這個距離放手才關
+const SHEET_FLICK_SPEED = 0.9;       // px/ms：往下「甩」要比這個快
+const SHEET_FLICK_MIN_PX = 60;       // 甩也至少要拉這麼遠
+const SHEET_HARD_FLICK_SPEED = 1.2;  // 拉滿時要甩得比這個快才直接關
 
 document.addEventListener('touchstart', (e) => {
   const modal = e.target.closest('.modal');
@@ -10159,7 +10161,11 @@ document.addEventListener('touchmove', (e) => {
   // 速度用最近幾次移動算（放手時判斷甩動），畫面更新集中到下一個影格，避免每次觸控都重排
   const y = e.touches[0].clientY;
   const now = performance.now();
-  if (sheet.lastT) sheet.vy = 0.7 * ((y - sheet.lastY) / Math.max(1, now - sheet.lastT)) + 0.3 * (sheet.vy || 0);
+  // 速度取最近 100ms 內的位移（單一事件的跳動不算），避免輕輕一拉就被當成甩動
+  (sheet.samples || (sheet.samples = [])).push([now, y]);
+  while (sheet.samples.length > 2 && now - sheet.samples[0][0] > 100) sheet.samples.shift();
+  const first = sheet.samples[0];
+  sheet.vy = now - first[0] >= 24 ? (y - first[1]) / (now - first[0]) : 0;
   sheet.lastY = y; sheet.lastT = now;
   if (sheet.mode === 'up') {
     sheet.dy = Math.min(0, y - sheet.startY);
@@ -10192,12 +10198,11 @@ function sheetEnd() {
   sheet.active = false;
   if (sheet.raf) { cancelAnimationFrame(sheet.raf); sheet.raf = 0; }
   const recent = sheet.lastT && performance.now() - sheet.lastT < 80 ? sheet.vy || 0 : 0;
-  sheet.lastT = 0; sheet.vy = 0;
+  sheet.lastT = 0; sheet.vy = 0; sheet.samples = [];
   if (!sheet.decided || !el) return;
   el.classList.remove('dragging');
   // 甩動速度：取「最近的速度」和「平均速度」較大的那個
-  const avg = dy / Math.max(1, Date.now() - sheet.t0);
-  const speed = Math.abs(recent) > Math.abs(avg) ? recent : avg;
+  const speed = recent;
   const bg = el.parentElement;
   if (sheet.mode === 'up') {
     const grow = -dy > SHEET_EXPAND_PX || (-dy > 20 && -speed > SHEET_FLICK_SPEED);
@@ -10217,7 +10222,7 @@ function sheetEnd() {
   }
   // 拉滿的時候往下拉：大力往下甩或拉超過一半就直接關；輕輕拉就回到原本高度
   const full = el.classList.contains('sheet-full');
-  const hardFlick = dy > 60 && speed > SHEET_FLICK_SPEED * 1.5;
+  const hardFlick = dy > 90 && speed > SHEET_HARD_FLICK_SPEED;
   if (full && !hardFlick && dy < el.offsetHeight * 0.5 && dy > 40) {
     // 不用彈簧：高度和位置同時用同一條平順曲線收回，避免兩個彈簧疊在一起抖動
     el.classList.remove('sheet-release');
@@ -10241,7 +10246,8 @@ function sheetEnd() {
     setTimeout(() => el.classList.remove('sheet-collapse'), 380);
     return;
   }
-  if (hardFlick || dy > SHEET_CLOSE_PX || (dy > 30 && speed > SHEET_FLICK_SPEED)) {
+  const pastHalf = full && dy >= el.offsetHeight * 0.5;
+  if (hardFlick || pastHalf || (!full && (dy > SHEET_CLOSE_PX || (dy > SHEET_FLICK_MIN_PX && speed > SHEET_FLICK_SPEED)))) {
     el.classList.remove('sheet-release');
     el.classList.add('sheet-closing');
     el.style.transform = 'translateY(110%)';
