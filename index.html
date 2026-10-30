@@ -1160,7 +1160,8 @@
   @media (max-width: 699px) { .modal { box-shadow: 0 80px 0 0 var(--surface); } }   /* 彈過頭時底下不露縫 */
   .modal.sheet-release { transition: transform 0.45s var(--ease-snap); }
   .modal.sheet-closing { transition: transform 0.22s cubic-bezier(0.4, 0, 1, 1); }
-  .modal.dragging { will-change: transform, height; }
+  .modal.dragging { will-change: transform, height; transition: none !important; }
+  .modal.sheet-collapse { transition: transform 0.36s cubic-bezier(0.32, 0.72, 0, 1); }
   /* 按鈕按下去縮一點、放開彈回 */
   button, a.btn-outline, a.hero-btn, a.ev-me-btn { transition: transform 0.35s var(--ease-snap), background-color 0.15s ease, opacity 0.15s ease; }
   button:active, a.btn-outline:active, a.hero-btn:active, a.ev-me-btn:active { transform: scale(0.97); transition: transform 0.08s ease-out; }
@@ -1466,7 +1467,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '12.6';
+const APP_VERSION = '12.7';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -10214,16 +10215,34 @@ function sheetEnd() {
     }
     return;
   }
-  // 拉滿的時候往下拉：先回到原本高度，不直接關掉（快速甩到很下面才關）
-  if (el.classList.contains('sheet-full') && dy > 40 && !(dy > 320 && speed > SHEET_FLICK_SPEED)) {
-    el.classList.add('sheet-release');
+  // 拉滿的時候往下拉：大力往下甩或拉超過一半就直接關；輕輕拉就回到原本高度
+  const full = el.classList.contains('sheet-full');
+  const hardFlick = dy > 60 && speed > SHEET_FLICK_SPEED * 1.5;
+  if (full && !hardFlick && dy < el.offsetHeight * 0.5 && dy > 40) {
+    // 不用彈簧：高度和位置同時用同一條平順曲線收回，避免兩個彈簧疊在一起抖動
+    el.classList.remove('sheet-release');
+    const from = el.offsetHeight;
+    el.classList.remove('sheet-full');
+    const to = el.offsetHeight;
+    el.style.height = `${from}px`;
+    void el.offsetHeight;
+    el.classList.add('sheet-collapse');
+    el.style.transition = 'transform 0.36s cubic-bezier(0.32, 0.72, 0, 1), height 0.36s cubic-bezier(0.32, 0.72, 0, 1)';
     el.style.transform = '';
+    el.style.height = `${to}px`;
     if (bg) bg.style.background = '';
-    setSheetFull(el, false);
-    setTimeout(() => el.classList.remove('sheet-release'), 470);
+    setTimeout(() => { el.style.height = ''; el.style.transition = ''; el.classList.remove('sheet-collapse'); }, 380);
     return;
   }
-  if (dy > SHEET_CLOSE_PX || (dy > 30 && speed > SHEET_FLICK_SPEED)) {
+  if (full && !hardFlick && dy <= 40) {
+    el.classList.add('sheet-collapse');
+    el.style.transform = '';
+    if (bg) bg.style.background = '';
+    setTimeout(() => el.classList.remove('sheet-collapse'), 380);
+    return;
+  }
+  if (hardFlick || dy > SHEET_CLOSE_PX || (dy > 30 && speed > SHEET_FLICK_SPEED)) {
+    el.classList.remove('sheet-release');
     el.classList.add('sheet-closing');
     el.style.transform = 'translateY(110%)';
     if (bg) { bg.classList.add('sheet-fade'); bg.style.background = 'rgba(20, 38, 28, 0)'; }
