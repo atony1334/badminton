@@ -1139,20 +1139,32 @@
   /* v12.5 參考 IG：圓角更大、頂端把手和標題固定在上面、標題置中 */
   .modal { border-radius: 24px 24px 0 0; padding-top: 0; }
   .sheet-handle { position: sticky; top: 0; z-index: 4; width: auto; height: 26px; margin: 0 -16px; border-radius: 0;
-    background: color-mix(in srgb, var(--surface) 82%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); }
+    background: color-mix(in srgb, var(--surface) 94%, transparent); }
   .sheet-handle::after { content: ''; position: absolute; left: 50%; top: 10px; width: 38px; height: 4px; margin-left: -19px; border-radius: 2px;
     background: color-mix(in srgb, var(--ink) 22%, transparent); }
   .modal-page > h3:first-child { position: sticky; top: 26px; z-index: 3; margin: 0 -16px 10px; padding: 2px 16px 12px;
-    background: color-mix(in srgb, var(--surface) 82%, transparent); -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px);
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
     text-align: center; font-size: 17px; font-weight: 800; }
   /* 往下捲時標題下方的內容漸漸淡出（像 IG） */
   .modal-page > h3:first-child::after { content: ''; position: absolute; left: 0; right: 0; top: 100%; height: 22px; pointer-events: none;
-    background: linear-gradient(color-mix(in srgb, var(--surface) 82%, transparent), transparent); opacity: 0; transition: opacity .2s ease; }
+    background: linear-gradient(color-mix(in srgb, var(--surface) 94%, transparent), transparent); opacity: 0; transition: opacity .2s ease; }
   .modal.is-scrolled .modal-page > h3:first-child::after { opacity: 1; }
   /* v12.5 手機上拿掉「關閉／完成」，往下拉或點背景關閉；平板、電腦的置中對話框保留 */
   @media (max-width: 699px) { [data-sheet-close] { display: none !important; } .modal { padding-bottom: calc(28px + env(safe-area-inset-bottom, 0px)); } }
   .modal-page { will-change: transform; }
-  .modal.sheet-release { transition: transform 0.2s ease; }
+  /* v12.6 彈簧感：打開、放手彈回、拉高都用彈簧曲線（不支援 linear() 的瀏覽器用原本的 iOS 曲線） */
+  :root { --ease-open: cubic-bezier(0.32, 0.72, 0, 1); --ease-snap: cubic-bezier(0.32, 0.72, 0, 1); }
+  @supports (transition-timing-function: linear(0, 1)) {
+    :root { --ease-open: linear(0, 0.0214, 0.076, 0.1514, 0.2383, 0.3298, 0.4206, 0.5074, 0.5878, 0.6606, 0.725, 0.7811, 0.829, 0.8693, 0.9028, 0.93, 0.9518, 0.9689, 0.9822, 0.9921, 0.9993, 1.0044, 1.0078, 1.0098, 1.0108, 1.0111, 1.0108, 1.0102, 1.0094, 1.0084, 1.0074, 1.0064, 1.0054, 1.0045, 1.0037, 1.003, 1.0024, 1.0019, 1.0014, 1.0011, 1); --ease-snap: linear(0, 0.0228, 0.0816, 0.1643, 0.2608, 0.3631, 0.4654, 0.5631, 0.6534, 0.7342, 0.8047, 0.8646, 0.9141, 0.954, 0.9851, 1.0084, 1.0251, 1.0362, 1.0427, 1.0456, 1.0458, 1.0439, 1.0406, 1.0365, 1.0319, 1.0272, 1.0225, 1.0182, 1.0142, 1.0107, 1.0077, 1.0051, 1.0031, 1.0014, 1.0002, 0.9992, 0.9986, 0.9982, 0.998, 0.9979, 1); }
+  }
+  @media (max-width: 699px) { .modal { box-shadow: 0 80px 0 0 var(--surface); } }   /* 彈過頭時底下不露縫 */
+  .modal.sheet-release { transition: transform 0.45s var(--ease-snap); }
+  .modal.sheet-closing { transition: transform 0.22s cubic-bezier(0.4, 0, 1, 1); }
+  .modal.dragging { will-change: transform, height; }
+  /* 按鈕按下去縮一點、放開彈回 */
+  button, a.btn-outline, a.hero-btn, a.ev-me-btn { transition: transform 0.35s var(--ease-snap), background-color 0.15s ease, opacity 0.15s ease; }
+  button:active, a.btn-outline:active, a.hero-btn:active, a.ev-me-btn:active { transform: scale(0.97); transition: transform 0.08s ease-out; }
+  .mg-cell:active, .seg button:active, .switch:active, .d-item:active { transform: none; }
   .modal-bg.sheet-fade { transition: background 0.2s ease; }
   body.modal-open { overflow: hidden; }
   .modal h3 { margin: 0 0 4px; font-size: 18px; }
@@ -1181,7 +1193,7 @@
   @media (prefers-reduced-motion: no-preference) {
     /* 彈窗動畫：iPhone 底部面板的曲線 */
     .modal-bg.modal-bg-enter { animation: modal-bg-in 0.3s ease; }
-    .modal.modal-enter { animation: sheet-up 0.4s cubic-bezier(0.32, 0.72, 0, 1); }
+    .modal.modal-enter { animation: sheet-up 0.55s var(--ease-open); }
     .modal-bg.modal-leave { animation: modal-bg-out 0.26s ease forwards; pointer-events: none; }
     .modal-bg.modal-leave .modal { animation: sheet-down 0.26s cubic-bezier(0.4, 0, 1, 1) forwards; }
     .modal-page.page-fwd { animation: page-fwd 0.32s cubic-bezier(0.32, 0.72, 0, 1); }
@@ -1454,7 +1466,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '12.5';
+const APP_VERSION = '12.6';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -9016,13 +9028,13 @@ function renderModal() {
     if (Math.abs(newHeight - oldHeight) > 4) {
       current.style.height = `${oldHeight}px`;
       void current.offsetHeight;
-      current.style.transition = 'height 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
+      current.style.transition = 'height 0.42s var(--ease-open)';
       current.style.height = `${newHeight}px`;
       setTimeout(() => {
         if (!current.isConnected) return;
         current.style.height = '';
         current.style.transition = '';
-      }, 320);
+      }, 440);
     }
   }
   document.body.classList.toggle('modal-open', true);
@@ -10082,7 +10094,9 @@ const SHEET_EXPAND_PX = 50;
 // 彈窗捲動後標題下方出現細線（像 IG 留言面板）
 document.addEventListener('scroll', (e) => {
   const el = e.target;
-  if (el && el.classList && el.classList.contains('modal')) el.classList.toggle('is-scrolled', el.scrollTop > 4);
+  if (!el || !el.classList || !el.classList.contains('modal')) return;
+  const on = el.scrollTop > 4;
+  if (el.classList.contains('is-scrolled') !== on) el.classList.toggle('is-scrolled', on);
 }, true);
 
 /** v12.2 面板往上拉滿整個螢幕（.sheet-full）；再往下拉回原本高度 */
@@ -10095,9 +10109,9 @@ function setSheetFull(el, on) {
   if (reduceMotion() || Math.abs(to - from) < 4) return;
   el.style.height = `${from}px`;
   void el.offsetHeight;
-  el.style.transition = 'height 0.3s cubic-bezier(0.32, 0.72, 0, 1)';
+  el.style.transition = 'height 0.45s var(--ease-snap)';
   el.style.height = `${to}px`;
-  setTimeout(() => { el.style.height = ''; el.style.transition = ''; }, 320);
+  setTimeout(() => { el.style.height = ''; el.style.transition = ''; }, 470);
 }
 const SHEET_CLOSE_PX = 100;
 const SHEET_FLICK_SPEED = 0.6;   // px/ms
@@ -10141,25 +10155,48 @@ document.addEventListener('touchmove', (e) => {
     sheet.t0 = Date.now();
   }
   e.preventDefault();
+  // 速度用最近幾次移動算（放手時判斷甩動），畫面更新集中到下一個影格，避免每次觸控都重排
+  const y = e.touches[0].clientY;
+  const now = performance.now();
+  if (sheet.lastT) sheet.vy = 0.7 * ((y - sheet.lastY) / Math.max(1, now - sheet.lastT)) + 0.3 * (sheet.vy || 0);
+  sheet.lastY = y; sheet.lastT = now;
   if (sheet.mode === 'up') {
-    sheet.dy = Math.min(0, e.touches[0].clientY - sheet.startY);
-    sheet.el.style.maxHeight = `${Math.min(window.innerHeight, sheet.h0 - sheet.dy)}px`;
-    sheet.el.style.height = `${Math.min(window.innerHeight, sheet.h0 - sheet.dy)}px`;
-    return;
+    sheet.dy = Math.min(0, y - sheet.startY);
+  } else {
+    sheet.dy = Math.max(0, y - sheet.startY);
   }
-  sheet.dy = Math.max(0, e.touches[0].clientY - sheet.startY);
-  sheet.el.style.transform = `translateY(${sheet.dy}px)`;
-  const bg = sheet.el.parentElement;
-  if (bg) bg.style.background = `rgba(20, 38, 28, ${Math.max(0.1, 0.55 - sheet.dy / 600)})`;
+  if (sheet.raf) return;
+  sheet.raf = requestAnimationFrame(() => {
+    sheet.raf = 0;
+    const el = sheet.el;
+    if (!el || !sheet.active) return;
+    if (sheet.mode === 'up') {
+      const want = sheet.h0 - sheet.dy;
+      const max = window.innerHeight - 10;
+      // 拉到頂之後再往上：越拉越緊（像橡皮筋）
+      const h = want <= max ? want : max + Math.pow(want - max, 0.6);
+      el.style.maxHeight = `${h}px`;
+      el.style.height = `${h}px`;
+      return;
+    }
+    el.style.transform = `translateY(${sheet.dy}px)`;
+    const bg = el.parentElement;
+    if (bg) bg.style.background = `rgba(20, 38, 28, ${Math.max(0.1, 0.55 - sheet.dy / 600)})`;
+  });
 }, { passive: false });
 
 function sheetEnd() {
   if (!sheet.active) return;
   const { el, dy } = sheet;
   sheet.active = false;
+  if (sheet.raf) { cancelAnimationFrame(sheet.raf); sheet.raf = 0; }
+  const recent = sheet.lastT && performance.now() - sheet.lastT < 80 ? sheet.vy || 0 : 0;
+  sheet.lastT = 0; sheet.vy = 0;
   if (!sheet.decided || !el) return;
   el.classList.remove('dragging');
-  const speed = dy / Math.max(1, Date.now() - sheet.t0);
+  // 甩動速度：取「最近的速度」和「平均速度」較大的那個
+  const avg = dy / Math.max(1, Date.now() - sheet.t0);
+  const speed = Math.abs(recent) > Math.abs(avg) ? recent : avg;
   const bg = el.parentElement;
   if (sheet.mode === 'up') {
     const grow = -dy > SHEET_EXPAND_PX || (-dy > 20 && -speed > SHEET_FLICK_SPEED);
@@ -10171,9 +10208,9 @@ function sheetEnd() {
     if (!reduceMotion() && Math.abs(to - now) > 4) {
       el.style.height = `${now}px`;
       void el.offsetHeight;
-      el.style.transition = 'height 0.28s cubic-bezier(0.32, 0.72, 0, 1)';
+      el.style.transition = 'height 0.45s var(--ease-snap)';
       el.style.height = `${to}px`;
-      setTimeout(() => { el.style.height = ''; el.style.transition = ''; }, 300);
+      setTimeout(() => { el.style.height = ''; el.style.transition = ''; }, 470);
     }
     return;
   }
@@ -10183,11 +10220,11 @@ function sheetEnd() {
     el.style.transform = '';
     if (bg) bg.style.background = '';
     setSheetFull(el, false);
-    setTimeout(() => el.classList.remove('sheet-release'), 220);
+    setTimeout(() => el.classList.remove('sheet-release'), 470);
     return;
   }
   if (dy > SHEET_CLOSE_PX || (dy > 30 && speed > SHEET_FLICK_SPEED)) {
-    el.classList.add('sheet-release');
+    el.classList.add('sheet-closing');
     el.style.transform = 'translateY(110%)';
     if (bg) { bg.classList.add('sheet-fade'); bg.style.background = 'rgba(20, 38, 28, 0)'; }
     setTimeout(() => {
@@ -10198,7 +10235,7 @@ function sheetEnd() {
     el.classList.add('sheet-release');
     el.style.transform = '';
     if (bg) bg.style.background = '';
-    setTimeout(() => el.classList.remove('sheet-release'), 220);
+    setTimeout(() => el.classList.remove('sheet-release'), 470);
   }
 }
 document.addEventListener('touchend', sheetEnd);
