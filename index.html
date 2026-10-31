@@ -1158,7 +1158,7 @@
     :root { --ease-open: linear(0, 0.0214, 0.076, 0.1514, 0.2383, 0.3298, 0.4206, 0.5074, 0.5878, 0.6606, 0.725, 0.7811, 0.829, 0.8693, 0.9028, 0.93, 0.9518, 0.9689, 0.9822, 0.9921, 0.9993, 1.0044, 1.0078, 1.0098, 1.0108, 1.0111, 1.0108, 1.0102, 1.0094, 1.0084, 1.0074, 1.0064, 1.0054, 1.0045, 1.0037, 1.003, 1.0024, 1.0019, 1.0014, 1.0011, 1); --ease-snap: linear(0, 0.0228, 0.0816, 0.1643, 0.2608, 0.3631, 0.4654, 0.5631, 0.6534, 0.7342, 0.8047, 0.8646, 0.9141, 0.954, 0.9851, 1.0084, 1.0251, 1.0362, 1.0427, 1.0456, 1.0458, 1.0439, 1.0406, 1.0365, 1.0319, 1.0272, 1.0225, 1.0182, 1.0142, 1.0107, 1.0077, 1.0051, 1.0031, 1.0014, 1.0002, 0.9992, 0.9986, 0.9982, 0.998, 0.9979, 1); }
   }
   @media (max-width: 699px) { .modal { box-shadow: 0 80px 0 0 var(--surface); } }   /* 彈過頭時底下不露縫 */
-  .modal.sheet-release { transition: transform 0.45s var(--ease-snap); }
+  .modal.sheet-release { transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1); }   /* v12.9：往下拉放手彈回不用彈簧，平順收回 */
   .modal.sheet-closing { transition: transform 0.22s cubic-bezier(0.4, 0, 1, 1); }
   .modal.dragging { will-change: transform, height; transition: none !important; }
   .modal.sheet-collapse { transition: transform 0.36s cubic-bezier(0.32, 0.72, 0, 1); }
@@ -1467,7 +1467,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '12.8';
+const APP_VERSION = '12.9';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -10260,7 +10260,7 @@ function sheetEnd() {
     el.classList.add('sheet-release');
     el.style.transform = '';
     if (bg) bg.style.background = '';
-    setTimeout(() => el.classList.remove('sheet-release'), 470);
+    setTimeout(() => el.classList.remove('sheet-release'), 340);
   }
 }
 document.addEventListener('touchend', sheetEnd);
