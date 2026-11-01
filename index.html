@@ -1467,7 +1467,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '12.9';
+const APP_VERSION = '12.10';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3505,7 +3505,8 @@ function stopWatchEvents() {
 
 // 只即時追蹤還沒過的場次＋正在看的那一場，舊場次不佔連線
 function syncSignupLists() {
-  if (!signup.unsub) return;
+  // v12.10：不再依賴 signup.unsub 已經設定（快取的第一次回呼可能比它早），只要有雲端和球團就追蹤
+  if (!cloud.fb || !signupTeamId()) return;
   const want = new Set(upcomingEvents().map((ev) => ev.id));
   if (ui.signupId) want.add(ui.signupId);
   Object.keys(signup.listUnsubs).forEach((id) => {
@@ -3519,8 +3520,15 @@ function syncSignupLists() {
     if (signup.listUnsubs[id]) return;
     signup.listUnsubs[id] = onSnapshot(collection(cloud.db, 'teams', signupTeamId(), 'events', id, 'signups'), (snap) => {
       signup.lists[id] = snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+      if (signup.listError) { signup.listError = ''; }
       refreshSignupUi();
-    }, (err) => console.warn('讀取報名名單失敗:', err));
+    }, (err) => {
+      console.warn('讀取報名名單失敗:', err);
+      // 讀不到名單時讓畫面顯示「…」而不是 0，並記下原因
+      signup.listError = cloudErrorText(err);
+      delete signup.listUnsubs[id];
+      refreshSignupUi();
+    });
   });
 }
 
@@ -4231,7 +4239,9 @@ function eventCountdown(ev) {
 function eventCounts(ev, ranked) {
   // 過去的場次：用讀一次的人數（正取最多到上限）
   const pastCount = !signup.lists[ev.id] && signup.pastCounts ? signup.pastCounts[ev.id] : undefined;
-  const shown = pastCount === undefined ? ranked.main.length : pastCount === null ? '…' : Math.min(pastCount, ranked.cap);
+  // 還沒讀到名單（或讀取失敗）的未來場次顯示「…」，不要誤顯示成 0
+  const notLoaded = eventUpcoming(ev) && !signup.lists[ev.id];
+  const shown = notLoaded ? '…' : pastCount === undefined ? ranked.main.length : pastCount === null ? '…' : Math.min(pastCount, ranked.cap);
   const pct = typeof shown === 'number' ? Math.min(100, Math.round((shown / ranked.cap) * 100)) : 0;
   return { shown, pct };
 }
