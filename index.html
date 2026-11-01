@@ -1228,6 +1228,8 @@
   .crop-mask { position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 999px rgba(0,0,0,.45); pointer-events: none; outline: 2px solid rgba(255,255,255,.85); outline-offset: -2px; }
   .crop-zoom-row { display: flex; align-items: center; gap: 10px; margin: 14px auto; max-width: 300px; }
   .crop-zoom-row .sub { margin: 0; }
+  .crop-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .crop-btns button { padding: 13px; }
   .crop-zoom-row input { flex: 1; accent-color: var(--court-dark); }
   .av { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%;
     object-fit: cover; color: #fff; font-weight: 800; font-size: 14px; background: var(--border); }
@@ -1504,7 +1506,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '13.4';
+const APP_VERSION = '13.5';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3558,12 +3560,13 @@ document.addEventListener('change', (e) => {
   if (!e.target || e.target.id !== 'avatar-file') return;
   const file = e.target.files && e.target.files[0];
   const name = cloud.claim && cloud.claim.name;
-  e.target.value = '';   // 同一張照片可以再選一次
+  const input = e.target;
   if (!file || !name) return;
   if (!/^image\//.test(file.type || 'image/')) { showToast('這個檔案不是照片'); return; }
   const reader = new FileReader();
-  reader.onerror = () => showToast('讀不到這張照片');
+  reader.onerror = () => { input.value = ''; showToast('讀不到這張照片'); };
   reader.onload = () => {
+    input.value = '';   // 讀完才清掉（iPhone 太早清會讀不到檔案），同一張照片可以再選一次
     const img = new Image();
     img.onerror = () => showToast('這個檔案不是照片');
     img.onload = () => {
@@ -3617,8 +3620,10 @@ function renderAvatarCropModal() {
     </div>
     <label class="crop-zoom-row"><span class="sub">縮放</span>
       <input type="range" id="crop-zoom" min="100" max="500" step="1" value="${Math.round((c.scale / c.min) * 100)}" aria-label="縮放"></label>
-    <button class="btn-primary btn-block" data-action="crop-save" ${c.busy ? 'disabled' : ''}>${c.busy ? '儲存中…' : '使用這張'}</button>
-    <button class="btn-ghost btn-block" data-action="crop-cancel">取消</button>`;
+    <div class="crop-btns">
+      <button class="btn-outline" data-action="crop-cancel">取消</button>
+      <button class="btn-primary" data-action="crop-save" ${c.busy ? 'disabled' : ''}>${c.busy ? '儲存中…' : '使用這張'}</button>
+    </div>`;
 }
 
 function saveCroppedAvatar() {
