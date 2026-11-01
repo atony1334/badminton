@@ -1221,6 +1221,35 @@
   .my-rename-open { margin: 0 0 8px; padding-left: 0; }
   .member-rename { flex-wrap: wrap; }
   .member-rename small { flex-basis: 100%; }
+  .av { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%;
+    object-fit: cover; color: #fff; font-weight: 800; font-size: 14px; background: var(--border); }
+  .av.av-s { width: 26px; height: 26px; font-size: 12px; margin-right: 8px; }
+  .av.av-l { width: 52px; height: 52px; font-size: 21px; }
+  .av.av-xl { width: 72px; height: 72px; font-size: 28px; }
+  .d-avatar .av { width: 100%; height: 100%; font-size: inherit; }
+  .d-me-avatar { overflow: hidden; padding: 0; }
+  .me-head { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; }
+  .me-head-text { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+  .me-head-text b { font-size: 19px; }
+  .me-head-text small { color: var(--muted); font-size: 13px; }
+  .pf-head { display: flex; justify-content: space-between; align-items: center; }
+  .pf-head .profile-h { margin: 0; }
+  .pf-head { width: 100%; }
+  .pf-head .pf-edit-btn { margin-left: auto; }
+  .pf-edit-btn { padding: 6px 4px; }
+  .pf-edit-btn.solo { display: block; width: 100%; margin: 4px 0 12px; padding: 10px; }
+  .pf-summary { display: flex; flex-direction: column; gap: 8px; margin: 8px 0 12px; padding: 12px; border-radius: 14px; background: var(--floor); }
+  .pf-sum-row { display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 8px; }
+  .pf-sum-row .label { margin: 0; }
+  .pf-sum-grade { display: flex; gap: 10px; align-items: flex-start; }
+  .pf-sum-grade > span:last-child { display: flex; flex-direction: column; gap: 2px; }
+  .pf-sum-grade small { font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .av-edit { display: flex; align-items: center; gap: 14px; margin: 10px 0 12px; }
+  .av-edit-btns { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+  .av-edit-btns small { margin: 0; font-size: 12px; }
+  .av-pick { cursor: pointer; padding: 8px 14px; }
+  .pm-head { display: flex; justify-content: center; margin: -2px 0 10px; }
+  .ev-list li .av-s { align-self: center; }
   .pf-g { font-size: .78em; margin-left: 3px; font-weight: 700; }
   .pf-g.m { color: #3b82c4; }
   .pf-g.f { color: #d0558f; }
@@ -1467,7 +1496,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '13.0';
+const APP_VERSION = '13.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2033,7 +2062,7 @@ const VIEWER_ACTIONS = new Set([
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'invite-copy-code', 'invite-copy', 'invite-share', 'cloud-invite', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
-  'signup-view', 'signup-month', 'signup-day', 'pf-set', 'grade-pick',
+  'signup-view', 'signup-month', 'signup-day', 'pf-set', 'grade-pick', 'pf-edit', 'avatar-remove',
   'my-rename-open', 'my-rename-close', 'my-rename-submit', 'my-rename-cancel', 'ext',
 ]);
 
@@ -3283,11 +3312,17 @@ function renderAccountCard(all) {
     </div>`;
   }
   const approved = cloud.claim.status === 'approved';
+  const me = cloud.claim.name;
+  const editing = approved && ui.pfEdit === me;
   return `<div class="account-card">
-    <p>${who}・已認領 <b>${escapeHtml(cloud.claim.name)}</b>
-      <span class="claim-badge ${approved ? 'ok' : ''}">${approved ? '已確認' : '等待管理者確認'}</span></p>
+    <div class="me-head">${avatarHtml(me, 'av-l')}
+      <span class="me-head-text"><b>${escapeHtml(me)}${genderMark(me)}</b>
+        <small>${who}・<span class="claim-badge ${approved ? 'ok' : ''}">${approved ? '已確認' : '等待管理者確認'}</span></small></span></div>
     ${renderPushControl()}
-    ${approved ? `<h4 class="profile-h">個人資料</h4>${renderMyRename()}${renderProfileFields(cloud.claim.name)}` : '<p class="sub">管理者確認後就可以改名字、填個人資料（性別、程度）。</p>'}
+    ${approved ? `<div class="pf-head"><h4 class="profile-h">個人資料</h4>
+        <button class="btn-ghost pf-edit-btn" data-action="pf-edit" data-name="${escapeHtml(me)}">${editing ? '完成' : '編輯'}</button></div>
+      ${editing ? `${renderAvatarEdit(me)}${renderMyRename()}${renderProfileFields(me)}` : `${cloud.claim.renameTo ? renderMyRename() : ''}${renderProfileSummary(me)}`}`
+      : '<p class="sub">管理者確認後就可以改名字、填個人資料（性別、程度、頭貼）。</p>'}
     <span class="member-btns">
       <button class="btn-ghost" data-action="claim-cancel">${approved ? '解除認領' : '取消認領'}</button>
       <button class="btn-ghost" data-action="google-logout">登出</button>
@@ -3388,7 +3423,7 @@ function canEditProfile(name) {
 async function saveProfile(name, patch) {
   if (!canEditProfile(name)) return;
   const before = profiles.map[name] || null;
-  const next = Object.assign({ name, gender: '', grade: 0, level: 0 }, before, patch);
+  const next = Object.assign({ name, gender: '', grade: 0, level: 0, avatar: '' }, before, patch);
   profiles.map = Object.assign({}, profiles.map, { [name]: next });
   render();
   try {
@@ -3398,6 +3433,7 @@ async function saveProfile(name, patch) {
       gender: next.gender || '',
       grade: Number(next.grade) || 0,
       level: Number(next.grade) ? 0 : Number(next.level) || 0,   // 選了新級數就不再留舊的四段
+      ...(next.avatar ? { avatar: next.avatar } : {}),           // v13.1 頭貼（只有本人能改，規則會擋管理者）
       updatedAt: serverTimestamp(),
       by: cloud.user ? cloud.user.uid : '',
     });
@@ -3416,6 +3452,7 @@ async function moveProfile(from, to) {
   if (!pf || !cloudReady()) return;
   try {
     const { doc, setDoc, deleteDoc, serverTimestamp } = cloud.fb;
+    // 頭貼只有本人能改，所以改名字時不搬頭貼（球友之後自己再上傳）
     await setDoc(doc(cloud.db, 'teams', cloud.teamId, 'profiles', profileId(to)), {
       name: to, gender: pf.gender || '', grade: Number(pf.grade) || 0, level: Number(pf.level) || 0, updatedAt: serverTimestamp(), by: cloud.user ? cloud.user.uid : '',
     });
@@ -3439,8 +3476,89 @@ function profileText(name) {
 }
 
 /** 個人資料區塊：能改就給按鈕，不能改就只顯示 */
+/** v13.1 先顯示資料（唯讀），按「編輯」才出現修改的按鈕 */
+function renderProfileSummary(name) {
+  const pf = profileOf(name) || {};
+  const g = Number(pf.grade) || 0;
+  const tier = g ? gradeTier(g) : null;
+  return `<div class="pf-summary">
+    <div class="pf-sum-row"><span class="label">性別</span><b>${escapeHtml(GENDER_LABEL[pf.gender] || '未填')}</b></div>
+    <div class="pf-sum-row pf-row-top"><span class="label">程度</span>${g
+      ? `<span class="pf-sum-grade"><span class="pf-grade-badge ${tier.cls}">${g}</span><span><b>${escapeHtml(tier.name)}</b><small>${escapeHtml(GRADE_DESC[g])}</small></span></span>`
+      : `<b>${pf.level ? escapeHtml(LEVEL_LABEL[pf.level]) : '未填'}</b>`}</div>
+  </div>`;
+}
+
+/* ---------- 頭貼（v13.1） ----------
+ * 存在個人資料的 avatar 欄位（128px 正方形 JPEG 的 data URL，約 5–15KB），只有本人能換；
+ * 沒有頭貼就用名字第一個字＋依名字算出的顏色。 */
+const AVATAR_COLORS = ['#2D6A4F', '#1F4E79', '#7A4E9C', '#B5523B', '#3D7A8C', '#8A6A00', '#5B6B2E', '#9C3D6A'];
+const AVATAR_PX = 128;
+
+function avatarColor(name) {
+  let h = 0;
+  for (const ch of String(name || '')) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+  return AVATAR_COLORS[h % AVATAR_COLORS.length];
+}
+
+function avatarHtml(name, cls = '') {
+  const pf = profileOf(name);
+  const src = pf && typeof pf.avatar === 'string' && pf.avatar.startsWith('data:image/') ? pf.avatar : '';
+  if (src) return `<img class="av ${cls}" src="${escapeHtml(src)}" alt="" aria-hidden="true">`;
+  return `<span class="av av-letter ${cls}" style="background:${avatarColor(name)}" aria-hidden="true">${escapeHtml(Array.from(String(name || '?'))[0] || '?')}</span>`;
+}
+
+function renderAvatarEdit(name) {
+  const has = Boolean((profileOf(name) || {}).avatar);
+  return `<div class="av-edit">${avatarHtml(name, 'av-xl')}
+    <span class="av-edit-btns">
+      <label class="btn-outline av-pick">${has ? '換照片' : '上傳照片'}<input type="file" id="avatar-file" accept="image/*" hidden></label>
+      ${has ? `<button class="btn-ghost danger-text" data-action="avatar-remove" data-name="${escapeHtml(name)}">移除頭貼</button>` : ''}
+      <small class="sub">沒有照片時會用名字第一個字和固定顏色。</small>
+    </span></div>`;
+}
+
+/** 讀圖片 → 置中裁成正方形 → 縮成 128px JPEG */
+function shrinkAvatar(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('讀不到這張照片'));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error('這個檔案不是照片'));
+      img.onload = () => {
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        const canvas = document.createElement('canvas');
+        canvas.width = AVATAR_PX; canvas.height = AVATAR_PX;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(img, (img.naturalWidth - side) / 2, (img.naturalHeight - side) / 2, side, side, 0, 0, AVATAR_PX, AVATAR_PX);
+        let quality = 0.82;
+        let url = canvas.toDataURL('image/jpeg', quality);
+        while (url.length > 40000 && quality > 0.4) { quality -= 0.12; url = canvas.toDataURL('image/jpeg', quality); }
+        resolve(url);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+document.addEventListener('change', (e) => {
+  if (!e.target || e.target.id !== 'avatar-file') return;
+  const file = e.target.files && e.target.files[0];
+  const name = cloud.claim && cloud.claim.name;
+  if (!file || !name) return;
+  showToast('處理照片中…');
+  shrinkAvatar(file).then((url) => saveProfile(name, { avatar: url })).then(() => showToast('已更新頭貼'))
+    .catch((err) => showToast(err.message || '照片處理失敗'));
+});
+
 function renderProfileFields(name) {
   const pf = profileOf(name) || {};
+  // 管理者在球員個人頁：先顯示，按「編輯」才能改（球友本人的「我的帳號」另外處理）
+  if (canEditProfile(name) && !cloud.viewer && ui.pfEdit !== name) {
+    return `${renderProfileSummary(name)}<button class="btn-ghost pf-edit-btn solo" data-action="pf-edit" data-name="${escapeHtml(name)}">編輯個人資料</button>`;
+  }
   if (!canEditProfile(name)) {
     const text = profileText(name);
     const g = Number(pf.grade) || 0;
@@ -3461,6 +3579,7 @@ function renderProfileFields(name) {
       <button class="pf-grade" data-action="grade-pick" data-name="${escapeHtml(name)}" aria-expanded="${open}">${current}<span class="pf-caret" aria-hidden="true">${open ? '▴' : '▾'}</span></button></div>
     ${open ? renderGradeList(name, grade) : ''}
     <p class="sub pf-note">程度依台灣羽球推廣協會的分級，自己評估。大家都看得到這些資料。</p>
+    ${!cloud.viewer ? `<button class="btn-primary pf-edit-btn solo" data-action="pf-edit" data-name="${escapeHtml(name)}">完成</button>` : ''}
   </div>`;
 }
 
@@ -4521,7 +4640,7 @@ function renderSignupRows(rows, start, ev) {
     const remove = cloud.viewer ? ''
       : `<button class="${armed ? 'btn-danger' : 'btn-ghost'} ev-remove" data-action="signup-cancel" data-id="${escapeHtml(s.id)}">${armed ? '確認移除' : '移除'}</button>`;
     return `<li class="${s.id === mine ? 'mine' : ''}"><span class="num ev-no">${start + i}</span>
-      <span class="ev-name">${escapeHtml(s.name || '')}${genderMark(s.name || '')}${signupByText(s)}</span>${remove}</li>`;
+      ${avatarHtml(s.name || '', 'av-s')}<span class="ev-name">${escapeHtml(s.name || '')}${genderMark(s.name || '')}${signupByText(s)}</span>${remove}</li>`;
   }).join('');
 }
 
@@ -5152,7 +5271,7 @@ function renderDrawer() {
     <nav class="drawer ${ui.drawerAnim || ''}" aria-label="選單">
       ${meLink ? `
       <div class="d-head">
-        <button class="d-avatar d-me-avatar" data-action="drawer-go" data-target="account" aria-label="${meLink}">${escapeHtml(acc.initial)}</button>
+        <button class="d-avatar d-me-avatar" data-action="drawer-go" data-target="account" aria-label="${meLink}">${cloud.claim && cloud.claim.status === 'approved' && (profileOf(cloud.claim.name) || {}).avatar ? avatarHtml(cloud.claim.name) : escapeHtml(acc.initial)}</button>
         <button class="d-close" data-action="drawer-close" aria-label="關閉選單">✕</button>
       </div>
       <button class="d-account d-me" data-action="drawer-go" data-target="account">
@@ -8993,6 +9112,7 @@ function renderPlayerModal() {
   const showMeSet = myName() !== name && !(cloud.viewer && cloud.user);
   return `
     <h3>${escapeHtml(name)}${genderMark(name)}</h3>
+    <div class="pm-head">${avatarHtml(name, 'av-xl')}</div>
     ${renderProfileFields(name)}
     ${isLocalMode() ? '' : profileViewSeg(view, 'profile-view')}
     <div class="profile-body">${view === 'today' ? renderTodayProfileBody(name) : renderLongProfileBody(name)}</div>
@@ -10766,6 +10886,13 @@ function handleAction(el) {
       openReport();
       return;
     case 'end-day-cancel': ui.endDayArmed = false; sessionChanged = false; break;
+    case 'pf-edit':
+      ui.pfEdit = ui.pfEdit === el.dataset.name ? null : el.dataset.name;
+      ui.gradePick = null;
+      if (!ui.pfEdit) { ui.myRenameOpen = false; }
+      sessionChanged = false;
+      break;
+    case 'avatar-remove': saveProfile(el.dataset.name, { avatar: '' }); return;
     case 'pf-set': {
       const field = el.dataset.field;
       const pf = profileOf(el.dataset.name) || {};
