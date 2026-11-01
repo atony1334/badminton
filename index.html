@@ -1261,6 +1261,35 @@
   .pm-head { display: flex; justify-content: center; margin: -2px 0 10px; }
   .ev-list li .av-s { align-self: center; }
   .pf-g { font-size: .78em; margin-left: 3px; font-weight: 700; }
+  /* v13.7 我的帳號：置中名片 */
+  .acct { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+  .acct-hero { position: relative; display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center;
+    padding: 26px 16px 20px; border-radius: 20px; color: #fff; background: linear-gradient(180deg, var(--court-dark) 0%, var(--court) 100%); }
+  .acct-edit { position: absolute; top: 12px; right: 12px; height: 34px; padding: 0 16px; border-radius: 999px; border: 0;
+    background: rgba(255, 255, 255, 0.18); color: #fff; font-weight: 700; font-size: 14px; }
+  .av.av-hero { width: 96px; height: 96px; font-size: 40px; font-weight: 900; box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.9); }
+  .acct-name { font-size: 24px; font-weight: 900; margin-top: 4px; }
+  .acct-hero .pf-g.m { color: #9cc7ff; }
+  .acct-hero .pf-g.f { color: #ffb3d4; }
+  .acct-tags { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+  .acct-tag { font-size: 13px; font-weight: 700; padding: 4px 10px; border-radius: 999px; background: rgba(255, 255, 255, 0.16); }
+  .acct-tag.grade { background: var(--tape); color: var(--on-tape, #14261C); }
+  .acct-mail { font-size: 12px; opacity: 0.75; word-break: break-all; }
+  .acct-card { background: var(--floor); border-radius: 16px; }
+  .acct-pad { padding: 14px; display: flex; flex-direction: column; gap: 8px; align-items: stretch; }
+  .acct-pad p { margin: 0; }
+  .acct-h { margin: 0; font-size: 13px; font-weight: 700; color: var(--muted); }
+  .acct-desc { font-size: 15px; line-height: 1.6; }
+  .acct-desc .pf-grade-badge { float: left; margin: 2px 10px 0 0; }
+  .acct-push { padding: 4px 14px; }
+  .acct-push .push-row { border: 0; padding: 10px 0; }
+  .acct-push > p { padding-bottom: 10px; }
+  .acct-list { padding: 0 14px; display: flex; flex-direction: column; }
+  .acct-row { display: flex; align-items: center; justify-content: space-between; min-height: 52px; padding: 0; border: 0;
+    background: transparent; color: var(--ink); font-size: 16px; text-align: left; border-radius: 0; }
+  .acct-row + .acct-row { border-top: 1px solid color-mix(in srgb, var(--ink) 10%, transparent); }
+  .acct-row span { color: var(--muted); font-size: 20px; }
+  .acct-row.danger-text { color: var(--danger); font-weight: 700; }
   .pf-g.m { color: #3b82c4; }
   .pf-g.f { color: #d0558f; }
   .pf-box { margin: 4px 0 12px; display: flex; flex-direction: column; gap: 8px; }
@@ -1421,6 +1450,12 @@
   .btn-outline.danger { background: color-mix(in srgb, var(--danger) 12%, transparent); color: var(--danger); border: 0; }
   .btn-ghost { text-decoration: none; color: var(--court-dark); font-weight: 700; }
   .btn-ghost.danger-text { color: var(--danger); }
+  /* v13.6 小標籤按鈕（常用球員、日期快捷、星期）：淺灰底沒有框，選中變深綠 */
+  button.chip { background: var(--soft-gray); border: 2px solid transparent; color: var(--ink); font-weight: 600; padding: 7px 14px; }
+  button.chip[aria-pressed="true"] { background: var(--court-dark); border-color: var(--court-dark); color: #fff; }
+  button.chip.removable { background: color-mix(in srgb, var(--danger) 12%, transparent); border-color: transparent; color: var(--danger); }
+  .panel + .panel { margin-top: 12px; }
+  .ev-today.panel { border: 0; }
   .history-delete { background: transparent; color: var(--danger); font-weight: 700; }
   .history-delete.armed { background: var(--danger); color: #fff; }
   .history-result { background: var(--soft-green); color: var(--on-soft-green); font-weight: 700; border-radius: 10px; }
@@ -1506,7 +1541,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '13.5';
+const APP_VERSION = '13.7';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3324,19 +3359,35 @@ function renderAccountCard(all) {
   const approved = cloud.claim.status === 'approved';
   const me = cloud.claim.name;
   const editing = approved && ui.pfEdit === me;
-  return `<div class="account-card">
-    <div class="me-head">${avatarHtml(me, 'av-l')}
-      <span class="me-head-text"><b>${escapeHtml(me)}${genderMark(me)}</b>
-        <small>${who}・<span class="claim-badge ${approved ? 'ok' : ''}">${approved ? '已確認' : '等待管理者確認'}</span></small></span></div>
-    ${renderPushControl()}
-    ${approved ? `<div class="pf-head"><h4 class="profile-h">個人資料</h4>
-        <button class="btn-ghost pf-edit-btn" data-action="pf-edit" data-name="${escapeHtml(me)}">${editing ? '完成' : '編輯'}</button></div>
-      ${editing ? `${renderAvatarEdit(me)}${renderMyRename()}${renderProfileFields(me)}` : `${cloud.claim.renameTo ? renderMyRename() : ''}${renderProfileSummary(me)}`}`
-      : '<p class="sub">管理者確認後就可以改名字、填個人資料（性別、程度、頭貼）。</p>'}
-    <span class="member-btns">
-      <button class="btn-ghost" data-action="claim-cancel">${approved ? '解除認領' : '取消認領'}</button>
-      <button class="btn-ghost" data-action="google-logout">登出</button>
-    </span>
+  // v13.7 方案 A：置中名片＋下方白卡片
+  const pf = profileOf(me) || {};
+  const g = Number(pf.grade) || 0;
+  const grade = gradeText(pf);
+  return `<div class="acct">
+    <div class="acct-hero">
+      ${approved ? `<button class="acct-edit" data-action="pf-edit" data-name="${escapeHtml(me)}">${editing ? '完成' : '編輯'}</button>` : ''}
+      ${avatarHtml(me, 'av-hero')}
+      <b class="acct-name">${escapeHtml(me)}${genderMark(me)}</b>
+      <span class="acct-tags">
+        ${grade ? `<span class="acct-tag grade">${escapeHtml(grade)}</span>` : ''}
+        <span class="acct-tag">${approved ? '已確認' : '等待管理者確認'}</span>
+      </span>
+      <small class="acct-mail">${who}</small>
+    </div>
+    ${!approved ? '<div class="acct-card acct-pad"><p class="sub">管理者確認後就可以改名字、填個人資料（性別、程度、頭貼）、開上場通知。</p></div>' : ''}
+    ${editing ? `<div class="acct-card acct-pad acct-editing">${renderAvatarEdit(me)}${renderMyRename()}${renderProfileFields(me)}</div>` : ''}
+    ${approved && !editing && cloud.claim.renameTo ? `<div class="acct-card acct-pad">${renderMyRename()}</div>` : ''}
+    ${approved && !editing ? `<div class="acct-card acct-pad">
+        <h4 class="acct-h">程度說明</h4>
+        ${g ? `<p class="acct-desc"><span class="pf-grade-badge ${gradeTier(g).cls}">${g}</span>${escapeHtml(GRADE_DESC[g])}</p>`
+          : `<p class="acct-desc sub">${pf.level ? `目前是「${escapeHtml(LEVEL_LABEL[pf.level])}」，` : '還沒填程度，'}按右上角「編輯」選級數。</p>`}
+        ${pf.gender ? '' : '<p class="acct-desc sub">性別也還沒填。</p>'}
+      </div>` : ''}
+    ${approved ? `<div class="acct-card acct-push">${renderPushControl()}</div>` : ''}
+    <div class="acct-card acct-list">
+      <button class="acct-row" data-action="claim-cancel">${approved ? '解除認領' : '取消認領'}<span aria-hidden="true">›</span></button>
+      <button class="acct-row danger-text" data-action="google-logout">登出</button>
+    </div>
   </div>`;
 }
 
@@ -5586,7 +5637,11 @@ function renderSettingsSection(key) {
     voice: () => renderVoiceSettings(),
     look: () => renderLookSettings(),
     data: () => renderDataSettings(),
-    account: () => `<section class="set-group"><div class="set-body" style="padding-top:12px">${renderAccountCard(aggregateRanks()) || '<p class="sub set-note">這個頁面沒有連上雲端。</p>'}</div></section>`,
+    account: () => {
+      const card = renderAccountCard(aggregateRanks());
+      if (card.startsWith('<div class="acct">')) return card;   // v13.7 名片版不包外框
+      return `<section class="set-group"><div class="set-body" style="padding-top:12px">${card || '<p class="sub set-note">這個頁面沒有連上雲端。</p>'}</div></section>`;
+    },
   }[key];
   return `
     <h3>${SETTINGS_SECTIONS[key]}</h3>
@@ -7144,7 +7199,7 @@ function renderSetup() {
     <header class="top">
       ${menuButton()}
       <div class="top-title">
-        <h1>${appTitle()}</h1>
+        <h1>${cloud.teamName && !isLocalMode() ? escapeHtml(cloud.teamName) : appTitle()}</h1>
         <p class="sub">選出今天來的人，系統會依場數與配對紀錄自動輪轉。</p>
       </div>
     </header>
