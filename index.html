@@ -1162,6 +1162,8 @@
   .modal.sheet-release { transition: transform 0.32s cubic-bezier(0.32, 0.72, 0, 1); }   /* v12.9：往下拉放手彈回不用彈簧，平順收回 */
   .modal.sheet-closing { transition: transform 0.22s cubic-bezier(0.4, 0, 1, 1); }
   .modal.dragging { will-change: transform, height; transition: none !important; }
+  /* v13.8 拖面板時，手指下的按鈕不要縮放／彈回（之前看起來像奇怪的彈簧） */
+  .modal.dragging button, .modal.dragging a { transform: none !important; transition: none !important; }
   .modal.sheet-collapse { transition: transform 0.36s cubic-bezier(0.32, 0.72, 0, 1); }
   /* 按鈕按下去縮一點、放開彈回 */
   button, a.btn-outline, a.hero-btn, a.ev-me-btn { transition: transform 0.35s var(--ease-snap), background-color 0.15s ease, opacity 0.15s ease; }
@@ -1541,7 +1543,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '13.7';
+const APP_VERSION = '13.8';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -10574,6 +10576,14 @@ document.addEventListener('touchstart', (e) => {
   if (inner && inner.scrollTop > 0) return;
   // 頂端把手附近（上方 56px）才能往上拉滿；其他地方往上滑是正常捲動
   const zone = Boolean(e.target.closest('.sheet-handle')) || e.touches[0].clientY - modal.getBoundingClientRect().top < 56;
+  if (sheet.settle) {   // v13.8：收回動畫還沒結束又摸到：直接定位到收回後的樣子
+    clearTimeout(sheet.settle); sheet.settle = 0;
+    modal.classList.add('dragging');
+    modal.classList.remove('sheet-collapse', 'sheet-full');
+    modal.style.transform = '';
+    void modal.offsetHeight;
+    modal.classList.remove('dragging');
+  }
   Object.assign(sheet, {
     active: true, decided: false, el: modal, dy: 0, t0: Date.now(), mode: 'down', zone, h0: modal.offsetHeight,
     startY: e.touches[0].clientY, startX: e.touches[0].clientX,
@@ -10670,19 +10680,25 @@ function sheetEnd() {
   const full = el.classList.contains('sheet-full');
   const hardFlick = dy > 90 && speed > SHEET_HARD_FLICK_SPEED;
   if (full && !hardFlick && dy < el.offsetHeight * 0.5 && dy > 40) {
-    // 不用彈簧：高度和位置同時用同一條平順曲線收回，避免兩個彈簧疊在一起抖動
+    // v13.8：只動 transform（不動高度，內容不會重排抖動）。
+    // 先把滿版面板平移到「收回後頂端」的位置，動畫結束才換成原本高度；兩者頂端位置相同，畫面不會跳。
     el.classList.remove('sheet-release');
-    const from = el.offsetHeight;
+    const topFull = el.getBoundingClientRect().top;
     el.classList.remove('sheet-full');
-    const to = el.offsetHeight;
-    el.style.height = `${from}px`;
-    void el.offsetHeight;
+    const topSmall = el.getBoundingClientRect().top;
+    el.classList.add('sheet-full');
+    const target = Math.max(0, topSmall - topFull);   // 兩次量測都含目前的 dy，相減就是兩種高度的頂端差
     el.classList.add('sheet-collapse');
-    el.style.transition = 'transform 0.36s cubic-bezier(0.32, 0.72, 0, 1), height 0.36s cubic-bezier(0.32, 0.72, 0, 1)';
-    el.style.transform = '';
-    el.style.height = `${to}px`;
+    el.style.transform = target ? `translateY(${target}px)` : '';
     if (bg) bg.style.background = '';
-    setTimeout(() => { el.style.height = ''; el.style.transition = ''; el.classList.remove('sheet-collapse'); }, 380);
+    sheet.settle = setTimeout(() => {
+      sheet.settle = 0;
+      el.classList.add('dragging');            // 換高度的這一下不要有任何動畫
+      el.classList.remove('sheet-collapse', 'sheet-full');
+      el.style.transform = '';
+      void el.offsetHeight;
+      el.classList.remove('dragging');
+    }, 370);
     return;
   }
   if (full && !hardFlick && dy <= 40) {
