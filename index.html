@@ -671,6 +671,7 @@
   /* 在分頁列上左右滑動：指示條跟著手指，手指所在的分頁先亮起來 */
   .tabbar.scrubbing .tab-indicator { transition: none; }
   .tabbar { touch-action: pan-y; }
+  body.field-focus .tabbar, body.kb-open .tabbar { transform: translateY(130%); pointer-events: none; }
   .tab-body { touch-action: pan-y; will-change: transform; }
   @media (prefers-reduced-motion: no-preference) {
     .tab-body.from-right { animation: tab-from-right 0.22s ease-out; }
@@ -1496,7 +1497,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '13.1';
+const APP_VERSION = '13.2';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -11676,6 +11677,31 @@ function settleScreen() {
 }
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') settleScreen(); });
 window.addEventListener('pageshow', settleScreen);
+
+/* v13.2 iPhone：打字或用下拉選單（選球員）時，鍵盤／滾輪會把可視範圍縮小，
+ * 固定在底部的分頁列有時跑到畫面中間、收起後也不回去。
+ * 做法：輸入中先把分頁列藏起來；收起鍵盤後輕推一下捲動位置，讓 Safari 重新算固定元素的位置。 */
+const isFormField = (el) => Boolean(el && el.closest && el.closest('input, select, textarea'));
+document.addEventListener('focusin', (e) => {
+  if (isFormField(e.target) && !e.target.closest('.modal')) document.body.classList.add('field-focus');
+});
+document.addEventListener('focusout', (e) => {
+  if (!isFormField(e.target)) return;
+  setTimeout(() => {
+    if (isFormField(document.activeElement)) return;
+    document.body.classList.remove('field-focus');
+    window.scrollTo(window.scrollX, window.scrollY + 1);
+    window.scrollTo(window.scrollX, window.scrollY - 1);
+  }, 120);
+});
+if (window.visualViewport) {
+  const fixBottomBar = () => {
+    const vv = window.visualViewport;
+    const keyboard = vv.height < window.innerHeight * 0.78;
+    document.body.classList.toggle('kb-open', keyboard);
+  };
+  window.visualViewport.addEventListener('resize', fixBottomBar);
+}
 
 // 球團清單的連結：換頁但不留瀏覽紀錄
 document.addEventListener('click', (e) => {
