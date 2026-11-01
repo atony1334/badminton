@@ -1467,7 +1467,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '12.10';
+const APP_VERSION = '13.0';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1913,6 +1913,21 @@ let VIEW_TEAM = (() => {
   const id = new URLSearchParams(window.location.search).get('team');
   return id && /^[A-Za-z0-9]{12,40}$/.test(id) ? id : null;
 })();
+// v13.0 短網址：?t=六碼代碼（存在 codes/{代碼} → teamId），打開時先換成 teamId
+const SHORT_CODE_RE = /^[A-HJ-NP-Z2-9]{6}$/;   // 不用 I、O、0、1，避免看錯
+const PENDING_SHORT = (() => {
+  const params = new URLSearchParams(window.location.search);
+  const t = String(params.get('t') || '').toUpperCase();
+  return !params.get('team') && SHORT_CODE_RE.test(t) ? t : null;
+})();
+// 在 LINE 裡點開球團連結：自動改用手機的瀏覽器（Google 登入在 LINE 裡不能用），所以分享的連結不用再帶這個參數
+(() => {
+  const params = new URLSearchParams(window.location.search);
+  if (/Line\//i.test(navigator.userAgent || '') && (VIEW_TEAM || PENDING_SHORT) && !params.has('openExternalBrowser')) {
+    params.set('openExternalBrowser', '1');
+    window.location.replace(`${window.location.pathname}?${params.toString()}`);
+  }
+})();
 const VIEWER_TEAM_KEY = 'badminton-viewer-team';     // 舊版：只記一個球團
 const VIEWER_TEAMS_KEY = 'badminton-viewer-teams';   // 加入過的球團 [{id, name, at}]，最近的在前面
 const TEAM_ID_RE = /^[A-Za-z0-9]{12,40}$/;
@@ -2025,7 +2040,8 @@ const VIEWER_ACTIONS = new Set([
 const cloud = {
   config: (TEST_CLOUD && TEST_CLOUD.config) || FIREBASE_CONFIG,
   sdkBase: (TEST_CLOUD && TEST_CLOUD.sdk) || FIREBASE_SDK,
-  viewer: Boolean(VIEW_TEAM),
+  viewer: Boolean(VIEW_TEAM || PENDING_SHORT),
+  shortCode: null,   // 這個球團的六碼短代碼（球團文件的 shortCode）
   notifyEnabled: true,   // 管理者可關閉「輪到你上場」通知（測試時用）；存在 live/current.notifyEnabled
   phase: 'off',          // off | loading | signed-out | no-team | ready | error
   sync: 'idle',          // idle | pending | synced | offline | error
@@ -2065,8 +2081,62 @@ function currentTeamId() {
 }
 
 function viewerLink() {
-  // openExternalBrowser=1：在 LINE 點開會自動改用手機的瀏覽器（Google 登入在 LINE 裡不能用）
-  return `${window.location.origin}${window.location.pathname}?team=${currentTeamId()}&openExternalBrowser=1`;
+  // v13.0：有六碼短代碼就用短網址；在 LINE 點開時網頁自己會加 openExternalBrowser 改用手機瀏覽器
+  if (cloud.shortCode) return `${window.location.origin}${window.location.pathname}?t=${cloud.shortCode}`;
+  return `${window.location.origin}${window.location.pathname}?team=${currentTeamId()}`;
+}
+
+/* ---------- 六碼短代碼 ----------
+ * codes/{代碼} { teamId, createdAt }：任何人都能讀單一筆（打開短網址時查 teamId），只有那個球團的管理者能建立。
+ * 已經存在的代碼不能覆寫（規則沒有開放 update），撞號時換一組重試。 */
+const SHORT_CODE_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+
+function randomShortCode() {
+  const bytes = new Uint8Array(6);
+  (window.crypto || {}).getRandomValues ? window.crypto.getRandomValues(bytes) : bytes.forEach((_, i) => { bytes[i] = Math.floor(Math.random() * 256); });
+  return Array.from(bytes, (b) => SHORT_CODE_CHARS[b % SHORT_CODE_CHARS.length]).join('');
+}
+
+async function resolveShortCode(code) {
+  try {
+    const snap = await cloud.fb.getDoc(cloud.fb.doc(cloud.db, 'codes', code));
+    const id = snap.exists() ? snap.data().teamId : null;
+    return TEAM_ID_RE.test(String(id || '')) ? id : null;
+  } catch (err) {
+    console.warn('讀取短代碼失敗:', err);
+    return null;
+  }
+}
+
+/** 管理者：球團還沒有短代碼就建一組（規則還沒更新時會失敗，就繼續用長網址） */
+async function ensureShortCode() {
+  if (cloud.viewer || !cloudReady() || cloud.shortCode || cloud.shortCodeBusy) return;
+  cloud.shortCodeBusy = true;
+  const { doc, setDoc, updateDoc, serverTimestamp } = cloud.fb;
+  const teamId = cloud.teamId;
+  for (let i = 0; i < 4 && !cloud.shortCode; i += 1) {
+    const code = randomShortCode();
+    try {
+      await setDoc(doc(cloud.db, 'codes', code), { teamId, createdAt: serverTimestamp() });
+      await updateDoc(teamRef(teamId), { shortCode: code });
+      if (cloud.teamId === teamId) cloud.shortCode = code;
+    } catch (err) {
+      if (err && err.code !== 'permission-denied') break;   // 撞號會是 permission-denied，其他錯誤就不重試
+    }
+  }
+  cloud.shortCodeBusy = false;
+  if (cloud.shortCode && ui.invite) openInvite();   // 邀請視窗開著：換成短網址的 QR Code
+}
+
+/** 輸入框或掃到的文字 → 球團 id（短代碼要先查） */
+async function teamIdFromText(text) {
+  const raw = String(text || '').trim();
+  const long = parseTeamCode(raw);
+  if (long) return long;
+  const m = raw.match(/[?&]t=([A-Za-z0-9]{6})\b/) || raw.match(/^([A-Za-z0-9]{6})$/);
+  const code = m ? m[1].toUpperCase() : '';
+  if (!SHORT_CODE_RE.test(code) || !cloud.fb) return null;
+  return resolveShortCode(code);
 }
 
 function teamRef(id = cloud.teamId || VIEW_TEAM) {
@@ -2112,7 +2182,18 @@ async function initCloud() {
     // 排場資料本來就存在手機（localStorage），網路恢復或下次打開時會自動補傳，不需要這層快取。
     cloud.db = fsMod.getFirestore(app);
     cloud.auth = authMod.getAuth(app);
-    if (cloud.viewer) startViewer();
+    if (PENDING_SHORT && !VIEW_TEAM) {
+      const id = await resolveShortCode(PENDING_SHORT);
+      if (!id) {
+        cloud.viewerStatus = 'missing';
+        render();
+      } else {
+        VIEW_TEAM = id;
+        window.history.replaceState(null, '', `${appBase()}?team=${id}${VIEW_EVENT ? `&event=${encodeURIComponent(VIEW_EVENT)}` : ''}`);
+        applyViewerManifest();
+      }
+    }
+    if (cloud.viewer && VIEW_TEAM) startViewer();
     // 只註冊一次；換球團／回首頁不重新載入，所以依「當下」是球團頁還是首頁決定怎麼處理
     authMod.onAuthStateChanged(cloud.auth, (user) => {
       cloud.authKnown = true;
@@ -2178,6 +2259,7 @@ async function onCloudUser(user) {
 async function attachTeam(id, data) {
   cloud.teamId = id;
   cloud.teamName = (data && data.name) || '';
+  cloud.shortCode = data && SHORT_CODE_RE.test(data.shortCode || '') ? data.shortCode : null;
   cloud.ownerUid = (data && data.adminUid) || null;
   cloud.adminUids = (data && Array.isArray(data.adminUids)) ? data.adminUids.slice() : [];
   storageSet(CLOUD_TEAM_KEY, id);
@@ -2207,6 +2289,7 @@ async function attachTeam(id, data) {
   render();
   scheduleCloudUpload(true);
   backfillSessionStats();
+  ensureShortCode();   // v13.0：還沒有短代碼就建一組
   const appUrl = `${window.location.origin}${window.location.pathname}`;
   if (/^https:/.test(appUrl) && (!data || data.appUrl !== appUrl)) {
     cloud.fb.updateDoc(teamRef(id), { appUrl }).catch(() => {});
@@ -2250,6 +2333,7 @@ function watchAdminSync() {
       return;
     }
     cloud.teamName = d.name || '';
+    if (SHORT_CODE_RE.test(d.shortCode || '')) cloud.shortCode = d.shortCode;
     cloud.ownerUid = d.adminUid || null;
     cloud.adminUids = Array.isArray(d.adminUids) ? d.adminUids.slice() : [];
     const regsJson = JSON.stringify(Array.isArray(d.regulars) ? d.regulars : []);
@@ -2523,6 +2607,7 @@ function maybeAutoManage() {
 
 function startViewer() {
   clearSeenNotifications();
+  cloud.shortCode = null;
   const team = VIEW_TEAM;
   cloud.fb.getDoc(teamRef(team)).then((snap) => {
     if (team !== VIEW_TEAM) return;   // 已經換到別的球團
@@ -2532,6 +2617,7 @@ function startViewer() {
       return;
     }
     cloud.teamName = snap.data().name || '';
+    cloud.shortCode = SHORT_CODE_RE.test(snap.data().shortCode || '') ? snap.data().shortCode : null;
     cloud.ownerUid = snap.data().adminUid || null;
     cloud.adminUids = Array.isArray(snap.data().adminUids) ? snap.data().adminUids : [];
     saveJoinedTeam(VIEW_TEAM, cloud.teamName);
@@ -2705,6 +2791,7 @@ function loadScriptOnce(src) {
 }
 
 function openInvite() {
+  ensureShortCode();
   ui.invite = { qr: null, failed: false };
   const link = viewerLink();
   loadScriptOnce(QR_LIB).then(() => {
@@ -2727,7 +2814,7 @@ function renderInviteModal() {
     <p class="sub">掃描或點開連結就能即時看排場，不用登入，也不能更改任何資料。</p>
     ${qr}
     <p class="invite-link num" id="invite-link">${escapeHtml(link)}</p>
-    <p class="invite-code">球團代碼：<b class="num">${escapeHtml(currentTeamId() || '')}</b>
+    <p class="invite-code">球團代碼：<b class="num">${escapeHtml(cloud.shortCode || currentTeamId() || '')}</b>
       <button class="btn-ghost" data-action="invite-copy-code">複製代碼</button></p>
     <p class="sub" style="margin:0 0 8px;text-align:center;font-size:13px">從主畫面打開看不到球團時，在開始畫面輸入這組代碼就能加入。</p>
     <div class="court-actions" style="justify-content:center">
@@ -9146,11 +9233,13 @@ function scanTick() {
 function handleScanText(text) {
   if (!text || !ui.scan) return;
   const code = parseTeamCode(text);
-  if (code) {
+  const short = !code && String(text).match(/[?&]t=([A-Za-z0-9]{6})\b/);
+  if (code || short) {
     stopScanner();
     ui.scan = null;
     if (navigator.vibrate) navigator.vibrate(30);
-    confirmScannedTeam(code);
+    if (code) confirmScannedTeam(code);
+    else teamIdFromText(text).then((id) => { if (id) confirmScannedTeam(id); else showToast('找不到這個球團'); });
     return;
   }
   if (Date.now() - scan.lastBadAt > 2500) {   // 掃到別的 QR Code：提示一下，不要一直跳
@@ -11128,7 +11217,7 @@ function handleAction(el) {
     case 'invite-copy': copyInviteLink(); return;
     case 'invite-copy-code':
       if (navigator.clipboard && navigator.clipboard.writeText) {
-        navigator.clipboard.writeText(currentTeamId()).then(() => showToast('已複製球團代碼'), () => showToast('無法自動複製，請長按代碼複製'));
+        navigator.clipboard.writeText(cloud.shortCode || currentTeamId()).then(() => showToast('已複製球團代碼'), () => showToast('無法自動複製，請長按代碼複製'));
       } else showToast('無法自動複製，請長按代碼複製');
       return;
     case 'coadmin-toggle': toggleCoAdmin(el.dataset.uid); return;
@@ -11199,9 +11288,10 @@ function handleAction(el) {
       return;
     }
     case 'join-team': {
-      const code = parseTeamCode(ui.joinCode);
-      if (!code) { showToast('看不懂這個代碼，請貼上管理者給的整串連結'); return; }
-      joinTeam(code);
+      teamIdFromText(ui.joinCode).then((id) => {
+        if (!id) { showToast('找不到這個球團，請確認代碼或貼上管理者給的連結'); return; }
+        joinTeam(id);
+      });
       return;
     }
     case 'invite-share':
