@@ -1222,6 +1222,13 @@
   .my-rename-open { margin: 0 0 8px; padding-left: 0; }
   .member-rename { flex-wrap: wrap; }
   .member-rename small { flex-basis: 100%; }
+  .crop-hint { margin: 0 0 12px; text-align: center; font-size: 13px; }
+  .crop-box { position: relative; margin: 0 auto; overflow: hidden; border-radius: 16px; background: #111; touch-action: none; user-select: none; -webkit-user-select: none; cursor: grab; }
+  .crop-box img { position: absolute; left: 0; top: 0; transform-origin: 0 0; max-width: none; pointer-events: none; }
+  .crop-mask { position: absolute; inset: 0; border-radius: 50%; box-shadow: 0 0 0 999px rgba(0,0,0,.45); pointer-events: none; outline: 2px solid rgba(255,255,255,.85); outline-offset: -2px; }
+  .crop-zoom-row { display: flex; align-items: center; gap: 10px; margin: 14px auto; max-width: 300px; }
+  .crop-zoom-row .sub { margin: 0; }
+  .crop-zoom-row input { flex: 1; accent-color: var(--court-dark); }
   .av { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; width: 32px; height: 32px; border-radius: 50%;
     object-fit: cover; color: #fff; font-weight: 800; font-size: 14px; background: var(--border); }
   .av.av-s { width: 26px; height: 26px; font-size: 12px; margin-right: 8px; }
@@ -1497,7 +1504,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '13.3';
+const APP_VERSION = '13.4';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2063,7 +2070,7 @@ const VIEWER_ACTIONS = new Set([
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'invite-copy-code', 'invite-copy', 'invite-share', 'cloud-invite', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
-  'signup-view', 'signup-month', 'signup-day', 'pf-set', 'grade-pick', 'pf-edit', 'avatar-remove',
+  'signup-view', 'signup-month', 'signup-day', 'pf-set', 'grade-pick', 'pf-edit', 'avatar-remove', 'crop-save', 'crop-cancel',
   'my-rename-open', 'my-rename-close', 'my-rename-submit', 'my-rename-cancel', 'ext',
 ]);
 
@@ -3544,14 +3551,170 @@ function shrinkAvatar(file) {
   });
 }
 
+/* v13.4 選好照片後先開「調整頭貼」：手指拖曳移動、兩指縮放（或拉下方滑桿），確認後才裁切存檔 */
+const CROP_BOX = 260;   // 預覽框的邊長（px）
+
 document.addEventListener('change', (e) => {
   if (!e.target || e.target.id !== 'avatar-file') return;
   const file = e.target.files && e.target.files[0];
   const name = cloud.claim && cloud.claim.name;
+  e.target.value = '';   // 同一張照片可以再選一次
   if (!file || !name) return;
-  showToast('處理照片中…');
-  shrinkAvatar(file).then((url) => saveProfile(name, { avatar: url })).then(() => showToast('已更新頭貼'))
-    .catch((err) => showToast(err.message || '照片處理失敗'));
+  if (!/^image\//.test(file.type || 'image/')) { showToast('這個檔案不是照片'); return; }
+  const reader = new FileReader();
+  reader.onerror = () => showToast('讀不到這張照片');
+  reader.onload = () => {
+    const img = new Image();
+    img.onerror = () => showToast('這個檔案不是照片');
+    img.onload = () => {
+      const min = Math.max(CROP_BOX / img.naturalWidth, CROP_BOX / img.naturalHeight);
+      ui.avatarCrop = {
+        name, src: reader.result, w: img.naturalWidth, h: img.naturalHeight, min, scale: min,
+        x: (CROP_BOX - img.naturalWidth * min) / 2, y: (CROP_BOX - img.naturalHeight * min) / 2, busy: false,
+      };
+      renderModal();
+    };
+    img.src = reader.result;
+  };
+  reader.readAsDataURL(file);
+});
+
+/** 位置限制在「照片一定蓋滿框」的範圍內 */
+function clampCrop(c) {
+  c.scale = Math.max(c.min, Math.min(c.min * 5, c.scale));
+  c.x = Math.min(0, Math.max(CROP_BOX - c.w * c.scale, c.x));
+  c.y = Math.min(0, Math.max(CROP_BOX - c.h * c.scale, c.y));
+}
+
+function applyCropView() {
+  const c = ui.avatarCrop;
+  const img = document.getElementById('crop-img');
+  if (!c || !img) return;
+  img.style.transform = `translate(${c.x}px, ${c.y}px) scale(${c.scale})`;
+  const range = document.getElementById('crop-zoom');
+  if (range) range.value = String(Math.round((c.scale / c.min) * 100));
+}
+
+/** 以框內某一點為中心縮放（兩指的中點，或滑桿時用框的中心） */
+function zoomCropAt(c, nextScale, cx, cy) {
+  const prev = c.scale;
+  c.scale = Math.max(c.min, Math.min(c.min * 5, nextScale));
+  const k = c.scale / prev;
+  c.x = cx - (cx - c.x) * k;
+  c.y = cy - (cy - c.y) * k;
+  clampCrop(c);
+}
+
+function renderAvatarCropModal() {
+  const c = ui.avatarCrop;
+  return `
+    <h3>調整頭貼</h3>
+    <p class="sub crop-hint">拖曳移動照片，兩指或下方滑桿可以放大縮小。圓圈裡就是頭貼的範圍。</p>
+    <div class="crop-box" id="crop-box" style="width:${CROP_BOX}px;height:${CROP_BOX}px">
+      <img id="crop-img" src="${escapeHtml(c.src)}" alt="" draggable="false"
+        style="width:${c.w}px;height:${c.h}px;transform:translate(${c.x}px, ${c.y}px) scale(${c.scale})">
+      <div class="crop-mask" aria-hidden="true"></div>
+    </div>
+    <label class="crop-zoom-row"><span class="sub">縮放</span>
+      <input type="range" id="crop-zoom" min="100" max="500" step="1" value="${Math.round((c.scale / c.min) * 100)}" aria-label="縮放"></label>
+    <button class="btn-primary btn-block" data-action="crop-save" ${c.busy ? 'disabled' : ''}>${c.busy ? '儲存中…' : '使用這張'}</button>
+    <button class="btn-ghost btn-block" data-action="crop-cancel">取消</button>`;
+}
+
+function saveCroppedAvatar() {
+  const c = ui.avatarCrop;
+  if (!c || c.busy) return;
+  c.busy = true;
+  renderModal();
+  const img = new Image();
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    canvas.width = AVATAR_PX; canvas.height = AVATAR_PX;
+    const side = CROP_BOX / c.scale;
+    canvas.getContext('2d').drawImage(img, -c.x / c.scale, -c.y / c.scale, side, side, 0, 0, AVATAR_PX, AVATAR_PX);
+    let quality = 0.85;
+    let url = canvas.toDataURL('image/jpeg', quality);
+    while (url.length > 40000 && quality > 0.4) { quality -= 0.12; url = canvas.toDataURL('image/jpeg', quality); }
+    const name = c.name;
+    ui.avatarCrop = null;
+    renderModal();
+    saveProfile(name, { avatar: url }).then(() => showToast('已更新頭貼'));
+  };
+  img.onerror = () => { c.busy = false; showToast('照片處理失敗'); renderModal(); };
+  img.src = c.src;
+}
+
+// 拖曳、兩指縮放（直接改畫面，不重畫整個視窗）
+const cropTouch = { pts: null, x: 0, y: 0, scale: 1, dist: 0, mid: null };
+function cropPoint(t, box) { const r = box.getBoundingClientRect(); return { x: t.clientX - r.left, y: t.clientY - r.top }; }
+document.addEventListener('touchstart', (e) => {
+  const box = e.target.closest && e.target.closest('#crop-box');
+  if (!box || !ui.avatarCrop) return;
+  const c = ui.avatarCrop;
+  const p = Array.from(e.touches).map((t) => cropPoint(t, box));
+  Object.assign(cropTouch, { pts: p, x: c.x, y: c.y, scale: c.scale });
+  if (p.length >= 2) {
+    cropTouch.dist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+    cropTouch.mid = { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 };
+  }
+}, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  const box = document.getElementById('crop-box');
+  if (!cropTouch.pts || !box || !ui.avatarCrop) return;
+  e.preventDefault();
+  const c = ui.avatarCrop;
+  const p = Array.from(e.touches).map((t) => cropPoint(t, box));
+  if (p.length >= 2 && cropTouch.pts.length >= 2) {
+    const dist = Math.hypot(p[0].x - p[1].x, p[0].y - p[1].y);
+    const mid = { x: (p[0].x + p[1].x) / 2, y: (p[0].y + p[1].y) / 2 };
+    Object.assign(c, { x: cropTouch.x, y: cropTouch.y, scale: cropTouch.scale });
+    zoomCropAt(c, cropTouch.scale * (dist / Math.max(1, cropTouch.dist)), cropTouch.mid.x, cropTouch.mid.y);
+    c.x += mid.x - cropTouch.mid.x;
+    c.y += mid.y - cropTouch.mid.y;
+  } else if (p.length === 1) {
+    c.x = cropTouch.x + (p[0].x - cropTouch.pts[0].x);
+    c.y = cropTouch.y + (p[0].y - cropTouch.pts[0].y);
+  }
+  clampCrop(c);
+  applyCropView();
+}, { passive: false });
+const cropTouchEnd = (e) => {
+  if (!cropTouch.pts) return;
+  if (e.touches && e.touches.length) {   // 兩指放掉一指：從剩下的那指重新開始拖
+    const box = document.getElementById('crop-box');
+    const c = ui.avatarCrop;
+    if (box && c) Object.assign(cropTouch, { pts: Array.from(e.touches).map((t) => cropPoint(t, box)), x: c.x, y: c.y, scale: c.scale });
+    return;
+  }
+  cropTouch.pts = null;
+};
+document.addEventListener('touchend', cropTouchEnd);
+document.addEventListener('touchcancel', cropTouchEnd);
+// 電腦：滑鼠拖曳、滾輪縮放
+document.addEventListener('mousedown', (e) => {
+  const box = e.target.closest && e.target.closest('#crop-box');
+  if (!box || !ui.avatarCrop) return;
+  e.preventDefault();
+  const c = ui.avatarCrop;
+  const start = { mx: e.clientX, my: e.clientY, x: c.x, y: c.y };
+  const move = (ev) => { c.x = start.x + ev.clientX - start.mx; c.y = start.y + ev.clientY - start.my; clampCrop(c); applyCropView(); };
+  const up = () => { window.removeEventListener('mousemove', move); window.removeEventListener('mouseup', up); };
+  window.addEventListener('mousemove', move);
+  window.addEventListener('mouseup', up);
+});
+document.addEventListener('wheel', (e) => {
+  const box = e.target.closest && e.target.closest('#crop-box');
+  if (!box || !ui.avatarCrop) return;
+  e.preventDefault();
+  const p = cropPoint(e, box);
+  zoomCropAt(ui.avatarCrop, ui.avatarCrop.scale * (e.deltaY < 0 ? 1.08 : 1 / 1.08), p.x, p.y);
+  applyCropView();
+}, { passive: false });
+document.addEventListener('input', (e) => {
+  if (!e.target || e.target.id !== 'crop-zoom' || !ui.avatarCrop) return;
+  const c = ui.avatarCrop;
+  zoomCropAt(c, c.min * (Number(e.target.value) / 100), CROP_BOX / 2, CROP_BOX / 2);
+  applyCropView();
 });
 
 function renderProfileFields(name) {
@@ -9135,6 +9298,7 @@ const MODAL_PAGES = [
   ['manual', () => ui.manual, () => renderManualModal(), 1],
   ['result', () => ui.result, () => renderResultModal(), 1],
   ['backup', () => ui.backup, () => renderBackupModal(), 2],
+  ['avatar-crop', () => ui.avatarCrop, () => renderAvatarCropModal(), 3],
   ['copy', () => ui.copyText, () => renderCopyModal(), 4],
   ['report', () => ui.report, () => renderReportModal(), 1],
   ['profile', () => ui.profileName, () => renderPlayerModal(), 2],
@@ -10345,6 +10509,7 @@ document.addEventListener('touchstart', (e) => {
   if (!modal || e.touches.length !== 1) return;
   if (e.target.closest('textarea, input, select')) return;
   // 在可以往上捲的內層區塊（月曆、常用球員）裡：先讓它自己捲，捲到頂才算下拉關閉
+  if (e.target.closest('#crop-box, #crop-zoom')) return;   // 調整頭貼：拖曳是移動照片，不是拉面板
   const inner = e.target.closest('.mg-scroll, .chips-scroll, .grade-list');
   if (inner && inner.scrollTop > 0) return;
   // 頂端把手附近（上方 56px）才能往上拉滿；其他地方往上滑是正常捲動
@@ -10895,6 +11060,8 @@ function handleAction(el) {
       sessionChanged = false;
       break;
     case 'avatar-remove': saveProfile(el.dataset.name, { avatar: '' }); return;
+    case 'crop-save': saveCroppedAvatar(); return;
+    case 'crop-cancel': ui.avatarCrop = null; sessionChanged = false; modalOnly = true; break;
     case 'pf-set': {
       const field = el.dataset.field;
       const pf = profileOf(el.dataset.name) || {};
@@ -11078,6 +11245,7 @@ function handleAction(el) {
       if (ui.resetConfirm) { ui.resetConfirm = false; sessionChanged = false; break; }
       if (ui.scan) { stopScanner(); ui.scan = null; sessionChanged = false; break; }
       if (ui.scanConfirm) { ui.scanConfirm = null; sessionChanged = false; break; }
+      if (ui.avatarCrop) { ui.avatarCrop = null; sessionChanged = false; break; }
       if (ui.teamDelete) { if (!ui.teamDelete.busy) ui.teamDelete = null; sessionChanged = false; break; }
       if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
       if (ui.copyText && ui.signupOpen) { ui.copyText = null; sessionChanged = false; break; }   // 報名訊息的手動複製視窗
