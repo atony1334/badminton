@@ -1497,7 +1497,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '13.2';
+const APP_VERSION = '13.3';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -9501,6 +9501,7 @@ function render() {
   renderModal();
   renderPop();
   renderDrawerRoot();
+  syncFieldFocus();   // 重畫後輸入框可能不見了：分頁列要回來
   animateTabIndicator();
   animateNewPlayers(freshScreen);
   applyViewerLock();
@@ -11681,27 +11682,35 @@ window.addEventListener('pageshow', settleScreen);
 /* v13.2 iPhone：打字或用下拉選單（選球員）時，鍵盤／滾輪會把可視範圍縮小，
  * 固定在底部的分頁列有時跑到畫面中間、收起後也不回去。
  * 做法：輸入中先把分頁列藏起來；收起鍵盤後輕推一下捲動位置，讓 Safari 重新算固定元素的位置。 */
-const isFormField = (el) => Boolean(el && el.closest && el.closest('input, select, textarea'));
-document.addEventListener('focusin', (e) => {
-  if (isFormField(e.target) && !e.target.closest('.modal')) document.body.classList.add('field-focus');
-});
-document.addEventListener('focusout', (e) => {
-  if (!isFormField(e.target)) return;
-  setTimeout(() => {
-    if (isFormField(document.activeElement)) return;
-    document.body.classList.remove('field-focus');
-    window.scrollTo(window.scrollX, window.scrollY + 1);
-    window.scrollTo(window.scrollX, window.scrollY - 1);
-  }, 120);
-});
-if (window.visualViewport) {
-  const fixBottomBar = () => {
-    const vv = window.visualViewport;
-    const keyboard = vv.height < window.innerHeight * 0.78;
-    document.body.classList.toggle('kb-open', keyboard);
-  };
-  window.visualViewport.addEventListener('resize', fixBottomBar);
+// v13.3：只有「會跳出鍵盤」的輸入框才把分頁列藏起來；選單（select）不藏，收起後只做重新定位。
+// 每次畫面更新、手指點到別處時都會再檢查一次，避免分頁列被藏住出不來。
+function isTypingField(el) {
+  return Boolean(el && el.matches
+    && (el.matches('textarea') || el.matches('input:not([type="checkbox"]):not([type="radio"]):not([type="file"]):not([type="range"])'))
+    && !el.closest('.modal'));
 }
+function nudgeFixed() {
+  window.scrollTo(window.scrollX, window.scrollY + 1);
+  window.scrollTo(window.scrollX, window.scrollY - 1);
+}
+function syncFieldFocus() {
+  const typing = isTypingField(document.activeElement);
+  const vv = window.visualViewport;
+  const keyboard = typing && Boolean(vv) && vv.height < window.innerHeight * 0.78;
+  document.body.classList.toggle('field-focus', typing);
+  document.body.classList.toggle('kb-open', keyboard);
+}
+document.addEventListener('focusin', syncFieldFocus);
+document.addEventListener('focusout', () => setTimeout(() => {
+  const was = document.body.classList.contains('field-focus');
+  syncFieldFocus();
+  if (was && !document.body.classList.contains('field-focus')) nudgeFixed();
+}, 120));
+// 下拉選單收起（選好或取消）後重新定位固定在底部的分頁列
+document.addEventListener('change', (e) => { if (e.target && e.target.matches && e.target.matches('select')) setTimeout(nudgeFixed, 300); });
+document.addEventListener('blur', (e) => { if (e.target && e.target.matches && e.target.matches('select')) setTimeout(nudgeFixed, 300); }, true);
+document.addEventListener('touchstart', (e) => { if (!isTypingField(e.target)) setTimeout(syncFieldFocus, 0); }, { passive: true });
+if (window.visualViewport) window.visualViewport.addEventListener('resize', syncFieldFocus);
 
 // 球團清單的連結：換頁但不留瀏覽紀錄
 document.addEventListener('click', (e) => {
