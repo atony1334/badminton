@@ -238,6 +238,14 @@
   .ev-count2 small { font-size: 11px; color: var(--muted); }
   .ev-count2 b { font-size: 20px; font-weight: 800; line-height: 1.2; }
   .ev-count2 b span { font-size: 13px; font-weight: 600; color: var(--muted); }
+  /* v14.2 列表上直接報名 */
+  div.ev-card2 { cursor: pointer; }
+  .ev-quick { margin-top: 6px; min-width: 72px; height: 32px; padding: 0 12px; border: 0; border-radius: 999px;
+    background: var(--court-dark); color: #fff; font-size: 13px; font-weight: 700; white-space: nowrap; }
+  .ev-quick.wait { background: var(--soft-orange); color: var(--on-soft-orange); }
+  .ev-quick.done { background: var(--soft-green); color: var(--on-soft-green); }
+  .hero-btn.hero-quick { background: var(--tape); color: var(--on-tape, #14261C); border: 0; font-weight: 800; }
+  .hero-btn.hero-quick.wait { background: #FCE7CF; color: #8A4A00; }
   .ev-date.full { background: #FCE7CF; color: #8A4A00; }
   .ev-date.closed { background: #E6E8E5; color: #59625C; }
   :root[data-appearance="dark"] .ev-date { background: #23402F; color: #CDEBD8; }
@@ -1599,7 +1607,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '14.1';
+const APP_VERSION = '14.2';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2175,6 +2183,7 @@ const VIEWER_ACTIONS = new Set([
   'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
   'title-open', 'title-pop-close', 'player-open', 'roster-sort', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
+  'quick-signup',
   'wish-submit', 'wish-like', 'wish-anon', 'wish-sort', 'wish-delete',
   'wish-reply-open', 'cmt-anon', 'cmt-submit', 'cmt-delete',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
@@ -4754,13 +4763,28 @@ function renderEventCard(ev) {
   const side = place
     ? `<span class="ev-chip ${place.main ? 'ok' : 'wait'}">${escapeHtml(place.main ? `第 ${place.no} 位` : `候補 ${place.no}`)}</span>`
     : eventStatusTag(ev, ranked);
-  return `<button class="ev-card ev-card2" data-action="signup-event" data-id="${escapeHtml(ev.id)}">
+  const quick = quickSignupButton(ev, ranked, place, 'ev-quick');
+  // v14.2 有「報名」小按鈕時，卡片改成 div（按鈕裡不能再放按鈕）；點卡片其他地方一樣打開場次
+  const tag = quick ? 'div' : 'button';
+  return `<${tag} class="ev-card ev-card2" data-action="signup-event" data-id="${escapeHtml(ev.id)}" ${quick ? 'role="button" tabindex="0"' : ''}>
       <span class="ev-date ${tone}"><small>${escapeHtml(date.month)}</small><b class="num">${escapeHtml(date.day)}</b></span>
       <span class="ev-main"><b class="num">${escapeHtml(eventTimeText(ev))}</b>
         <span class="ev-place-line"><small>${escapeHtml(ev.venue || '地點未定')}</small>${side}</span>
         <span class="ev-mini-bar" aria-hidden="true"><span style="width:${pct}%"></span></span></span>
-      <span class="ev-count2"><small>正取</small><b class="num">${shown}<span>/${ranked.cap}</span></b>${ranked.wait.length ? `<small class="num">候補 ${ranked.wait.length}</small>` : ''}</span>
-    </button>`;
+      <span class="ev-count2"><small>正取</small><b class="num">${shown}<span>/${ranked.cap}</span></b>${ranked.wait.length ? `<small class="num">候補 ${ranked.wait.length}</small>` : ''}${quick}</span>
+    </${tag}>`;
+}
+
+/** v14.2 列表上直接報名（參考 jooin 的 B 樣式）：球友看到「報名／排候補／✓ 已報名」 */
+function quickSignupButton(ev, ranked, place, cls) {
+  if (!cloud.viewer || isPasswordUser() || !eventUpcoming(ev)) return '';
+  if (place) {
+    return `<button class="${cls} done" data-action="signup-event" data-id="${escapeHtml(ev.id)}">${place.main ? '✓ 已報名' : '✓ 候補中'}</button>`;
+  }
+  if (ev.status !== 'open') return '';
+  if (cloud.user && !signup.lists[ev.id]) return '';   // 名單還沒讀到：先不給按，避免重複報名
+  const full = ranked.main.length >= ranked.cap;
+  return `<button class="${cls} ${full ? 'wait' : ''}" data-action="quick-signup" data-id="${escapeHtml(ev.id)}" ${signup.busy ? 'disabled' : ''}>${full ? '排候補' : '報名'}</button>`;
 }
 
 // 首頁最上面：最近一場的大卡片（倒數、我的順位、導航、行事曆）
@@ -4787,7 +4811,8 @@ function renderEventHero(ev) {
     <div class="hero-acts">
       ${open ? `<a class="hero-btn" data-action="ext" href="${escapeHtml(open)}" target="_blank" rel="noopener">導航</a>` : ''}
       ${cal ? `<a class="hero-btn" data-action="ext" href="${escapeHtml(cal)}" target="_blank" rel="noopener">加入行事曆</a>`
-        : `<button class="hero-btn" data-action="signup-event" data-id="${escapeHtml(ev.id)}">${place || cloud.viewer ? (tone === 'closed' ? '看名單' : '去報名') : '看報名名單'}</button>`}
+        : quickSignupButton(ev, ranked, place, 'hero-btn hero-quick')
+          || `<button class="hero-btn" data-action="signup-event" data-id="${escapeHtml(ev.id)}">${place || cloud.viewer ? (tone === 'closed' ? '看名單' : '去報名') : '看報名名單'}</button>`}
     </div>
   </section>`;
 }
@@ -11876,6 +11901,13 @@ function handleAction(el) {
       drawerGo(el.dataset.target);
       return;
     case 'signup-event': openSignupEvent(el.dataset.id); sessionChanged = false; modalOnly = true; break;
+    case 'quick-signup': {   // v14.2 列表上直接報名，不用先點進場次
+      const ev = signup.events.find((e) => e.id === el.dataset.id);
+      if (!ev) return;
+      ui.signupName = null;   // 用認領的名字（或 Google 名字）
+      submitSignup(ev);
+      return;
+    }
     case 'signup-back':
       closeSignupEvent();
       ui.signupOpen = true;
