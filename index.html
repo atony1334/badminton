@@ -1607,7 +1607,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '14.2';
+const APP_VERSION = '15.0';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3404,7 +3404,36 @@ function renderMembersAdmin() {
 }
 
 // 排行分頁最上面「我的戰績」的帳號區塊（觀看者）
+/** v15.0 首頁（還沒進球團）的「我的帳號」：只有帳號共用的個人資料 */
+function renderHomeAccount() {
+  const editing = ui.pfEdit === ME_KEY;
+  const pf = myProfile.data || {};
+  const g = Number(pf.grade) || 0;
+  const grade = gradeText(pf);
+  const title = cloud.user.displayName || cloud.user.email || '我';
+  return `<div class="acct">
+    <div class="acct-hero">
+      <button class="acct-edit" data-action="pf-edit" data-name="${escapeHtml(ME_KEY)}">${editing ? '完成' : '編輯'}</button>
+      ${avatarHtml(ME_KEY, 'av-hero')}
+      <b class="acct-name">${escapeHtml(title)}${pf.gender ? `<span class="pf-g ${pf.gender}">${pf.gender === 'm' ? '♂' : '♀'}</span>` : ''}</b>
+      <span class="acct-tags">${grade ? `<span class="acct-tag grade">${escapeHtml(grade)}</span>` : ''}<span class="acct-tag">Google 帳號</span></span>
+      ${cloud.user.email ? `<small class="acct-mail">${escapeHtml(cloud.user.email)}</small>` : ''}
+    </div>
+    ${editing ? `<div class="acct-card acct-pad acct-editing">${renderAvatarEdit(ME_KEY)}${renderProfileFields(ME_KEY)}</div>`
+      : `<div class="acct-card acct-pad">
+        <h4 class="acct-h">程度說明</h4>
+        ${g ? `<p class="acct-desc"><span class="pf-grade-badge ${gradeTier(g).cls}">${g}</span>${escapeHtml(GRADE_DESC[g])}</p>`
+          : '<p class="acct-desc sub">還沒填程度，按右上角「編輯」選級數。</p>'}
+      </div>`}
+    <div class="acct-card acct-pad"><p class="sub">這份資料跟著你的 Google 帳號：加入球團、被管理者確認後，會自動套用到每一個球團（在球團裡改也會同步回來）。</p></div>
+    <div class="acct-card acct-list">
+      <button class="acct-row danger-text" data-action="google-logout">登出</button>
+    </div>
+  </div>`;
+}
+
 function renderAccountCard(all) {
+  if (!cloud.viewer && googleUser()) return renderHomeAccount();
   if (!cloud.viewer || !cloud.auth) return '';
   // 可以認領的名字：長期紀錄裡的人＋今天在名單上的人（新來的球友還沒有長期紀錄）
   const names = Array.from(new Set(all.map((p) => p.n).concat(state.players.map((p) => p.name))))
@@ -3523,14 +3552,75 @@ function gradeText(pf) {
   const old = Number(pf && pf.level) || 0;
   return old ? LEVEL_LABEL[old] : '';
 }
-const profiles = { map: {}, unsub: null };
+const profiles = { map: {}, unsub: null, loaded: false };
 
 function profileId(name) {
   return `p_${encodeURIComponent(name).replace(/\./g, '%2E')}`;
 }
 
 function profileOf(name) {
+  if (name === ME_KEY) return myProfile.data;
   return profiles.map[name] || null;
+}
+
+/* ---------- v15.0 帳號共用的個人資料 ----------
+ * users/{uid} { gender, grade, avatar?, updatedAt }：跟著 Google 帳號，還沒加入球團也能設定
+ * - 在球團裡（已確認）：打開球團時把帳號資料同步到這個球團的 profiles（帳號有填的欄位為準）
+ * - 在球團裡改自己的資料：也一起寫回帳號，其他球團下次打開時同步
+ */
+const ME_KEY = '@me@';   // profileOf / saveProfile / avatarHtml 用這個代表「我的帳號」（名字不會有 @，不會撞到球員）
+const myProfile = { data: null, uid: null, unsub: null, loaded: false, synced: '' };
+
+function googleUser() {
+  return Boolean(cloud.user && !isPasswordUser());
+}
+
+function ensureMyProfileWatch() {
+  const uid = googleUser() && cloud.fb && cloud.db ? cloud.user.uid : null;
+  if (myProfile.uid === uid) return;
+  if (myProfile.unsub) myProfile.unsub();
+  Object.assign(myProfile, { data: null, uid, unsub: null, loaded: false, synced: '' });
+  if (!uid) return;
+  myProfile.unsub = cloud.fb.onSnapshot(cloud.fb.doc(cloud.db, 'users', uid), (snap) => {
+    myProfile.data = snap.exists() ? snap.data() : null;
+    myProfile.loaded = true;
+    syncMyProfileToTeam();
+    if (!isTyping()) render();
+  }, (err) => { console.warn('讀取帳號資料失敗:', err); myProfile.loaded = true; });
+}
+
+function profileFields(pf) {
+  const out = { gender: (pf && pf.gender) || '', grade: Number(pf && pf.grade) || 0 };
+  if (pf && pf.avatar) out.avatar = pf.avatar;
+  return out;
+}
+
+async function writeMyProfile(pf) {
+  if (!googleUser()) return;
+  const { doc, setDoc, serverTimestamp } = cloud.fb;
+  await setDoc(doc(cloud.db, 'users', cloud.user.uid), Object.assign(profileFields(pf), { updatedAt: serverTimestamp() }));
+}
+
+/** 打開球團時：帳號有填的欄位蓋過球團裡的；帳號還是空的，就先用球團裡的當帳號資料 */
+function syncMyProfileToTeam() {
+  if (!cloud.viewer || !googleUser() || !myProfile.loaded || !profiles.loaded) return;
+  if (!cloud.claim || cloud.claim.status !== 'approved') return;
+  const name = cloud.claim.name;
+  const key = `${signupTeamId()}|${name}|${JSON.stringify(myProfile.data && profileFields(myProfile.data))}`;
+  if (myProfile.synced === key) return;
+  myProfile.synced = key;
+  const team = profiles.map[name] || null;
+  const mine = myProfile.data;
+  if (!mine || (!mine.gender && !mine.grade && !mine.avatar)) {
+    if (team && (team.gender || Number(team.grade) || team.avatar)) writeMyProfile(team).catch((err) => console.warn('建立帳號資料失敗:', err));
+    return;
+  }
+  const want = profileFields(team);
+  if (mine.gender) want.gender = mine.gender;
+  if (Number(mine.grade)) want.grade = Number(mine.grade);
+  if (mine.avatar) want.avatar = mine.avatar;
+  if (JSON.stringify(want) === JSON.stringify(profileFields(team))) return;
+  saveProfile(name, want, { skipAccount: true });
 }
 
 function watchProfiles() {
@@ -3545,6 +3635,8 @@ function watchProfiles() {
       if (!map[data.name] || d.id === profileId(data.name)) map[data.name] = data;
     });
     profiles.map = map;
+    profiles.loaded = true;
+    syncMyProfileToTeam();
     if (isTyping()) return;
     render();
   }, (err) => console.warn('讀取個人資料失敗:', err));
@@ -3554,17 +3646,37 @@ function stopWatchProfiles() {
   if (profiles.unsub) profiles.unsub();
   profiles.unsub = null;
   profiles.map = {};
+  profiles.loaded = false;
 }
 
 /** 這支手機能不能改這個人的資料 */
 function canEditProfile(name) {
+  if (name === ME_KEY) return googleUser() && Boolean(cloud.fb);
   if (!name || !cloud.fb || isLocalMode()) return false;
   if (!cloud.viewer) return cloudReady();
   return Boolean(cloud.user && cloud.claim && cloud.claim.status === 'approved' && cloud.claim.name === name);
 }
 
-async function saveProfile(name, patch) {
+async function saveProfile(name, patch, opts = {}) {
   if (!canEditProfile(name)) return;
+  if (name === ME_KEY) {   // v15.0 帳號資料（首頁也能改）；在球團裡就順便同步到球團
+    const before = myProfile.data;
+    const next = Object.assign({ gender: '', grade: 0 }, before, patch);
+    myProfile.data = next;
+    render();
+    try {
+      await writeMyProfile(next);
+      if (cloud.viewer && cloud.claim && cloud.claim.status === 'approved') {
+        await saveProfile(cloud.claim.name, profileFields(next), { skipAccount: true });
+      }
+    } catch (err) {
+      console.warn('儲存帳號資料失敗:', err);
+      myProfile.data = before;
+      showToast(`沒有存到：${cloudErrorText(err)}`);
+      render();
+    }
+    return;
+  }
   const before = profiles.map[name] || null;
   const next = Object.assign({ name, gender: '', grade: 0, level: 0, avatar: '' }, before, patch);
   profiles.map = Object.assign({}, profiles.map, { [name]: next });
@@ -3580,6 +3692,10 @@ async function saveProfile(name, patch) {
       updatedAt: serverTimestamp(),
       by: cloud.user ? cloud.user.uid : '',
     });
+    // v15.0 本人在球團裡改：也寫回帳號，其他球團打開時會同步
+    if (!opts.skipAccount && cloud.viewer && googleUser() && cloud.claim && cloud.claim.name === name) {
+      writeMyProfile(next).catch((err) => console.warn('同步帳號資料失敗:', err));
+    }
   } catch (err) {
     console.warn('儲存個人資料失敗:', err);
     profiles.map = Object.assign({}, profiles.map, { [name]: before });
@@ -3648,6 +3764,10 @@ function avatarHtml(name, cls = '') {
   const pf = profileOf(name);
   const src = pf && typeof pf.avatar === 'string' && pf.avatar.startsWith('data:image/') ? pf.avatar : '';
   if (src) return `<img class="av ${cls}" src="${escapeHtml(src)}" alt="" aria-hidden="true">`;
+  if (name === ME_KEY) {   // 帳號：用 Google 名字的第一個字
+    const label = (cloud.user && (cloud.user.displayName || cloud.user.email)) || '?';
+    return `<span class="av av-letter ${cls}" style="background:${avatarColor(label)}" aria-hidden="true">${escapeHtml(Array.from(label)[0] || '?')}</span>`;
+  }
   return `<span class="av av-letter ${cls}" style="background:${avatarColor(name)}" aria-hidden="true">${escapeHtml(Array.from(String(name || '?'))[0] || '?')}</span>`;
 }
 
@@ -3655,7 +3775,7 @@ function renderAvatarEdit(name) {
   const has = Boolean((profileOf(name) || {}).avatar);
   return `<div class="av-edit">${avatarHtml(name, 'av-xl')}
     <span class="av-edit-btns">
-      <label class="btn-outline av-pick">${has ? '換照片' : '上傳照片'}<input type="file" id="avatar-file" accept="image/*" hidden></label>
+      <label class="btn-outline av-pick">${has ? '換照片' : '上傳照片'}<input type="file" id="avatar-file" data-name="${escapeHtml(name)}" accept="image/*" hidden></label>
       ${has ? `<button class="btn-ghost danger-text" data-action="avatar-remove" data-name="${escapeHtml(name)}">移除頭貼</button>` : ''}
       <small class="sub">沒有照片時會用名字第一個字和固定顏色。</small>
     </span></div>`;
@@ -3692,7 +3812,7 @@ const CROP_BOX = 260;   // 預覽框的邊長（px）
 document.addEventListener('change', (e) => {
   if (!e.target || e.target.id !== 'avatar-file') return;
   const file = e.target.files && e.target.files[0];
-  const name = cloud.claim && cloud.claim.name;
+  const name = e.target.dataset.name || (cloud.claim && cloud.claim.name);
   const input = e.target;
   if (!file || !name) return;
   if (!/^image\//.test(file.type || 'image/')) { showToast('這個檔案不是照片'); return; }
@@ -3880,7 +4000,7 @@ function renderProfileFields(name) {
       <button class="pf-grade" data-action="grade-pick" data-name="${escapeHtml(name)}" aria-expanded="${open}">${current}<span class="pf-caret" aria-hidden="true">${open ? '▴' : '▾'}</span></button></div>
     ${open ? renderGradeList(name, grade) : ''}
     <p class="sub pf-note">程度依台灣羽球推廣協會的分級，自己評估。大家都看得到這些資料。</p>
-    ${!cloud.viewer ? `<button class="btn-primary pf-edit-btn solo" data-action="pf-edit" data-name="${escapeHtml(name)}">完成</button>` : ''}
+    ${!cloud.viewer && name !== ME_KEY ? `<button class="btn-primary pf-edit-btn solo" data-action="pf-edit" data-name="${escapeHtml(name)}">完成</button>` : ''}
   </div>`;
 }
 
@@ -5520,7 +5640,8 @@ function renderDrawer() {
   if (!ui.drawer) return '';
   const acc = drawerAccount();
   // 球友：上面的頭像和名字就是「我的帳號」入口（v11.2，取代選單裡的那一項）
-  const meLink = cloud.viewer && !isPasswordUser() ? (cloud.user ? '我的帳號・上場通知・個人資料' : '登入／認領球員') : '';
+  const meLink = cloud.viewer && !isPasswordUser() ? (cloud.user ? '我的帳號・上場通知・個人資料' : '登入／認領球員')
+    : showHome() && googleUser() ? '個人資料・性別・程度・頭貼' : '';   // v15.0 首頁也能改個人資料
   const item = (target, ico, label, extra = '') => `
     <button class="d-item" data-action="drawer-go" data-target="${target}">${icon(ico)}<span>${label}</span>${extra}</button>`;
   const badge = (n) => (n ? `<span class="d-badge">${n}</span>` : '');
@@ -5592,7 +5713,8 @@ function renderDrawer() {
     <nav class="drawer ${ui.drawerAnim || ''}" aria-label="選單">
       ${meLink ? `
       <div class="d-head">
-        <button class="d-avatar d-me-avatar" data-action="drawer-go" data-target="account" aria-label="${meLink}">${cloud.claim && cloud.claim.status === 'approved' && (profileOf(cloud.claim.name) || {}).avatar ? avatarHtml(cloud.claim.name) : escapeHtml(acc.initial)}</button>
+        <button class="d-avatar d-me-avatar" data-action="drawer-go" data-target="account" aria-label="${meLink}">${cloud.claim && cloud.claim.status === 'approved' && (profileOf(cloud.claim.name) || {}).avatar ? avatarHtml(cloud.claim.name)
+          : (myProfile.data || {}).avatar ? avatarHtml(ME_KEY) : escapeHtml(acc.initial)}</button>
         <button class="d-close" data-action="drawer-close" aria-label="關閉選單">✕</button>
       </div>
       <button class="d-account d-me" data-action="drawer-go" data-target="account">
@@ -10192,6 +10314,8 @@ function animateNewPlayers(reset) {
 }
 
 function render() {
+  ensureMyProfileWatch();
+  syncMyProfileToTeam();
   const app = document.getElementById('app');
   // 重畫前記住可捲動區塊（例如常用球員名單）的位置，畫完放回去，點選時不會跳回最上面
   const keptScroll = {};
