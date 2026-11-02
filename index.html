@@ -302,6 +302,10 @@
   .ev-no { width: 26px; height: 26px; border-radius: 50%; background: #DDF3E4; color: #1F7A45; font-size: 13px; font-weight: 700;
     display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .ev-name { flex: 1; min-width: 0; }
+  /* v13.10 報名名單的名字可以點，看那個人的個人資料 */
+  .ev-person { flex: 1; min-width: 0; display: flex; align-items: center; gap: inherit; padding: 0; border: 0; background: transparent;
+    color: inherit; font: inherit; text-align: left; border-radius: 0; }
+  .ev-person:active { transform: none; opacity: 0.6; }
   .ev-name small { margin-left: 6px; font-size: 11px; color: var(--muted); font-weight: 400; }
   .ev-remove { padding: 4px 10px; font-size: 13px; }
   .ev-me p { margin: 0 0 6px; }
@@ -1543,7 +1547,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '13.8';
+const APP_VERSION = '13.10';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1627,6 +1631,7 @@ const ui = {
   tab: 'courts',        // 'courts' | 'players' | 'records'
   titleIndex: null,     // 正在查看的稱號
   profileName: null,    // 正在查看的球員個人頁
+  profileFrom: null,    // v13.10 'signup'：從報名名單點進來
   networkFocus: null,   // 關係圖中被點選的球員
   networkMode: 'partner',   // 'partner' 搭檔 | 'rival' 對戰
   endDayArmed: false,
@@ -3374,7 +3379,7 @@ function renderAccountCard(all) {
         ${grade ? `<span class="acct-tag grade">${escapeHtml(grade)}</span>` : ''}
         <span class="acct-tag">${approved ? '已確認' : '等待管理者確認'}</span>
       </span>
-      <small class="acct-mail">${who}</small>
+      ${cloud.user.email ? `<small class="acct-mail">${escapeHtml(cloud.user.email)}</small>` : ''}
     </div>
     ${!approved ? '<div class="acct-card acct-pad"><p class="sub">管理者確認後就可以改名字、填個人資料（性別、程度、頭貼）、開上場通知。</p></div>' : ''}
     ${editing ? `<div class="acct-card acct-pad acct-editing">${renderAvatarEdit(me)}${renderMyRename()}${renderProfileFields(me)}</div>` : ''}
@@ -3782,9 +3787,8 @@ function renderProfileFields(name) {
     return `${renderProfileSummary(name)}<button class="btn-ghost pf-edit-btn solo" data-action="pf-edit" data-name="${escapeHtml(name)}">編輯個人資料</button>`;
   }
   if (!canEditProfile(name)) {
-    const text = profileText(name);
-    const g = Number(pf.grade) || 0;
-    return text ? `<p class="pf-text">${escapeHtml(text)}</p>${g ? `<p class="sub pf-desc">${escapeHtml(GRADE_DESC[g])}</p>` : ''}` : '';
+    // v13.10 別人看：性別、程度用跟「我的帳號」一樣的方格；沒填就說沒填
+    return profileText(name) ? renderProfileSummary(name) : '<p class="sub pf-none">還沒填個人資料。</p>';
   }
   const gender = pf.gender || '';
   const grade = Number(pf.grade) || 0;
@@ -4862,7 +4866,8 @@ function renderSignupRows(rows, start, ev) {
     const remove = cloud.viewer ? ''
       : `<button class="${armed ? 'btn-danger' : 'btn-ghost'} ev-remove" data-action="signup-cancel" data-id="${escapeHtml(s.id)}">${armed ? '確認移除' : '移除'}</button>`;
     return `<li class="${s.id === mine ? 'mine' : ''}"><span class="num ev-no">${start + i}</span>
-      ${avatarHtml(s.name || '', 'av-s')}<span class="ev-name">${escapeHtml(s.name || '')}${genderMark(s.name || '')}${signupByText(s)}</span>${remove}</li>`;
+      <button class="ev-person" data-action="player-open" data-from="signup" data-name="${escapeHtml(s.name || '')}" aria-label="看 ${escapeHtml(s.name || '')} 的資料">
+        ${avatarHtml(s.name || '', 'av-s')}<span class="ev-name">${escapeHtml(s.name || '')}${genderMark(s.name || '')}${signupByText(s)}</span></button>${remove}</li>`;
   }).join('');
 }
 
@@ -5392,8 +5397,9 @@ function drawerAccount() {
       const claim = cloud.claim;
       return {
         initial: (claim && claim.name ? claim.name : cloud.user.displayName || '球').slice(0, 1),
-        title: cloud.user.displayName || cloud.user.email || '球友',
-        lines: [claim ? `${claim.name}・${claim.status === 'approved' ? '已確認' : '等待確認'}` : '還沒認領球員',
+        // v13.9 認領了就用球員名字當標題，不再顯示 Google 名字
+        title: claim && claim.name ? claim.name : cloud.user.displayName || cloud.user.email || '球友',
+        lines: [claim ? (claim.status === 'approved' ? '已確認' : '等待管理者確認') : '還沒認領球員',
           cloud.teamName ? `觀看 ${cloud.teamName}` : '觀看模式'],
       };
     }
@@ -9344,7 +9350,8 @@ function renderPlayerModal() {
     <div class="profile-body">${view === 'today' ? renderTodayProfileBody(name) : renderLongProfileBody(name)}</div>
     ${showMeSet && ui.rankProfile ? `<button class="btn-ghost btn-block" data-action="me-set" data-name="${escapeHtml(name)}">這是我（在這支手機記住）</button>` : ''}
     ${renderRenameBox(name)}
-    <button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close" ${ui.rankProfile && ui.ranksOpen ? '' : 'data-sheet-close'}>${ui.rankProfile && ui.ranksOpen ? '返回排行榜' : '關閉'}</button>`;
+    ${ui.profileFrom === 'signup' ? '<button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">← 返回場次</button>'
+      : `<button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close" ${ui.rankProfile && ui.ranksOpen ? '' : 'data-sheet-close'}>${ui.rankProfile && ui.ranksOpen ? '返回排行榜' : '關閉'}</button>`}`;
 }
 
 /* 彈窗的「層級」：數字大的是從數字小的點進去的（例如報名列表 1 → 場次 2 → 編輯 3），
@@ -9363,6 +9370,7 @@ const MODAL_PAGES = [
   ['avatar-crop', () => ui.avatarCrop, () => renderAvatarCropModal(), 3],
   ['copy', () => ui.copyText, () => renderCopyModal(), 4],
   ['report', () => ui.report, () => renderReportModal(), 1],
+  ['signup-profile', () => ui.profileName && ui.profileFrom === 'signup', () => renderPlayerModal(), 3],   // v13.10 從場次點名字進來
   ['profile', () => ui.profileName, () => renderPlayerModal(), 2],
   ['invite', () => ui.invite, () => renderInviteModal(), 2],
   ['signup-form', () => ui.signupForm, () => renderEventFormModal(), 3],
@@ -11232,7 +11240,12 @@ function handleAction(el) {
       break;
     case 'report-open': openReport(); return;
     case 'report-share': shareReport(); return;
-    case 'player-open': ui.profileName = el.dataset.name; ui.profileView = null; sessionChanged = false; break;
+    case 'player-open':
+      ui.profileName = el.dataset.name;
+      ui.profileFrom = el.dataset.from || null;   // v13.10 從報名名單點進來：關閉時回到場次
+      ui.profileView = el.dataset.from === 'signup' && !isLocalMode() ? 'long' : null;
+      sessionChanged = false;
+      break;
     case 'profile-view': ui.profileView = el.dataset.value; sessionChanged = false; modalOnly = true; break;
     case 'my-view': ui.myView = el.dataset.value; sessionChanged = false; modalOnly = true; break;
     case 'network-mode': ui.networkMode = el.dataset.value; sessionChanged = false; if (ui.pastId) modalOnly = true; break;
@@ -11322,6 +11335,7 @@ function handleAction(el) {
       if (ui.scan) { stopScanner(); ui.scan = null; sessionChanged = false; break; }
       if (ui.scanConfirm) { ui.scanConfirm = null; sessionChanged = false; break; }
       if (ui.avatarCrop) { ui.avatarCrop = null; sessionChanged = false; break; }
+      if (ui.profileName && ui.profileFrom === 'signup') { ui.profileName = null; ui.profileFrom = null; sessionChanged = false; break; }
       if (ui.teamDelete) { if (!ui.teamDelete.busy) ui.teamDelete = null; sessionChanged = false; break; }
       if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
       if (ui.copyText && ui.signupOpen) { ui.copyText = null; sessionChanged = false; break; }   // 報名訊息的手動複製視窗
