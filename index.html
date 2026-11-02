@@ -1497,9 +1497,26 @@
   .wish-who b small, .wish-who > small { font-size: 12px; color: var(--muted); font-weight: 400; }
   .av.av-anon { background: var(--soft-gray); color: var(--on-soft-gray); display: inline-flex; align-items: center; justify-content: center; font-weight: 900; }
   .wish-text { margin: 0; font-size: 16px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-  .wish-reply { border-radius: 12px; background: var(--soft-green); color: var(--on-soft-green); padding: 8px 12px; }
-  .wish-reply b { font-size: 12px; }
-  .wish-reply p { margin: 2px 0 0; font-size: 14px; line-height: 1.5; white-space: pre-wrap; overflow-wrap: anywhere; }
+  /* v14.1 留言串 */
+  .wish-thread { display: flex; flex-direction: column; gap: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+  .cmt { display: flex; gap: 8px; align-items: flex-start; }
+  .av.av-xs { width: 28px; height: 28px; font-size: 13px; flex: none; }
+  .av.av-admin { background: var(--court-dark); color: #fff; display: inline-flex; align-items: center; justify-content: center; font-weight: 900; }
+  .cmt-body { flex: 1; min-width: 0; border-radius: 4px 14px 14px 14px; background: var(--floor); padding: 7px 11px; }
+  .cmt.is-admin .cmt-body { background: var(--soft-green); color: var(--on-soft-green); }
+  .cmt.mine .cmt-body { box-shadow: inset 0 0 0 1.5px var(--court); }
+  .cmt-head { display: flex; align-items: baseline; gap: 6px; }
+  .cmt-head b { font-size: 13px; }
+  .cmt-head small { font-size: 11px; color: var(--muted); }
+  .cmt-del { margin-left: auto; padding: 0; border: 0; background: transparent; color: var(--muted); font-size: 12px; font-weight: 700; }
+  .cmt-del.armed { color: var(--danger); }
+  .cmt-body p { margin: 2px 0 0; font-size: 14px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .cmt-compose { display: flex; flex-direction: column; gap: 8px; }
+  .cmt-compose textarea { min-height: 60px; }
+  .cmt-compose-row { display: flex; align-items: center; gap: 6px; }
+  .cmt-anon-seg button { padding: 5px 10px; font-size: 13px; }
+  .cmt-compose-row .btn-ghost, .cmt-compose-row .btn-primary { padding: 7px 14px; font-size: 14px; }
+  .wish-reply-btn.on { background: var(--soft-green); color: var(--on-soft-green); }
   .wish-actions { display: flex; align-items: center; gap: 6px; }
   .wish-spacer { flex: 1; }
   .wish-actions .btn-ghost, .wish-actions .btn-danger { padding: 6px 10px; font-size: 14px; }
@@ -1507,10 +1524,8 @@
     background: var(--soft-gray); color: var(--on-soft-gray); font-weight: 700; font-size: 14px; }
   .wish-like.on { background: var(--court-dark); color: #fff; }
   .wish-like.static { background: transparent; padding: 0; }
-  .wish-edit { display: flex; flex-direction: column; gap: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
   .wish-status-seg { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .wish-status-seg button { min-width: 0; padding: 6px 2px; font-size: 13px; }
-  .wish-edit-btns { display: flex; justify-content: flex-end; gap: 8px; }
   .wish-empty { text-align: center; padding: 18px 0; }
   .sync-chip { background: var(--soft-green); color: var(--on-soft-green); font-weight: 700; padding: 2px 9px; }
   .sync-chip.sync-pending { background: var(--soft-gray); color: var(--on-soft-gray); }
@@ -1584,7 +1599,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '14.0';
+const APP_VERSION = '14.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1698,7 +1713,12 @@ const ui = {
   wishAnon: false,
   wishSort: 'hot',
   wishArmed: null,
-  wishEdit: null,       // 管理者正在回覆：{ id, status, reply }
+  wishEdit: null,       // 管理者正在改狀態：{ id }
+  wishReplyFor: null,   // v14.1 正在回覆哪一則願望
+  commentText: '',
+  commentAnon: false,
+  commentBusy: false,
+  commentArmed: null,
   wishBusy: false,
 };
 
@@ -2156,6 +2176,7 @@ const VIEWER_ACTIONS = new Set([
   'title-open', 'title-pop-close', 'player-open', 'roster-sort', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
   'wish-submit', 'wish-like', 'wish-anon', 'wish-sort', 'wish-delete',
+  'wish-reply-open', 'cmt-anon', 'cmt-submit', 'cmt-delete',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'invite-copy-code', 'invite-copy', 'invite-share', 'cloud-invite', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
@@ -9418,7 +9439,9 @@ const WISH_STATUS = {
   done: { label: '已完成', cls: 'badge-court' },
   declined: { label: '不採用', cls: 'badge-rest' },
 };
-const wishes = { list: [], unsub: null, status: 'idle', error: '', mine: {}, checking: {} };
+const wishes = { list: [], unsub: null, status: 'idle', error: '', mine: {}, checking: {},
+  // v14.1 留言串：wishes/{id}/comments/{cid}；作者證明放 commentOwners/{cid}_{uid}
+  comments: {}, commentUnsubs: {}, myComments: {}, checkingC: {} };
 
 /** 這支手機能不能用許願池：已確認的球友，或雲端的管理者 */
 function wishRole() {
@@ -9447,8 +9470,100 @@ function closeWishes() {
   ui.wishOpen = false;
   ui.wishArmed = null;
   ui.wishEdit = null;
+  ui.wishReplyFor = null;
+  ui.commentArmed = null;
   if (wishes.unsub) wishes.unsub();
   wishes.unsub = null;
+  Object.values(wishes.commentUnsubs).forEach((unsub) => unsub());
+  wishes.commentUnsubs = {};
+}
+
+function commentCol(wishId) {
+  return cloud.fb.collection(cloud.db, 'teams', signupTeamId(), 'wishes', wishId, 'comments');
+}
+
+/** 每一則願望各自訂閱留言；願望被刪掉就停掉 */
+function syncCommentWatches() {
+  const ids = new Set(wishes.list.map((w) => w.id));
+  Object.keys(wishes.commentUnsubs).forEach((id) => {
+    if (ids.has(id)) return;
+    wishes.commentUnsubs[id]();
+    delete wishes.commentUnsubs[id];
+    delete wishes.comments[id];
+  });
+  ids.forEach((id) => {
+    if (wishes.commentUnsubs[id]) return;
+    wishes.commentUnsubs[id] = cloud.fb.onSnapshot(commentCol(id), (snap) => {
+      wishes.comments[id] = snap.docs.map((d) => Object.assign({ id: d.id }, d.data()))
+        .sort((a, b) => wishMillis(a) - wishMillis(b));
+      checkMyComments(id);
+      if (ui.wishOpen && !isTyping()) render();
+    }, (err) => console.warn('讀取留言失敗:', err));
+  });
+}
+
+function checkMyComments(wishId) {
+  if (wishRole() !== 'member') return;
+  const uid = cloud.user.uid;
+  (wishes.comments[wishId] || []).forEach((c) => {
+    if (c.admin || c.id in wishes.myComments || wishes.checkingC[c.id]) return;
+    wishes.checkingC[c.id] = true;
+    cloud.fb.getDoc(cloud.fb.doc(cloud.db, 'teams', signupTeamId(), 'commentOwners', `${c.id}_${uid}`))
+      .then((snap) => { wishes.myComments[c.id] = snap.exists(); })
+      .catch(() => { wishes.myComments[c.id] = false; })
+      .finally(() => { delete wishes.checkingC[c.id]; if (wishes.myComments[c.id] && ui.wishOpen && !isTyping()) render(); });
+  });
+}
+
+async function submitComment(wishId) {
+  const role = wishRole();
+  if (!role || ui.commentBusy) return;
+  const text = String(ui.commentText || '').trim().slice(0, WISH_MAX);
+  if (!text) { showToast('先寫下回覆'); return; }
+  const anon = role === 'member' && Boolean(ui.commentAnon);
+  const id = randomWishId();
+  const { doc, writeBatch, setDoc, serverTimestamp } = cloud.fb;
+  const ref = doc(cloud.db, 'teams', signupTeamId(), 'wishes', wishId, 'comments', id);
+  ui.commentBusy = true;
+  render();
+  try {
+    if (role === 'admin') {
+      await setDoc(ref, { text, anon: false, name: '管理者', admin: true, at: serverTimestamp() });
+    } else {
+      const batch = writeBatch(cloud.db);
+      batch.set(ref, { text, anon, name: anon ? '' : cloud.claim.name, at: serverTimestamp() });
+      batch.set(doc(cloud.db, 'teams', signupTeamId(), 'commentOwners', `${id}_${cloud.user.uid}`), { comment: id, wish: wishId });
+      await batch.commit();
+      wishes.myComments[id] = true;
+    }
+    ui.commentText = '';
+    ui.wishReplyFor = null;
+  } catch (err) {
+    console.warn('回覆失敗:', err);
+    showToast(`沒有送出：${cloudErrorText(err)}`);
+  }
+  ui.commentBusy = false;
+  render();
+}
+
+async function deleteComment(wishId, cid) {
+  const role = wishRole();
+  const { doc, writeBatch, deleteDoc } = cloud.fb;
+  const ref = doc(cloud.db, 'teams', signupTeamId(), 'wishes', wishId, 'comments', cid);
+  try {
+    if (role === 'member' && wishes.myComments[cid]) {
+      const batch = writeBatch(cloud.db);
+      batch.delete(ref);
+      batch.delete(doc(cloud.db, 'teams', signupTeamId(), 'commentOwners', `${cid}_${cloud.user.uid}`));
+      await batch.commit();
+    } else if (role === 'admin' || (role === 'member' && wishes.mine[wishId])) {
+      await deleteDoc(ref);   // 管理者，或願望是自己許的：可以刪掉底下的留言
+    } else return;
+    ui.commentArmed = null;
+  } catch (err) {
+    showToast(`沒有刪除：${cloudErrorText(err)}`);
+  }
+  render();
 }
 
 function watchWishes() {
@@ -9458,6 +9573,7 @@ function watchWishes() {
     wishes.list = snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
     wishes.status = 'ready';
     checkMyWishes();
+    syncCommentWatches();
     if (!isTyping()) render();
   }, (err) => {
     console.warn('讀取許願池失敗:', err);
@@ -9537,13 +9653,19 @@ async function deleteWish(id) {
   const role = wishRole();
   const { doc, writeBatch, deleteDoc } = cloud.fb;
   try {
+    // 連同底下的留言一起刪（Firestore 不會自動刪子集合）
+    const comments = (wishes.comments[id] || []).map((c) => doc(cloud.db, 'teams', signupTeamId(), 'wishes', id, 'comments', c.id));
     if (role === 'member' && wishes.mine[id]) {
       const batch = writeBatch(cloud.db);
+      comments.forEach((ref) => batch.delete(ref));
       batch.delete(doc(cloud.db, 'teams', signupTeamId(), 'wishes', id));
       batch.delete(doc(cloud.db, 'teams', signupTeamId(), 'wishOwners', `${id}_${cloud.user.uid}`));
       await batch.commit();
     } else if (role === 'admin') {
-      await deleteDoc(doc(cloud.db, 'teams', signupTeamId(), 'wishes', id));
+      const batch = writeBatch(cloud.db);
+      comments.forEach((ref) => batch.delete(ref));
+      batch.delete(doc(cloud.db, 'teams', signupTeamId(), 'wishes', id));
+      await batch.commit();
     } else return;
     ui.wishArmed = null;
     showToast('已刪除');
@@ -9553,19 +9675,12 @@ async function deleteWish(id) {
   render();
 }
 
-async function saveWishReply(id) {
-  if (wishRole() !== 'admin') return;
-  const edit = ui.wishEdit;
-  if (!edit || edit.id !== id) return;
-  const reply = String(edit.reply || '').trim().slice(0, WISH_MAX);
+/** v14.1 管理者改狀態：點了就存（回覆改成留言串） */
+async function setWishStatus(id, status) {
+  if (wishRole() !== 'admin' || !WISH_STATUS[status]) return;
   try {
-    await cloud.fb.updateDoc(wishRef(id), {
-      status: WISH_STATUS[edit.status] ? edit.status : 'new',
-      reply,
-      replyAt: cloud.fb.serverTimestamp(),
-    });
+    await cloud.fb.updateDoc(wishRef(id), { status });
     ui.wishEdit = null;
-    showToast('已更新');
   } catch (err) {
     showToast(`沒有存到：${cloudErrorText(err)}`);
   }
@@ -9583,6 +9698,23 @@ function wishMillis(w) {
   return w.at && typeof w.at.toMillis === 'function' ? w.at.toMillis() : Number(w.at) || Date.now();
 }
 
+function renderWishComment(w, c, role) {
+  const mine = role === 'member' && wishes.myComments[c.id];
+  const canDelete = !c.legacy && (mine || role === 'admin' || (role === 'member' && wishes.mine[w.id]));
+  const armed = ui.commentArmed === c.id;
+  const av = c.admin ? '<span class="av av-xs av-admin" aria-hidden="true">管</span>'
+    : c.anon ? '<span class="av av-xs av-anon" aria-hidden="true">?</span>' : avatarHtml(c.name || '', 'av-xs');
+  const who = c.admin ? '管理者' : c.anon ? '匿名' : c.name || '球友';
+  return `<div class="cmt ${c.admin ? 'is-admin' : ''} ${mine ? 'mine' : ''}">
+    ${av}
+    <div class="cmt-body">
+      <span class="cmt-head"><b>${escapeHtml(who)}</b>${mine ? '<small>・我</small>' : ''}<small class="num">${wishTime(c.at)}</small>
+        ${canDelete ? `<button class="cmt-del ${armed ? 'armed' : ''}" data-action="cmt-delete" data-wish="${w.id}" data-id="${c.id}">${armed ? '確認刪除' : '刪除'}</button>` : ''}</span>
+      <p>${escapeHtml(c.text || '')}</p>
+    </div>
+  </div>`;
+}
+
 function renderWishCard(w, role) {
   const likes = Object.keys(w.likes || {}).length;
   const liked = role === 'member' && Boolean((w.likes || {})[cloud.user.uid]);
@@ -9592,6 +9724,11 @@ function renderWishCard(w, role) {
   const armed = ui.wishArmed === w.id;
   const editing = role === 'admin' && ui.wishEdit && ui.wishEdit.id === w.id;
   const who = w.anon ? '匿名' : w.name || '球友';
+  // v14.1 留言串：v14.0 的「管理者回覆」欄位也當成一則管理者留言顯示
+  const legacy = w.reply ? [{ id: `legacy-${w.id}`, text: w.reply, admin: true, name: '管理者', at: w.replyAt, legacy: true }] : [];
+  const thread = legacy.concat(wishes.comments[w.id] || []);
+  const count = thread.length;
+  const replying = ui.wishReplyFor === w.id;
   return `<li class="wish ${mine ? 'mine' : ''}">
     <div class="wish-top">
       ${w.anon ? '<span class="av av-s av-anon" aria-hidden="true">?</span>' : avatarHtml(w.name || '', 'av-s')}
@@ -9599,25 +9736,33 @@ function renderWishCard(w, role) {
       <span class="badge ${st.cls}">${st.label}</span>
     </div>
     <p class="wish-text">${escapeHtml(w.text || '')}</p>
-    ${w.reply ? `<div class="wish-reply"><b>管理者回覆</b><p>${escapeHtml(w.reply)}</p></div>` : ''}
     <div class="wish-actions">
       ${role === 'member'
         ? `<button class="wish-like ${liked ? 'on' : ''}" data-action="wish-like" data-id="${w.id}" aria-pressed="${liked}">+1 <span class="num">${likes}</span></button>`
         : `<span class="wish-like static">+1 <span class="num">${likes}</span></span>`}
+      <button class="wish-like wish-reply-btn ${replying ? 'on' : ''}" data-action="wish-reply-open" data-id="${w.id}" aria-expanded="${replying}">回覆${count ? ` <span class="num">${count}</span>` : ''}</button>
       <span class="wish-spacer"></span>
-      ${role === 'admin' && !editing ? `<button class="btn-ghost" data-action="wish-edit" data-id="${w.id}">回覆／狀態</button>` : ''}
+      ${role === 'admin' ? `<button class="btn-ghost" data-action="wish-edit" data-id="${w.id}">${editing ? '收起' : '狀態'}</button>` : ''}
       ${canDelete ? `<button class="${armed ? 'btn-danger' : 'btn-ghost danger-text'}" data-action="wish-delete" data-id="${w.id}">${armed ? '確認刪除' : '刪除'}</button>` : ''}
     </div>
-    ${editing ? `<div class="wish-edit">
-      <div class="seg wish-status-seg" role="group" aria-label="狀態">
-        ${Object.entries(WISH_STATUS).map(([k, v]) => `<button data-action="wish-status" data-value="${k}" aria-pressed="${ui.wishEdit.status === k}">${v.label}</button>`).join('')}
-      </div>
-      <label class="label" for="wish-reply">回覆（大家都看得到，可以留空）</label>
-      <textarea id="wish-reply" maxlength="${WISH_MAX}" rows="2" placeholder="例如：下個月開始試試看">${escapeHtml(ui.wishEdit.reply || '')}</textarea>
-      <div class="wish-edit-btns">
-        <button class="btn-ghost" data-action="wish-edit-cancel">取消</button>
-        <button class="btn-primary" data-action="wish-reply-save" data-id="${w.id}">儲存</button>
-      </div>
+    ${editing ? `<div class="seg wish-status-seg" role="group" aria-label="狀態">
+        ${Object.entries(WISH_STATUS).map(([k, v]) => `<button data-action="wish-status" data-id="${w.id}" data-value="${k}" aria-pressed="${(w.status || 'new') === k}">${v.label}</button>`).join('')}
+      </div>` : ''}
+    ${thread.length || replying ? `<div class="wish-thread">
+      ${thread.map((c) => renderWishComment(w, c, role)).join('')}
+      ${replying ? `<div class="cmt-compose">
+        <label class="sr-only" for="cmt-text">回覆這則願望</label>
+        <textarea id="cmt-text" maxlength="${WISH_MAX}" rows="2" placeholder="${role === 'admin' ? '以「管理者」身分回覆' : '寫下你的想法'}">${escapeHtml(ui.commentText || '')}</textarea>
+        <div class="cmt-compose-row">
+          ${role === 'member' ? `<div class="seg cmt-anon-seg" role="group" aria-label="署名方式">
+            <button data-action="cmt-anon" data-value="0" aria-pressed="${!ui.commentAnon}">具名</button>
+            <button data-action="cmt-anon" data-value="1" aria-pressed="${Boolean(ui.commentAnon)}">匿名</button>
+          </div>` : '<span class="sub">大家看到的是「管理者」</span>'}
+          <span class="wish-spacer"></span>
+          <button class="btn-ghost" data-action="wish-reply-open" data-id="${w.id}">取消</button>
+          <button class="btn-primary" data-action="cmt-submit" data-id="${w.id}" ${ui.commentBusy ? 'disabled' : ''}>${ui.commentBusy ? '送出中…' : '送出'}</button>
+        </div>
+      </div>` : ''}
     </div>` : ''}
   </li>`;
 }
@@ -9649,7 +9794,7 @@ function renderWishModal() {
         <span class="sub num" id="wish-count">${len}/${WISH_MAX}</span>
         <button class="btn-primary" data-action="wish-submit" ${ui.wishBusy ? 'disabled' : ''}>${ui.wishBusy ? '送出中…' : '許願'}</button>
       </div>
-    </div>` : '<p class="sub" style="margin:0 0 12px">球友許的願望都在這裡。可以回覆、改狀態；不合適的可以刪除。</p>';
+    </div>` : '<p class="sub" style="margin:0 0 12px">球友許的願望都在這裡。按「回覆」以管理者身分留言，按「狀態」標記進度；不合適的可以刪除。</p>';
   const body = wishes.status === 'error'
     ? `<p class="cloud-error">${escapeHtml(wishes.error)}</p>`
     : wishes.status !== 'ready'
@@ -11711,15 +11856,21 @@ function handleAction(el) {
       if (ui.wishArmed !== el.dataset.id) { ui.wishArmed = el.dataset.id; sessionChanged = false; modalOnly = true; break; }
       deleteWish(el.dataset.id);
       return;
-    case 'wish-edit': {
-      const w = wishes.list.find((x) => x.id === el.dataset.id);
-      if (!w) return;
-      ui.wishEdit = { id: w.id, status: w.status || 'new', reply: w.reply || '' };
+    case 'wish-edit':
+      ui.wishEdit = ui.wishEdit && ui.wishEdit.id === el.dataset.id ? null : { id: el.dataset.id };
       sessionChanged = false; modalOnly = true; break;
-    }
-    case 'wish-status': if (ui.wishEdit) ui.wishEdit.status = el.dataset.value; sessionChanged = false; modalOnly = true; break;
-    case 'wish-edit-cancel': ui.wishEdit = null; sessionChanged = false; modalOnly = true; break;
-    case 'wish-reply-save': saveWishReply(el.dataset.id); return;
+    case 'wish-status': setWishStatus(el.dataset.id, el.dataset.value); return;
+    case 'wish-reply-open':
+      if (ui.wishReplyFor === el.dataset.id) { ui.wishReplyFor = null; } else { ui.wishReplyFor = el.dataset.id; ui.commentText = ''; }
+      sessionChanged = false; modalOnly = true;
+      if (ui.wishReplyFor) setTimeout(() => { const t = document.getElementById('cmt-text'); if (t) t.focus(); }, 60);
+      break;
+    case 'cmt-anon': ui.commentAnon = el.dataset.value === '1'; sessionChanged = false; modalOnly = true; break;
+    case 'cmt-submit': submitComment(el.dataset.id); return;
+    case 'cmt-delete':
+      if (ui.commentArmed !== el.dataset.id) { ui.commentArmed = el.dataset.id; sessionChanged = false; modalOnly = true; break; }
+      deleteComment(el.dataset.wish, el.dataset.id);
+      return;
     case 'drawer-go':
       if (el.dataset.target === 'backup') { closeDrawer(() => { ui.backup = { text: buildBackup() }; render(); }); return; }
       drawerGo(el.dataset.target);
@@ -12105,8 +12256,8 @@ document.addEventListener('input', (event) => {
     ui.wishText = value;
     const counter = document.getElementById('wish-count');
     if (counter) counter.textContent = `${value.length}/${WISH_MAX}`;
-  } else if (id === 'wish-reply') {
-    if (ui.wishEdit) ui.wishEdit.reply = value;
+  } else if (id === 'cmt-text') {
+    ui.commentText = value;
   }
   if (id === 'names') {
     ui.setupText = value;
