@@ -1607,7 +1607,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '15.0';
+const APP_VERSION = '15.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2183,7 +2183,7 @@ const VIEWER_ACTIONS = new Set([
   'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
   'title-open', 'title-pop-close', 'player-open', 'roster-sort', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
-  'quick-signup',
+  'quick-signup', 'pf-goto-account',
   'wish-submit', 'wish-like', 'wish-anon', 'wish-sort', 'wish-delete',
   'wish-reply-open', 'cmt-anon', 'cmt-submit', 'cmt-delete',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
@@ -4002,6 +4002,13 @@ function renderProfileFields(name) {
     <p class="sub pf-note">程度依台灣羽球推廣協會的分級，自己評估。大家都看得到這些資料。</p>
     ${!cloud.viewer && name !== ME_KEY ? `<button class="btn-primary pf-edit-btn solo" data-action="pf-edit" data-name="${escapeHtml(name)}">完成</button>` : ''}
   </div>`;
+}
+
+/** v15.1 球員個人頁（球友看）：一律只顯示；自己的資料到「我的帳號」改 */
+function renderProfileReadOnly(name) {
+  const body = profileText(name) ? renderProfileSummary(name) : '<p class="sub pf-none">還沒填個人資料。</p>';
+  const mine = cloud.claim && cloud.claim.status === 'approved' && cloud.claim.name === name;
+  return `${body}${mine ? '<button class="btn-ghost pf-edit-btn solo" data-action="pf-goto-account">到「我的帳號」修改</button>' : ''}`;
 }
 
 function renderGradeList(name, grade) {
@@ -9562,7 +9569,7 @@ function renderPlayerModal() {
   return `
     <h3>${escapeHtml(name)}${genderMark(name)}</h3>
     <div class="pm-head">${avatarHtml(name, 'av-xl')}</div>
-    ${renderProfileFields(name)}
+    ${cloud.viewer ? renderProfileReadOnly(name) : renderProfileFields(name)}
     ${isLocalMode() ? '' : profileViewSeg(view, 'profile-view')}
     <div class="profile-body">${view === 'today' ? renderTodayProfileBody(name) : renderLongProfileBody(name)}</div>
     ${showMeSet && ui.rankProfile ? `<button class="btn-ghost btn-block" data-action="me-set" data-name="${escapeHtml(name)}">這是我（在這支手機記住）</button>` : ''}
@@ -12020,6 +12027,12 @@ function handleAction(el) {
       if (ui.commentArmed !== el.dataset.id) { ui.commentArmed = el.dataset.id; sessionChanged = false; modalOnly = true; break; }
       deleteComment(el.dataset.wish, el.dataset.id);
       return;
+    case 'pf-goto-account':   // v15.1 從球員個人頁跳到「我的帳號」：先關掉上面疊的視窗
+      ui.profileName = null; ui.profileFrom = null; ui.rankProfile = null; ui.ranksOpen = false;
+      if (ui.signupOpen || ui.signupId) { ui.signupOpen = false; closeSignupEvent(); }
+      ui.settings = true; ui.settingsOnly = 'account';
+      sessionChanged = false;
+      break;
     case 'drawer-go':
       if (el.dataset.target === 'backup') { closeDrawer(() => { ui.backup = { text: buildBackup() }; render(); }); return; }
       drawerGo(el.dataset.target);
