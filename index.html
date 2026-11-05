@@ -1011,13 +1011,21 @@
   }
   .theme-swatches button[aria-pressed="true"] { border-color: var(--court-dark); font-weight: 700; }
   /* v16.0 介面配色 */
-  .ui-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; width: 100%; }
+  .ui-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; width: 100%; padding: 6px 6px 0 0; }
   .ui-themes button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px; border-radius: 14px;
     background: var(--surface); border: 2px solid var(--border); color: var(--ink); font-size: 13px; }
   .ui-themes button[aria-pressed="true"] { border-color: var(--court-dark); font-weight: 700; box-shadow: 0 0 0 2px color-mix(in srgb, var(--court-dark) 20%, transparent); }
   .ui-dots { display: flex; }
   .ui-dots i { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 0 2px var(--surface); }
   .ui-dots i + i { margin-left: -7px; }
+  .ui-saved { position: relative; display: flex; }
+  .ui-saved > button:first-child { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .ui-themes .ui-del { position: absolute; top: -6px; right: -6px; width: auto; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 999px;
+    border: 0; background: var(--soft-gray); color: var(--on-soft-gray); font-size: 12px; font-weight: 700; flex-direction: row; gap: 0; }
+  .ui-themes .ui-del.armed { background: var(--danger); color: #fff; }
+  .ui-save-row { display: flex; gap: 8px; width: 100%; }
+  .ui-save-row input { flex: 1; min-width: 0; }
+  .ui-save-row .btn-outline { flex: none; padding: 0 14px; }
   .ui-custom { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; width: 100%; }
   .ui-custom label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
   .ui-custom input[type="color"] { width: 44px; height: 36px; padding: 0; border: 2px solid var(--border); border-radius: 10px; background: none; }
@@ -1619,7 +1627,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '16.0';
+const APP_VERSION = '16.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2154,6 +2162,38 @@ async function setUiTheme(t) {
   render();
 }
 
+/* v16.1 自訂配色可以存起來、取名字（存在自己的手機；管理者存的也只在這支手機） */
+const UI_THEME_SAVED_MAX = 8;
+const UI_THEME_NAME_MAX = 10;
+
+function savedUiThemes() {
+  return Array.isArray(prefs.savedThemes) ? prefs.savedThemes.filter(validTheme) : [];
+}
+
+function saveCurrentUiTheme() {
+  const admin = !cloud.viewer && cloudReady();
+  const mine = admin ? cloud.teamTheme : prefs.uiTheme;
+  if (!validTheme(mine)) return;
+  const list = savedUiThemes();
+  if (list.length >= UI_THEME_SAVED_MAX) { showToast(`最多存 ${UI_THEME_SAVED_MAX} 組，先刪掉一組再存`); return; }
+  const name = String(ui.themeName || '').trim().slice(0, UI_THEME_NAME_MAX) || `我的配色 ${list.length + 1}`;
+  if (list.some((t) => t.name === name)) { showToast('已經有同名的配色了，換個名字'); return; }
+  list.push({ id: Date.now().toString(36), name, p: mine.p, a: mine.a });
+  prefs.savedThemes = list;
+  ui.themeName = '';
+  savePrefs();
+  showToast(`已儲存「${name}」`);
+}
+
+function deleteSavedUiTheme(id) {
+  const list = savedUiThemes();
+  const t = list.find((x) => x.id === id);
+  prefs.savedThemes = list.filter((x) => x.id !== id);
+  ui.themeDelArmed = null;
+  savePrefs();
+  if (t) showToast(`已刪除「${t.name}」`);
+}
+
 function sameTheme(x, y) {
   return validTheme(x) && validTheme(y) && x.p.toLowerCase() === y.p.toLowerCase() && x.a.toLowerCase() === y.a.toLowerCase();
 }
@@ -2169,19 +2209,35 @@ function renderUiThemeSettings() {
     const on = admin ? (sameTheme(mine, t) || (!validTheme(mine) && t === UI_DEFAULT)) : (!following && sameTheme(mine, t));
     return `<button data-action="ui-theme" data-p="${t.p}" data-a="${t.a}" aria-pressed="${on}">${dots(t)}${t.label}</button>`;
   }).join('');
+  const saved = savedUiThemes();
+  const savedHtml = saved.map((t) => {
+    const on = admin ? sameTheme(mine, t) : (!following && sameTheme(mine, t));
+    const armed = ui.themeDelArmed === t.id;
+    return `<div class="ui-saved">
+        <button data-action="ui-theme" data-p="${t.p}" data-a="${t.a}" aria-pressed="${on}">${dots(t)}${escapeHtml(t.name)}</button>
+        <button class="ui-del ${armed ? 'armed' : ''}" data-action="ui-theme-del" data-id="${escapeHtml(t.id)}" aria-label="${armed ? '確認刪除' : '刪除'}「${escapeHtml(t.name)}」">${armed ? '刪除？' : '✕'}</button>
+      </div>`;
+  }).join('');
   const isCustom = validTheme(mine) && !UI_THEMES.some((t) => sameTheme(mine, t)) && !(following);
+  const unsaved = isCustom && !saved.some((t) => sameTheme(mine, t));
   return `<div class="row ui-theme-block">
       <span class="label">${admin ? '球團配色' : '介面配色'}</span>
       <p class="sub">${admin ? '所有球友打開球團時預設看到這組顏色（球友可以在自己手機上另外換）。' : '只改你自己手機上的顏色。'}主要色用在按鈕和標題，副主要色用在提醒和強調。</p>
       <div class="ui-themes" role="group" aria-label="介面配色">
         ${!admin ? `<button data-action="ui-theme-follow" aria-pressed="${following}">${dots(validTheme(cloud.teamTheme) ? cloud.teamTheme : UI_DEFAULT)}${inTeam ? '跟隨球團' : '預設'}</button>` : ''}
         ${presets}
+        ${savedHtml}
       </div>
       <div class="ui-custom">
-        <span class="sub" style="font-size:13px">${isCustom ? '目前是自訂顏色' : '自訂顏色'}</span>
+        <span class="sub" style="font-size:13px">${unsaved ? '目前是自訂顏色' : isCustom ? `目前是「${escapeHtml((saved.find((t) => sameTheme(mine, t)) || {}).name || '自訂')}」` : '自訂顏色'}</span>
         <label>主要色<input type="color" id="ui-p" value="${cur.p}"></label>
         <label>副主要色<input type="color" id="ui-a" value="${cur.a}"></label>
       </div>
+      ${unsaved ? `<div class="ui-save-row">
+        <label class="sr-only" for="ui-theme-name">配色名稱</label>
+        <input type="text" id="ui-theme-name" maxlength="${UI_THEME_NAME_MAX}" placeholder="幫這組配色取個名字" value="${escapeHtml(ui.themeName || '')}">
+        <button class="btn-outline" data-action="ui-theme-save">儲存配色</button>
+      </div>` : ''}
       <p class="sub">主要色太淺時會自動調深一點，讓按鈕上的白字看得清楚。</p>
     </div>`;
 }
@@ -2386,7 +2442,7 @@ const VIEWER_ACTIONS = new Set([
   'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
   'title-open', 'title-pop-close', 'player-open', 'roster-sort', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
-  'quick-signup', 'pf-goto-account', 'ui-theme', 'ui-theme-follow',
+  'quick-signup', 'pf-goto-account', 'ui-theme', 'ui-theme-follow', 'ui-theme-save', 'ui-theme-del',
   'wish-submit', 'wish-like', 'wish-anon', 'wish-sort', 'wish-delete',
   'wish-reply-open', 'cmt-anon', 'cmt-submit', 'cmt-delete',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
@@ -12117,6 +12173,16 @@ function handleAction(el) {
       break;
     case 'ui-theme': setUiTheme({ p: el.dataset.p, a: el.dataset.a }); return;
     case 'ui-theme-follow': setUiTheme(null); return;
+    case 'ui-theme-save': {
+      const input = document.getElementById('ui-theme-name');
+      if (input) ui.themeName = input.value;
+      saveCurrentUiTheme();
+      sessionChanged = false; modalOnly = true; break;
+    }
+    case 'ui-theme-del':
+      if (ui.themeDelArmed !== el.dataset.id) { ui.themeDelArmed = el.dataset.id; sessionChanged = false; modalOnly = true; break; }
+      deleteSavedUiTheme(el.dataset.id);
+      sessionChanged = false; modalOnly = true; break;
     case 'set-theme':
       prefs.courtTheme = el.dataset.value;
       applyCourtTheme();
@@ -12649,6 +12715,7 @@ document.addEventListener('input', (event) => {
       if (place) place.value = ui.signupForm.place;
     }
   }
+  if (id === 'ui-theme-name') ui.themeName = value;
   if (id === 'wish-text') {
     ui.wishText = value;
     const counter = document.getElementById('wish-count');
