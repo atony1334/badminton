@@ -1607,7 +1607,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '15.1';
+const APP_VERSION = '15.2';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3410,7 +3410,7 @@ function renderHomeAccount() {
   const pf = myProfile.data || {};
   const g = Number(pf.grade) || 0;
   const grade = gradeText(pf);
-  const title = cloud.user.displayName || cloud.user.email || '我';
+  const title = myDisplayName() || '我的帳號';
   return `<div class="acct">
     <div class="acct-hero">
       <button class="acct-edit" data-action="pf-edit" data-name="${escapeHtml(ME_KEY)}">${editing ? '完成' : '編輯'}</button>
@@ -3602,7 +3602,17 @@ async function writeMyProfile(pf) {
 }
 
 /** 打開球團時：帳號有填的欄位蓋過球團裡的；帳號還是空的，就先用球團裡的當帳號資料 */
+const MY_NAME_KEY = 'badminton.myPlayerName';   // v15.2 最近認領的球員名字（首頁顯示用，不用 Google 名字）
+
+function myDisplayName() {
+  if (cloud.claim && cloud.claim.name) return cloud.claim.name;
+  return storageGet(MY_NAME_KEY) || '';
+}
+
 function syncMyProfileToTeam() {
+  if (cloud.viewer && cloud.claim && cloud.claim.status === 'approved' && storageGet(MY_NAME_KEY) !== cloud.claim.name) {
+    storageSet(MY_NAME_KEY, cloud.claim.name);
+  }
   if (!cloud.viewer || !googleUser() || !myProfile.loaded || !profiles.loaded) return;
   if (!cloud.claim || cloud.claim.status !== 'approved') return;
   const name = cloud.claim.name;
@@ -3765,7 +3775,7 @@ function avatarHtml(name, cls = '') {
   const src = pf && typeof pf.avatar === 'string' && pf.avatar.startsWith('data:image/') ? pf.avatar : '';
   if (src) return `<img class="av ${cls}" src="${escapeHtml(src)}" alt="" aria-hidden="true">`;
   if (name === ME_KEY) {   // 帳號：用 Google 名字的第一個字
-    const label = (cloud.user && (cloud.user.displayName || cloud.user.email)) || '?';
+    const label = myDisplayName() || '我';
     return `<span class="av av-letter ${cls}" style="background:${avatarColor(label)}" aria-hidden="true">${escapeHtml(Array.from(label)[0] || '?')}</span>`;
   }
   return `<span class="av av-letter ${cls}" style="background:${avatarColor(name)}" aria-hidden="true">${escapeHtml(Array.from(String(name || '?'))[0] || '?')}</span>`;
@@ -5636,7 +5646,7 @@ function drawerAccount() {
   }
   if (showHome()) {
     return cloud.user
-      ? { initial: (cloud.user.displayName || cloud.user.email || '球').slice(0, 1), title: cloud.user.displayName || cloud.user.email || '球友', lines: ['已用 Google 登入'] }
+      ? { initial: (myDisplayName() || '我').slice(0, 1), title: myDisplayName() || '我的帳號', lines: ['已用 Google 登入'] }   // v15.2 不顯示 Google 名字
       : { initial: '羽', title: '羽球輪轉排場', lines: ['選一個球團，或臨時開場'] };
   }
   if (cloud.user) return { initial: '管', title: cloud.user.email || '管理者', lines: ['已登入，還沒建立球團'] };
@@ -5648,7 +5658,7 @@ function renderDrawer() {
   const acc = drawerAccount();
   // 球友：上面的頭像和名字就是「我的帳號」入口（v11.2，取代選單裡的那一項）
   const meLink = cloud.viewer && !isPasswordUser() ? (cloud.user ? '我的帳號・上場通知・個人資料' : '登入／認領球員')
-    : showHome() && googleUser() ? '個人資料・性別・程度・頭貼' : '';   // v15.0 首頁也能改個人資料
+    : showHome() && googleUser() ? '個人資料' : '';   // v15.0 首頁也能改個人資料
   const item = (target, ico, label, extra = '') => `
     <button class="d-item" data-action="drawer-go" data-target="${target}">${icon(ico)}<span>${label}</span>${extra}</button>`;
   const badge = (n) => (n ? `<span class="d-badge">${n}</span>` : '');
@@ -5671,7 +5681,7 @@ function renderDrawer() {
       isAdminDevice() ? [item('admin-home', 'court', '回到管理畫面')]
       // 已登入：顯示「名字，登出」；還沒登入才顯示「訪客登入」
       : [cloud.user
-        ? `<button class="d-item" data-action="google-logout">${icon('logout')}<span class="d-ellipsis">${escapeHtml(cloud.user.displayName || cloud.user.email || '帳號')}，登出</span></button>`
+        ? `<button class="d-item" data-action="google-logout">${icon('logout')}<span class="d-ellipsis">登出</span></button>`
         : item('cloud', 'cloud', '訪客登入')],
       [item('look', 'palette', '畫面'), isAdminDevice() ? '' : item('backup', 'save', '備份與還原')],
       [updateItem],
