@@ -30,6 +30,7 @@
     --row-court: #DCEFE3;
     --row-rest: #E2E4E7;
     --soft-yellow: #FFF6D6;
+    --brand-deep: #1B4332;   /* v16.0 深色主色區塊（首頁大卡、我的報名） */
     --on-tape: #14261C;      /* 黃色底上的文字，兩種模式都用深色 */
     --radius-s: 6px;
     --radius-l: 14px;
@@ -47,6 +48,7 @@
     --row-court: #1E3A2B;
     --row-rest: #262B28;
     --soft-yellow: #3A3320;
+    --brand-deep: #1F4A35;
   }
   * { box-sizing: border-box; }
   html, body { background: var(--floor) !important; overscroll-behavior-x: none; }
@@ -205,8 +207,7 @@
   .ev-mini-bar.thick span { height: 6px; border-radius: 3px; }
   .ev-tile .ev-tile-left { font-size: 11px; }
   .ev-note-text { white-space: pre-line; font-size: 15px; line-height: 1.6; }
-  .ev-me2 { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 18px; margin-bottom: 14px; background: #1B4332; color: #fff; }
-  :root[data-appearance="dark"] .ev-me2 { background: #1F4A35; }
+  .ev-me2 { display: flex; flex-direction: column; gap: 12px; padding: 14px; border-radius: 18px; margin-bottom: 14px; background: var(--brand-deep); color: #fff; }
   .ev-me2 .ev-me-head small { color: rgba(255,255,255,.8); }
   .ev-me2 .ev-me-place { background: var(--tape); color: #14261C; border-radius: 10px; }
   .ev-me2.wait .ev-me-place { background: #FFB86B; color: #14261C; }
@@ -228,7 +229,7 @@
   .ev-card2 .ev-main { gap: 4px; }
   .ev-card2 .ev-main > b { font-size: 16px; }
   .ev-date { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 58px; border-radius: 12px;
-    background: #DCEBE0; color: #1B4332; }
+    background: var(--soft-green); color: var(--on-soft-green); }
   .ev-date b { font-size: 24px; line-height: 1; font-weight: 800; }
   .ev-date small { font-size: 11px; font-weight: 700; margin-bottom: 2px; }
   .ev-place-line { display: flex; align-items: center; gap: 8px; min-width: 0; }
@@ -248,18 +249,16 @@
   .hero-btn.hero-quick.wait { background: #FCE7CF; color: #8A4A00; }
   .ev-date.full { background: #FCE7CF; color: #8A4A00; }
   .ev-date.closed { background: #E6E8E5; color: #59625C; }
-  :root[data-appearance="dark"] .ev-date { background: #23402F; color: #CDEBD8; }
+
   :root[data-appearance="dark"] .ev-date.full { background: #4A3520; color: #FCD9B0; }
   :root[data-appearance="dark"] .ev-date.closed { background: #2A302C; color: #A3AEA7; }
   .ev-mini-bar { display: block; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--ink) 10%, transparent); overflow: hidden; }
   .ev-mini-bar span { display: block; height: 4px; border-radius: 2px; background: var(--court-dark); }
-  .ev-chip { font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px; white-space: nowrap; background: #DCEBE0; color: #1B4332; }
+  .ev-chip { font-size: 12px; font-weight: 700; padding: 4px 9px; border-radius: 999px; white-space: nowrap; background: var(--soft-green); color: var(--on-soft-green); }
   .ev-chip.wait { background: #FCE7CF; color: #8A4A00; }
-  :root[data-appearance="dark"] .ev-chip { background: #23402F; color: #CDEBD8; }
   :root[data-appearance="dark"] .ev-chip.wait { background: #4A3520; color: #FCD9B0; }
   .ev-hero { position: relative; overflow: hidden; margin-top: 6px; border-radius: 22px; padding: 18px 18px 16px;
-    background: #1B4332; color: #fff; display: flex; flex-direction: column; gap: 12px; }
-  :root[data-appearance="dark"] .ev-hero { background: #1F4A35; }
+    background: var(--brand-deep); color: #fff; display: flex; flex-direction: column; gap: 12px; }
   .hero-court { position: absolute; right: -40px; top: -20px; width: 220px; height: 150px; stroke: rgba(255,255,255,.12); stroke-width: 2; pointer-events: none; }
   .hero-open { position: relative; display: flex; flex-direction: column; gap: 10px; background: none; color: inherit; padding: 0; text-align: left; width: 100%; border: 0; }
   .hero-top { display: flex; align-items: center; gap: 8px; }
@@ -1011,6 +1010,19 @@
     background: var(--floor); border: 2px solid transparent; font-size: 14px;
   }
   .theme-swatches button[aria-pressed="true"] { border-color: var(--court-dark); font-weight: 700; }
+  /* v16.0 介面配色 */
+  .ui-themes { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 8px; width: 100%; }
+  .ui-themes button { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px; border-radius: 14px;
+    background: var(--surface); border: 2px solid var(--border); color: var(--ink); font-size: 13px; }
+  .ui-themes button[aria-pressed="true"] { border-color: var(--court-dark); font-weight: 700; box-shadow: 0 0 0 2px color-mix(in srgb, var(--court-dark) 20%, transparent); }
+  .ui-dots { display: flex; }
+  .ui-dots i { width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 0 0 2px var(--surface); }
+  .ui-dots i + i { margin-left: -7px; }
+  .ui-custom { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; width: 100%; }
+  .ui-custom label { display: inline-flex; align-items: center; gap: 8px; font-size: 14px; }
+  .ui-custom input[type="color"] { width: 44px; height: 36px; padding: 0; border: 2px solid var(--border); border-radius: 10px; background: none; }
+  .ui-theme-block { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
+  .ui-theme-block .sub { margin: 0; font-size: 12px; }
   .swatch { width: 18px; height: 18px; border-radius: 4px; border: 2px solid #fff; box-shadow: 0 0 0 1px var(--border); }
 
   /* 今日稱號 */
@@ -1607,7 +1619,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '15.2';
+const APP_VERSION = '16.0';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -1990,12 +2002,203 @@ function applyAppearance() {
   document.documentElement.setAttribute('data-appearance', dark ? 'dark' : 'light');
   const meta = document.querySelector('meta[name="theme-color"]');
   if (meta) meta.setAttribute('content', dark ? '#111713' : '#E9EEE6');
+  try { applyUiTheme(); } catch (e) { /* 程式剛載入、cloud 還沒建立：之後會再套用 */ }   // 深淺色的配色算法不同
 }
 
 // 「跟隨系統」時，手機切換深淺色會即時套用
 if (darkQuery && darkQuery.addEventListener) {
   darkQuery.addEventListener('change', () => { if (prefs.appearance === 'auto') applyAppearance(); });
 }
+
+/* ---------- v16.0 介面配色（主要色＋副主要色） ----------
+ * 球團配色：teams/{id}.theme = { p, a }（管理者設定，所有球友預設）
+ * 個人配色：prefs.uiTheme = { p, a }（存在自己的手機；null = 跟隨球團）
+ * 套用方式：把配色算成 CSS 變數寫在 <html style>；預設配色就清掉，完全用原本的樣式
+ */
+const UI_THEMES = [
+  { key: 'forest', label: '森林綠', p: '#1B4332', a: '#F2C94C' },
+  { key: 'ocean', label: '海洋藍', p: '#1D3F6E', a: '#F59E42' },
+  { key: 'grape', label: '葡萄紫', p: '#4C2A85', a: '#F7A1C4' },
+  { key: 'wine', label: '酒紅金', p: '#6E1F2E', a: '#E8B04B' },
+  { key: 'teal', label: '湖水珊瑚', p: '#0F5257', a: '#FF8A65' },
+  { key: 'mocha', label: '咖啡奶油', p: '#4A3222', a: '#EBC98A' },
+  { key: 'ink', label: '墨黑螢光', p: '#1E2124', a: '#B8F35C' },
+];
+const UI_DEFAULT = UI_THEMES[0];
+const HEX_RE = /^#[0-9a-f]{6}$/i;
+const UI_VARS = ['--court-dark', '--court', '--brand-deep', '--soft-green', '--on-soft-green', '--tape', '--on-tape', '--soft-yellow', '--floor', '--border'];
+let uiThemePreview = null;   // 拖曳調色盤時先預覽，放開才存
+
+function validTheme(t) {
+  return Boolean(t && HEX_RE.test(t.p || '') && HEX_RE.test(t.a || ''));
+}
+
+function hexRgb(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+}
+function rgbHex(rgb) {
+  return `#${rgb.map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0')).join('')}`;
+}
+/** t = 0 全是 a，t = 1 全是 b */
+function mixHex(a, b, t) {
+  const x = hexRgb(a); const y = hexRgb(b);
+  return rgbHex(x.map((v, i) => v + (y[i] - v) * t));
+}
+function luminance(hex) {
+  const c = hexRgb(hex).map((v) => { const u = v / 255; return u <= 0.03928 ? u / 12.92 : ((u + 0.055) / 1.055) ** 2.4; });
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function contrast(a, b) {
+  const x = luminance(a); const y = luminance(b);
+  return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+}
+function hexHsl(hex) {
+  const [r, g, b] = hexRgb(hex).map((v) => v / 255);
+  const max = Math.max(r, g, b); const min = Math.min(r, g, b); const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const sat = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  const h = max === r ? ((g - b) / d + (g < b ? 6 : 0)) : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return [h / 6, sat, l];
+}
+function hslHex(h, sat, l) {
+  if (!sat) return rgbHex([l, l, l].map((v) => v * 255));
+  const q = l < 0.5 ? l * (1 + sat) : l + sat - l * sat; const p = 2 * l - q;
+  const f = (t) => { let u = t; if (u < 0) u += 1; if (u > 1) u -= 1;
+    return u < 1 / 6 ? p + (q - p) * 6 * u : u < 1 / 2 ? q : u < 2 / 3 ? p + (q - p) * (2 / 3 - u) * 6 : p; };
+  return rgbHex([f(h + 1 / 3), f(h), f(h - 1 / 3)].map((v) => v * 255));
+}
+/** 調亮度（保留色相）直到跟 against 的對比夠；toward 是 '#000000' 就調暗，其他就調亮 */
+function pushContrast(hex, toward, against, ratio) {
+  const [h, sat, l0] = hexHsl(hex);
+  const down = toward === '#000000';
+  let l = l0; let c = hex;
+  for (let i = 0; i < 40 && contrast(c, against) < ratio; i += 1) {
+    l = down ? Math.max(0, l - 0.025) : Math.min(1, l + 0.025);
+    c = hslHex(h, sat, l);
+  }
+  return c;
+}
+
+/** 目前要用的配色：管理者看球團的；球友先看自己的，沒設就跟球團 */
+function currentUiTheme() {
+  if (uiThemePreview) return uiThemePreview;
+  const admin = !cloud.viewer && typeof cloudReady === 'function' && cloudReady();
+  if (!admin && validTheme(prefs.uiTheme)) return prefs.uiTheme;
+  if (validTheme(cloud.teamTheme)) return cloud.teamTheme;
+  return UI_DEFAULT;
+}
+
+function applyUiTheme() {
+  const root = document.documentElement.style;
+  const t = currentUiTheme();
+  if (t.p.toLowerCase() === UI_DEFAULT.p.toLowerCase() && t.a.toLowerCase() === UI_DEFAULT.a.toLowerCase()) {
+    UI_VARS.forEach((v) => root.removeProperty(v));
+    return;
+  }
+  const dark = document.documentElement.getAttribute('data-appearance') === 'dark';
+  const floor = dark ? '#111713' : '#FFFFFF';
+  const p = pushContrast(t.p, '#000000', '#FFFFFF', 4.5);   // 白字要看得清楚：太淺就調深
+  const a = t.a;
+  const onA = contrast(a, '#14261C') >= contrast(a, '#FFFFFF') ? '#14261C' : '#FFFFFF';
+  const vars = dark ? {
+    '--court-dark': pushContrast(mixHex(p, '#FFFFFF', 0.25), '#FFFFFF', '#111713', 3),
+    '--court': mixHex(p, '#FFFFFF', 0.12),
+    '--brand-deep': mixHex(p, '#111713', 0.35),
+    '--soft-green': mixHex(p, floor, 0.72),
+    '--on-soft-green': pushContrast(mixHex(p, '#FFFFFF', 0.7), '#FFFFFF', mixHex(p, floor, 0.72), 4.5),
+    '--tape': a,
+    '--on-tape': onA,
+    '--soft-yellow': mixHex(a, floor, 0.8),
+    '--floor': mixHex(p, '#0F1110', 0.93),
+    '--border': mixHex(p, '#323834', 0.85),
+  } : {
+    '--court-dark': p,
+    '--court': mixHex(p, '#FFFFFF', 0.14),
+    '--brand-deep': p,
+    '--soft-green': mixHex(p, floor, 0.85),
+    '--on-soft-green': p,
+    '--tape': a,
+    '--on-tape': onA,
+    '--soft-yellow': mixHex(a, floor, 0.84),
+    '--floor': mixHex(p, '#EEF0EE', 0.93),   // 頁面底色也帶一點主色
+    '--border': mixHex(p, '#CDD2CD', 0.88),
+  };
+  Object.entries(vars).forEach(([k, v]) => root.setProperty(k, v));
+}
+
+/** 管理者改的是球團配色（寫進球團）；球友、臨時開場改的是自己手機的 */
+async function setUiTheme(t) {
+  uiThemePreview = null;
+  const admin = !cloud.viewer && cloudReady();
+  if (admin) {
+    const before = cloud.teamTheme;
+    cloud.teamTheme = t ? { p: t.p, a: t.a } : null;
+    applyUiTheme();
+    render();
+    try {
+      await cloud.fb.updateDoc(cloud.fb.doc(cloud.db, 'teams', cloud.teamId), { theme: cloud.teamTheme });
+      showToast('已套用到整個球團');
+    } catch (err) {
+      cloud.teamTheme = before;
+      applyUiTheme();
+      showToast(`沒有存到：${cloudErrorText(err)}`);
+      render();
+    }
+    return;
+  }
+  prefs.uiTheme = t ? { p: t.p, a: t.a } : null;
+  savePrefs();
+  applyUiTheme();
+  render();
+}
+
+function sameTheme(x, y) {
+  return validTheme(x) && validTheme(y) && x.p.toLowerCase() === y.p.toLowerCase() && x.a.toLowerCase() === y.a.toLowerCase();
+}
+
+function renderUiThemeSettings() {
+  const admin = !cloud.viewer && cloudReady();
+  const inTeam = cloud.viewer && validTheme(cloud.teamTheme);
+  const mine = admin ? cloud.teamTheme : prefs.uiTheme;
+  const following = !admin && !validTheme(prefs.uiTheme);
+  const cur = currentUiTheme();
+  const dots = (t) => `<span class="ui-dots" aria-hidden="true"><i style="background:${t.p}"></i><i style="background:${t.a}"></i></span>`;
+  const presets = UI_THEMES.map((t) => {
+    const on = admin ? (sameTheme(mine, t) || (!validTheme(mine) && t === UI_DEFAULT)) : (!following && sameTheme(mine, t));
+    return `<button data-action="ui-theme" data-p="${t.p}" data-a="${t.a}" aria-pressed="${on}">${dots(t)}${t.label}</button>`;
+  }).join('');
+  const isCustom = validTheme(mine) && !UI_THEMES.some((t) => sameTheme(mine, t)) && !(following);
+  return `<div class="row ui-theme-block">
+      <span class="label">${admin ? '球團配色' : '介面配色'}</span>
+      <p class="sub">${admin ? '所有球友打開球團時預設看到這組顏色（球友可以在自己手機上另外換）。' : '只改你自己手機上的顏色。'}主要色用在按鈕和標題，副主要色用在提醒和強調。</p>
+      <div class="ui-themes" role="group" aria-label="介面配色">
+        ${!admin ? `<button data-action="ui-theme-follow" aria-pressed="${following}">${dots(validTheme(cloud.teamTheme) ? cloud.teamTheme : UI_DEFAULT)}${inTeam ? '跟隨球團' : '預設'}</button>` : ''}
+        ${presets}
+      </div>
+      <div class="ui-custom">
+        <span class="sub" style="font-size:13px">${isCustom ? '目前是自訂顏色' : '自訂顏色'}</span>
+        <label>主要色<input type="color" id="ui-p" value="${cur.p}"></label>
+        <label>副主要色<input type="color" id="ui-a" value="${cur.a}"></label>
+      </div>
+      <p class="sub">主要色太淺時會自動調深一點，讓按鈕上的白字看得清楚。</p>
+    </div>`;
+}
+
+// 調色盤：拖曳時即時預覽，放開才存
+document.addEventListener('input', (e) => {
+  if (!e.target || (e.target.id !== 'ui-p' && e.target.id !== 'ui-a')) return;
+  const base = currentUiTheme();
+  uiThemePreview = Object.assign({}, base, e.target.id === 'ui-p' ? { p: e.target.value } : { a: e.target.value });
+  applyUiTheme();
+});
+document.addEventListener('change', (e) => {
+  if (!e.target || (e.target.id !== 'ui-p' && e.target.id !== 'ui-a')) return;
+  const base = uiThemePreview || currentUiTheme();
+  const next = Object.assign({}, base, e.target.id === 'ui-p' ? { p: e.target.value } : { a: e.target.value });
+  setUiTheme(next);
+});
 
 function applyCourtTheme() {
   const theme = COURT_THEMES[prefs.courtTheme] ? prefs.courtTheme : 'green';
@@ -2183,7 +2386,7 @@ const VIEWER_ACTIONS = new Set([
   'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
   'title-open', 'title-pop-close', 'player-open', 'roster-sort', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
-  'quick-signup', 'pf-goto-account',
+  'quick-signup', 'pf-goto-account', 'ui-theme', 'ui-theme-follow',
   'wish-submit', 'wish-like', 'wish-anon', 'wish-sort', 'wish-delete',
   'wish-reply-open', 'cmt-anon', 'cmt-submit', 'cmt-delete',
   'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
@@ -2415,6 +2618,8 @@ async function onCloudUser(user) {
 async function attachTeam(id, data) {
   cloud.teamId = id;
   cloud.teamName = (data && data.name) || '';
+  cloud.teamTheme = data && validTheme(data.theme) ? data.theme : null;
+  applyUiTheme();
   cloud.shortCode = data && SHORT_CODE_RE.test(data.shortCode || '') ? data.shortCode : null;
   cloud.ownerUid = (data && data.adminUid) || null;
   cloud.adminUids = (data && Array.isArray(data.adminUids)) ? data.adminUids.slice() : [];
@@ -2489,6 +2694,10 @@ function watchAdminSync() {
       return;
     }
     cloud.teamName = d.name || '';
+    if (!uiThemePreview && JSON.stringify(validTheme(d.theme) ? d.theme : null) !== JSON.stringify(cloud.teamTheme || null)) {
+      cloud.teamTheme = validTheme(d.theme) ? d.theme : null;
+      applyUiTheme();
+    }
     if (SHORT_CODE_RE.test(d.shortCode || '')) cloud.shortCode = d.shortCode;
     cloud.ownerUid = d.adminUid || null;
     cloud.adminUids = Array.isArray(d.adminUids) ? d.adminUids.slice() : [];
@@ -2773,6 +2982,8 @@ function startViewer() {
       return;
     }
     cloud.teamName = snap.data().name || '';
+    cloud.teamTheme = validTheme(snap.data().theme) ? snap.data().theme : null;   // v16.0 球團配色
+    applyUiTheme();
     cloud.shortCode = SHORT_CODE_RE.test(snap.data().shortCode || '') ? snap.data().shortCode : null;
     cloud.ownerUid = snap.data().adminUid || null;
     cloud.adminUids = Array.isArray(snap.data().adminUids) ? snap.data().adminUids : [];
@@ -3092,6 +3303,8 @@ async function deleteTeam() {
     forgetJoinedTeam(cloud.teamId);
     cloud.teamId = null;
     cloud.teamName = '';
+    cloud.teamTheme = null;
+    applyUiTheme();
     cloud.ownerUid = null;
     cloud.adminUids = [];
     cloud.lastLive = '';
@@ -9330,6 +9543,7 @@ function renderLookSettings() {
             <button data-action="set-appearance" data-value="${key}" aria-pressed="${prefs.appearance === key}">${APPEARANCE_LABEL[key]}</button>`).join('')}
         </div>
       </div>
+      ${renderUiThemeSettings()}
       <div class="row">
         <span class="label">場地配色</span>
         <div class="theme-swatches" role="group" aria-label="場地配色">
@@ -10330,7 +10544,9 @@ function animateNewPlayers(reset) {
   if (maps.length) chipReady = true;
 }
 
+let uiThemeApplied = false;
 function render() {
+  if (!uiThemeApplied) { uiThemeApplied = true; applyUiTheme(); }   // v16.0 第一次畫面時套用自己手機的配色
   ensureMyProfileWatch();
   syncMyProfileToTeam();
   const app = document.getElementById('app');
@@ -11899,6 +12115,8 @@ function handleAction(el) {
       savePrefs();
       sessionChanged = false;
       break;
+    case 'ui-theme': setUiTheme({ p: el.dataset.p, a: el.dataset.a }); return;
+    case 'ui-theme-follow': setUiTheme(null); return;
     case 'set-theme':
       prefs.courtTheme = el.dataset.value;
       applyCourtTheme();
