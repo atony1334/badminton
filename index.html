@@ -1173,6 +1173,15 @@
   .modal.dragging { transition: none; }
   /* v12.4：拉滿只是放寬最高高度；內容比螢幕短時面板就停在內容的高度，關閉鈕不會浮在半空 */
   .modal.sheet-full { max-height: calc(100vh - env(safe-area-inset-top, 0px) - 10px); max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 10px); }
+  /* v18.0 手機上拉滿就真的到頂：碰到頂端時圓角變直角，把手往下讓開瀏海／狀態列 */
+  @media (max-width: 699px) {
+    .modal.sheet-full { max-height: 100vh; max-height: 100dvh; }
+    .modal { --handle-h: 26px; transition: border-radius 0.25s ease; }
+    .modal.at-top { border-radius: 0; --handle-h: calc(26px + env(safe-area-inset-top, 0px)); }
+    .modal.at-top .sheet-handle { height: var(--handle-h); }
+    .modal.at-top .sheet-handle::after { top: calc(10px + env(safe-area-inset-top, 0px)); }
+    .modal.at-top .modal-page > h3:first-child { top: var(--handle-h); }
+  }
   /* v12.5 參考 IG：圓角更大、頂端把手和標題固定在上面、標題置中 */
   .modal { border-radius: 24px 24px 0 0; padding-top: 0; }
   .sheet-handle { position: sticky; top: 0; z-index: 4; width: auto; height: 26px; margin: 0 -16px; border-radius: 0;
@@ -1206,6 +1215,20 @@
   button:active, a.btn-outline:active, a.hero-btn:active, a.ev-me-btn:active { transform: scale(0.97); transition: transform 0.08s ease-out; }
   .mg-cell:active, .seg button:active, .switch:active, .d-item:active { transform: none; }
   .modal-bg.sheet-fade { transition: background 0.2s ease; }
+  /* v18.0 疊加視窗：上一層（複製出來的畫面）往後退、變暗，新的一層從下面疊上來 */
+  .modal-bg .modal { z-index: 1; }
+  .modal.modal-ghost { position: absolute; bottom: 0; z-index: 0; overflow: hidden; pointer-events: none; transform-origin: 50% 0;
+    transition: transform 0.45s var(--ease-open), filter 0.45s ease, opacity 0.3s ease; }
+  .modal.modal-ghost.behind { transform: translateY(-14px) scale(0.93); filter: brightness(0.82); }
+  .modal.modal-ghost.ghost-hidden { opacity: 0; }
+  .modal.modal-ghost.ghost-front { z-index: 2; transition: transform 0.32s cubic-bezier(0.4, 0, 1, 1); }
+  .modal.modal-ghost.ghost-front.gone { transform: translateY(105%); }
+  @media (prefers-reduced-motion: no-preference) {
+    .modal.stack-in { animation: sheet-up 0.55s var(--ease-open); }
+    .modal.stack-return { animation: stack-return 0.45s var(--ease-open); transform-origin: 50% 0; }
+    @keyframes stack-return { from { transform: translateY(-14px) scale(0.93); filter: brightness(0.82); } to { transform: none; filter: none; } }
+    .modal-bg.modal-leave .modal-ghost { animation: sheet-down 0.26s cubic-bezier(0.4, 0, 1, 1) forwards; }
+  }
   body.modal-open { overflow: hidden; }
   .modal h3 { margin: 0 0 4px; font-size: 18px; }
   .pick-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--floor); }
@@ -1631,7 +1654,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '17.1';
+const APP_VERSION = '18.0';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -10338,7 +10361,20 @@ function renderModal() {
     modalLeaveTimer = null;
     root.innerHTML = '';
   }
-  let previous = root.querySelector('.modal');
+  let previous = root.querySelector('.modal:not(.modal-ghost)');
+  const ghosts = [...root.querySelectorAll('.modal-ghost:not(.ghost-front)')];
+  // v18.0 疊加視窗：被手指往下拉走的是上面那一層，後面還疊著上一層 → 讓上一層浮回來，不重建
+  let draggedBack = false;
+  if (previous && content && ghosts.length && depth < Number(root.dataset.depth || 0) && /110%/.test(previous.style.transform || '')) {
+    previous.classList.add('dragging');
+    previous.classList.remove('sheet-closing');
+    previous.style.transform = '';
+    const bgEl = previous.parentElement;
+    if (bgEl) { bgEl.classList.remove('sheet-fade'); bgEl.style.background = ''; }
+    void previous.offsetHeight;
+    previous.classList.remove('dragging');
+    draggedBack = true;
+  }
   // 被手指往下拉出畫面、但還有上一層要顯示（例如開新場次 → 報名列表）：
   // 舊面板已經在畫面外、背景也透明了，留著會變成一層看不見的遮罩擋住所有點擊，所以重建並重新滑上來
   if (previous && content && /110%/.test(previous.style.transform || '')) {
@@ -10367,10 +10403,15 @@ function renderModal() {
   const prevKey = root.dataset.key || '';
   const prevDepth = Number(root.dataset.depth || 0);
   const pageChanged = Boolean(previous) && prevKey !== key;
-  const scrollTop = previous && !pageChanged ? previous.scrollTop : 0;
-  const oldHeight = pageChanged ? previous.offsetHeight : 0;
+  let scrollTop = previous && !pageChanged ? previous.scrollTop : 0;
+  const oldHeight = previous ? previous.offsetHeight : 0;
   const enterClass = previous ? '' : ' modal-enter';
-  const pageClass = pageChanged && !reduceMotion() ? ` page-${depth >= prevDepth ? 'fwd' : 'back'}` : '';
+  // v18.0 疊加：手機上往更深一層 → 疊上來；往回且後面有疊著的 → 上一層浮回來
+  const stackable = pageChanged && !reduceMotion() && window.matchMedia('(max-width: 699px)').matches;
+  const stackIn = stackable && depth > prevDepth;
+  const stackOut = pageChanged && depth < prevDepth && ghosts.length > 0;
+  const pageClass = pageChanged && !reduceMotion() && !stackIn && !stackOut ? ` page-${depth >= prevDepth ? 'fwd' : 'back'}` : '';
+  if (pageChanged && !stackIn && !stackOut) ghosts.forEach((g) => g.remove());   // 同一層換頁：疊著的清掉
 
   if (previous && !pageChanged && content === lastModalContent) {
     if (ui.scan) attachScanVideo();
@@ -10378,6 +10419,54 @@ function renderModal() {
     return;
   }
   lastModalContent = content;
+  if (stackIn && previous) {
+    // 把目前這一層複製一份留在後面（拿掉 id，避免跟真的那層重複），往後退、變暗
+    ghosts.forEach((g) => g.classList.add('ghost-hidden'));
+    const rect = previous.getBoundingClientRect();
+    const ghost = previous.cloneNode(true);
+    ghost.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
+    ghost.removeAttribute('id');
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.setAttribute('inert', '');
+    ghost.classList.remove('modal-enter', 'dragging', 'stack-in', 'stack-return', 'sheet-release', 'sheet-collapse');
+    ghost.classList.add('modal-ghost');
+    ghost.dataset.scroll = String(previous.scrollTop);
+    ghost.dataset.full = previous.classList.contains('sheet-full') ? '1' : '';
+    Object.assign(ghost.style, { left: `${rect.left}px`, width: `${rect.width}px`, height: `${rect.height}px`, maxHeight: 'none', transform: '' });
+    previous.parentElement.appendChild(ghost);
+    ghost.firstElementChild && ghost.scrollTo && (ghost.scrollTop = Number(ghost.dataset.scroll));
+    requestAnimationFrame(() => ghost.classList.add('behind'));
+    previous.classList.remove('sheet-full', 'at-top', 'stack-return', 'stack-in');
+    void previous.offsetWidth;
+    previous.classList.add('stack-in');
+    previous.addEventListener('animationend', () => previous.classList.remove('stack-in'), { once: true });
+  } else if (stackOut && previous) {
+    // 上面那層滑下去（複製一份來播），真的那層換回上一層的內容，從後面浮回來
+    if (!draggedBack) {
+      const rect = previous.getBoundingClientRect();
+      const front = previous.cloneNode(true);
+      front.querySelectorAll('[id]').forEach((n) => n.removeAttribute('id'));
+      front.setAttribute('aria-hidden', 'true');
+      front.setAttribute('inert', '');
+      front.classList.remove('modal-enter', 'stack-in', 'stack-return');
+      front.classList.add('modal-ghost', 'ghost-front');
+      Object.assign(front.style, { left: `${rect.left}px`, width: `${rect.width}px`, height: `${rect.height}px`, maxHeight: 'none', transform: '' });
+      previous.parentElement.appendChild(front);
+      front.scrollTop = previous.scrollTop;
+      requestAnimationFrame(() => front.classList.add('gone'));
+      setTimeout(() => front.remove(), 340);
+    }
+    const back = ghosts[ghosts.length - 1];
+    scrollTop = Number(back.dataset.scroll || 0);
+    previous.classList.toggle('sheet-full', back.dataset.full === '1');
+    back.remove();
+    const below = ghosts[ghosts.length - 2];
+    if (below) below.classList.remove('ghost-hidden');
+    previous.classList.remove('stack-in', 'stack-return');
+    void previous.offsetWidth;
+    previous.classList.add('stack-return');
+    previous.addEventListener('animationend', () => previous.classList.remove('stack-return'), { once: true });
+  }
   if (previous) {
     // 彈窗已經開著：只換裡面的內容，外框不重建（才不會打斷正在播的打開動畫，例如 QR Code 剛好載入完）
     const oldPage = previous.querySelector('.modal-page');
@@ -10402,27 +10491,45 @@ function renderModal() {
   root.dataset.key = key;
   root.dataset.depth = String(depth);
 
-  const current = root.querySelector('.modal');
+  const current = root.querySelector('.modal:not(.modal-ghost)');
   if (current && previous) current.scrollTop = scrollTop;
-  // 換頁時面板高度從舊的平順變成新的
-  if (current && pageChanged && !reduceMotion()) {
-    const newHeight = current.offsetHeight;
-    if (Math.abs(newHeight - oldHeight) > 4) {
-      current.style.height = `${oldHeight}px`;
-      void current.offsetHeight;
-      current.style.transition = 'height 0.42s var(--ease-open)';
-      current.style.height = `${newHeight}px`;
-      setTimeout(() => {
-        if (!current.isConnected) return;
-        current.style.height = '';
-        current.style.transition = '';
-      }, 440);
-    }
-  }
+  // v18.0 內容變了（換頁、展開回覆、按編輯…）：面板高度用彈簧從舊的變成新的；疊上來／浮回來的不用
+  if (current && previous && !stackIn && !stackOut && !reduceMotion() && !sheetDragging()) animateModalHeight(current, oldHeight);
+  if (current) requestAnimationFrame(() => updateSheetCorner(current));
   document.body.classList.toggle('modal-open', true);
   if (ui.scan) attachScanVideo();
   lockPastView();
   applyViewerLock();
+}
+
+function sheetDragging() {
+  try { return sheet.active; } catch (e) { return false; }   // sheet 在檔案後面才宣告
+}
+
+/** v18.0 面板高度從 from 用彈簧變到內容的新高度（中途又變也會從目前的高度接著變） */
+function animateModalHeight(el, from) {
+  if (el._hTimer) { clearTimeout(el._hTimer); el._hTimer = 0; }
+  el.style.transition = 'none';
+  el.style.height = '';
+  const to = el.offsetHeight;
+  if (Math.abs(to - from) <= 4) { el.style.transition = ''; return; }
+  el.style.height = `${from}px`;
+  void el.offsetHeight;
+  el.style.transition = 'height 0.45s var(--ease-snap)';
+  el.style.height = `${to}px`;
+  el._hTimer = setTimeout(() => {
+    el._hTimer = 0;
+    if (!el.isConnected) return;
+    el.style.height = '';
+    el.style.transition = '';
+  }, 470);
+}
+
+/** v18.0 面板碰到螢幕頂端：圓角變直角（.at-top） */
+function updateSheetCorner(el) {
+  if (!el || !el.isConnected || el.classList.contains('dragging')) return;
+  const top = el.getBoundingClientRect().top;
+  el.classList.toggle('at-top', el.classList.contains('sheet-full') && top <= 1 && !el.style.transform);
 }
 
 /* ===================== 掃描球團 QR Code ===================== */
@@ -11505,7 +11612,7 @@ function setSheetFull(el, on) {
   void el.offsetHeight;
   el.style.transition = 'height 0.45s var(--ease-snap)';
   el.style.height = `${to}px`;
-  setTimeout(() => { el.style.height = ''; el.style.transition = ''; }, 470);
+  setTimeout(() => { el.style.height = ''; el.style.transition = ''; updateSheetCorner(el); }, 470);
 }
 const SHEET_CLOSE_PX = 140;          // v12.8：拉超過這個距離放手才關
 const SHEET_FLICK_SPEED = 0.9;       // px/ms：往下「甩」要比這個快
@@ -11581,11 +11688,17 @@ document.addEventListener('touchmove', (e) => {
     if (!el || !sheet.active) return;
     if (sheet.mode === 'up') {
       const want = sheet.h0 - sheet.dy;
-      const max = window.innerHeight - 10;
+      const phoneSheet = window.matchMedia('(max-width: 699px)').matches;
+      const max = window.innerHeight - (phoneSheet ? 0 : 10);
       // 拉到頂之後再往上：越拉越緊（像橡皮筋）
       const h = want <= max ? want : max + Math.pow(want - max, 0.6);
       el.style.maxHeight = `${h}px`;
       el.style.height = `${h}px`;
+      // v18.0 越接近頂端圓角越小（最後 60px 從 24 變 0）
+      if (phoneSheet) {
+        const r = Math.max(0, Math.min(24, ((max - h) / 60) * 24));
+        el.style.borderRadius = `${r}px ${r}px 0 0`;
+      }
       return;
     }
     el.style.transform = `translateY(${sheet.dy}px)`;
@@ -11611,20 +11724,24 @@ function sheetEnd() {
     const now = el.offsetHeight;
     el.style.maxHeight = '';
     el.style.height = '';
+    el.style.borderRadius = '';
     el.classList.toggle('sheet-full', grow);
     const to = el.offsetHeight;
+    if (grow && to >= window.innerHeight - 1) el.classList.add('at-top');   // 會停在頂端：圓角跟著高度一起變直角
+    if (!grow) el.classList.remove('at-top');
     if (!reduceMotion() && Math.abs(to - now) > 4) {
       el.style.height = `${now}px`;
       void el.offsetHeight;
-      el.style.transition = 'height 0.45s var(--ease-snap)';
+      el.style.transition = 'height 0.45s var(--ease-snap), border-radius 0.25s ease';
       el.style.height = `${to}px`;
-      setTimeout(() => { el.style.height = ''; el.style.transition = ''; }, 470);
-    }
+      setTimeout(() => { el.style.height = ''; el.style.transition = ''; updateSheetCorner(el); }, 470);
+    } else updateSheetCorner(el);
     return;
   }
   // 拉滿的時候往下拉：大力往下甩或拉超過一半就直接關；輕輕拉就回到原本高度
   const full = el.classList.contains('sheet-full');
   const hardFlick = dy > 90 && speed > SHEET_HARD_FLICK_SPEED;
+  if (full) el.classList.remove('at-top');   // v18.0 一往下拉就恢復圓角
   if (full && !hardFlick && dy < el.offsetHeight * 0.5 && dy > 40) {
     // v13.8：只動 transform（不動高度，內容不會重排抖動）。
     // 先把滿版面板平移到「收回後頂端」的位置，動畫結束才換成原本高度；兩者頂端位置相同，畫面不會跳。
@@ -11651,7 +11768,7 @@ function sheetEnd() {
     el.classList.add('sheet-collapse');
     el.style.transform = '';
     if (bg) bg.style.background = '';
-    setTimeout(() => el.classList.remove('sheet-collapse'), 380);
+    setTimeout(() => { el.classList.remove('sheet-collapse'); updateSheetCorner(el); }, 380);
     return;
   }
   const pastHalf = full && dy >= el.offsetHeight * 0.5;
