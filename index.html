@@ -1654,7 +1654,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '18.0';
+const APP_VERSION = '18.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -10368,7 +10368,9 @@ function renderModal() {
   if (previous && content && ghosts.length && depth < Number(root.dataset.depth || 0) && /110%/.test(previous.style.transform || '')) {
     previous.classList.add('dragging');
     previous.classList.remove('sheet-closing');
-    previous.style.transform = '';
+    const topGhost = ghosts[ghosts.length - 1];
+    previous.style.transform = topGhost.style.transform && topGhost.style.transform !== 'none' ? topGhost.style.transform : '';
+    previous.style.filter = topGhost.style.filter && topGhost.style.filter !== 'none' ? topGhost.style.filter : '';
     const bgEl = previous.parentElement;
     if (bgEl) { bgEl.classList.remove('sheet-fade'); bgEl.style.background = ''; }
     void previous.offsetHeight;
@@ -10390,7 +10392,9 @@ function renderModal() {
     if (!previous || modalLeaveTimer) return;
     // 已經被手指往下拉出畫面的，就不用再播關閉動畫
     const draggedAway = /110%/.test(previous.style.transform || '');
-    if (reduceMotion() || draggedAway) { root.innerHTML = ''; return; }
+    const hasGhost = root.querySelector('.modal-ghost');
+    if (reduceMotion() || (draggedAway && !hasGhost)) { root.innerHTML = ''; return; }
+    if (draggedAway) previous.style.visibility = 'hidden';   // v18.1 上面那層已經拉走：只讓後面疊著的一起滑下去
     root.querySelector('.modal-bg').classList.add('modal-leave');
     modalLeaveTimer = setTimeout(() => {
       modalLeaveTimer = null;
@@ -10409,9 +10413,16 @@ function renderModal() {
   // v18.0 疊加：手機上往更深一層 → 疊上來；往回且後面有疊著的 → 上一層浮回來
   const stackable = pageChanged && !reduceMotion() && window.matchMedia('(max-width: 699px)').matches;
   const stackIn = stackable && depth > prevDepth;
-  const stackOut = pageChanged && depth < prevDepth && ghosts.length > 0;
+  const topGhost = ghosts[ghosts.length - 1];
+  // v18.1 只有「回到後面疊著的那一頁」才是浮回來；例如開新場次存好 → 換成場次頁，列表還是疊在後面
+  const stackOut = pageChanged && depth < prevDepth && Boolean(topGhost) && topGhost.dataset.key === key;
   const pageClass = pageChanged && !reduceMotion() && !stackIn && !stackOut ? ` page-${depth >= prevDepth ? 'fwd' : 'back'}` : '';
-  if (pageChanged && !stackIn && !stackOut) ghosts.forEach((g) => g.remove());   // 同一層換頁：疊著的清掉
+  if (pageChanged && !stackIn && !stackOut) {
+    // 換成別頁：比新頁層級深（或一樣）的疊層已經不在路徑上，清掉
+    ghosts.forEach((g) => { if (Number(g.dataset.depth) >= depth) g.remove(); });
+    const left = [...root.querySelectorAll('.modal-ghost:not(.ghost-front)')];
+    left.forEach((g, i) => g.classList.toggle('ghost-hidden', i < left.length - 1));
+  }
 
   if (previous && !pageChanged && content === lastModalContent) {
     if (ui.scan) attachScanVideo();
@@ -10431,6 +10442,8 @@ function renderModal() {
     ghost.classList.remove('modal-enter', 'dragging', 'stack-in', 'stack-return', 'sheet-release', 'sheet-collapse');
     ghost.classList.add('modal-ghost');
     ghost.dataset.scroll = String(previous.scrollTop);
+    ghost.dataset.key = prevKey;
+    ghost.dataset.depth = String(prevDepth);
     ghost.dataset.full = previous.classList.contains('sheet-full') ? '1' : '';
     Object.assign(ghost.style, { left: `${rect.left}px`, width: `${rect.width}px`, height: `${rect.height}px`, maxHeight: 'none', transform: '' });
     previous.parentElement.appendChild(ghost);
@@ -10463,9 +10476,19 @@ function renderModal() {
     const below = ghosts[ghosts.length - 2];
     if (below) below.classList.remove('ghost-hidden');
     previous.classList.remove('stack-in', 'stack-return');
-    void previous.offsetWidth;
-    previous.classList.add('stack-return');
-    previous.addEventListener('animationend', () => previous.classList.remove('stack-return'), { once: true });
+    if (draggedBack) {
+      // 被拉走的：後面那層已經跟著手指浮回來了，從它現在的樣子接著回到原位
+      requestAnimationFrame(() => {
+        previous.style.transition = 'transform 0.25s ease-out, filter 0.25s ease-out';
+        previous.style.transform = '';
+        previous.style.filter = '';
+        setTimeout(() => { previous.style.transition = ''; }, 280);
+      });
+    } else {
+      void previous.offsetWidth;
+      previous.classList.add('stack-return');
+      previous.addEventListener('animationend', () => previous.classList.remove('stack-return'), { once: true });
+    }
   }
   if (previous) {
     // 彈窗已經開著：只換裡面的內容，外框不重建（才不會打斷正在播的打開動畫，例如 QR Code 剛好載入完）
@@ -11703,9 +11726,33 @@ document.addEventListener('touchmove', (e) => {
     }
     el.style.transform = `translateY(${sheet.dy}px)`;
     const bg = el.parentElement;
+    const ghost = stackGhost(el);
+    if (ghost) {
+      // v18.1 疊加中：往下拉時後面那層跟著手指慢慢浮回來，背景不變淡
+      const p = Math.min(1, sheet.dy / Math.max(1, el.offsetHeight));
+      ghost.style.transition = 'none';
+      ghost.style.transform = `translateY(${-14 * (1 - p)}px) scale(${0.93 + 0.07 * p})`;
+      ghost.style.filter = `brightness(${0.82 + 0.18 * p})`;
+      return;
+    }
     if (bg) bg.style.background = `rgba(20, 38, 28, ${Math.max(0.1, 0.55 - sheet.dy / 600)})`;
   });
 }, { passive: false });
+
+/** v18.1 目前疊在後面、看得到的那一層（沒有就 null） */
+function stackGhost(el) {
+  const bg = el && el.parentElement;
+  return bg ? bg.querySelector('.modal-ghost.behind:not(.ghost-hidden):not(.ghost-front)') : null;
+}
+
+/** 放手沒有關：後面那層退回原位 */
+function resetStackGhost(el) {
+  const ghost = stackGhost(el);
+  if (!ghost) return;
+  ghost.style.transition = '';
+  ghost.style.transform = '';
+  ghost.style.filter = '';
+}
 
 function sheetEnd() {
   if (!sheet.active) return;
@@ -11776,7 +11823,12 @@ function sheetEnd() {
     el.classList.remove('sheet-release');
     el.classList.add('sheet-closing');
     el.style.transform = 'translateY(110%)';
-    if (bg) { bg.classList.add('sheet-fade'); bg.style.background = 'rgba(20, 38, 28, 0)'; }
+    const ghost = stackGhost(el);
+    if (ghost) {   // v18.1 疊加中：後面那層一起浮到原位（背景保持）
+      ghost.style.transition = 'transform 0.22s ease-out, filter 0.22s ease-out';
+      ghost.style.transform = 'none';
+      ghost.style.filter = 'none';
+    } else if (bg) { bg.classList.add('sheet-fade'); bg.style.background = 'rgba(20, 38, 28, 0)'; }
     setTimeout(() => {
       const close = document.querySelector('.modal-bg');
       if (close) handleAction(close);   // 與點背景關閉相同，包含「改為手動」未確認時的還原
@@ -11785,6 +11837,7 @@ function sheetEnd() {
     el.classList.add('sheet-release');
     el.style.transform = '';
     if (bg) bg.style.background = '';
+    resetStackGhost(el);
     setTimeout(() => el.classList.remove('sheet-release'), 340);
   }
 }
@@ -12408,6 +12461,12 @@ function handleAction(el) {
       if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
       if (ui.copyText && ui.signupOpen) { ui.copyText = null; sessionChanged = false; break; }   // 報名訊息的手動複製視窗
       if (ui.signupForm) { ui.signupForm = null; sessionChanged = false; break; }
+      // v18.1 場次是從報名列表疊上來的：關掉只回到列表（不連列表一起關）
+      if (ui.signupOpen && ui.signupId && document.querySelector('#modal-root .modal-ghost:not(.ghost-front)')) {
+        closeSignupEvent();
+        sessionChanged = false;
+        break;
+      }
       if (ui.signupOpen) {
         ui.signupOpen = false;
         closeSignupEvent();
