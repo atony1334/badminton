@@ -1627,7 +1627,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '16.1';
+const APP_VERSION = '16.2';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2089,13 +2089,42 @@ function pushContrast(hex, toward, against, ratio) {
   return c;
 }
 
-/** 目前要用的配色：管理者看球團的；球友先看自己的，沒設就跟球團 */
+/* v16.2 球團配色記在手機裡（球團 id／短代碼 → 配色）：
+ * 打開或切換到球團時先用記住的配色，不用等雲端讀到才換色（之前會先閃一下預設的綠色） */
+const TEAM_THEME_CACHE_KEY = 'badminton-team-themes';
+
+/** 現在畫面屬於哪個球團（首頁、臨時開場 → null） */
+function themeTeamKey() {
+  if (cloud.viewer) return VIEW_TEAM || PENDING_SHORT || null;
+  return cloud.teamId || storageGet(CLOUD_TEAM_KEY) || null;
+}
+
+function cachedTeamTheme(key) {
+  const map = storageGet(TEAM_THEME_CACHE_KEY) || {};
+  return key && validTheme(map[key]) ? map[key] : null;
+}
+
+/** 讀到（或改了）球團配色：記下來並套用 */
+function setTeamTheme(theme) {
+  const t = validTheme(theme) ? { p: theme.p, a: theme.a } : null;
+  cloud.teamTheme = t;
+  const map = storageGet(TEAM_THEME_CACHE_KEY) || {};
+  [themeTeamKey(), cloud.teamId, VIEW_TEAM, PENDING_SHORT, cloud.shortCode].filter(Boolean).forEach((k) => {
+    if (t) map[k] = t; else delete map[k];
+  });
+  storageSet(TEAM_THEME_CACHE_KEY, map);
+  applyUiTheme();
+}
+
+/** 目前要用的配色：管理者看球團的；球友先看自己的，沒設就跟球團；首頁不套球團的 */
 function currentUiTheme() {
   if (uiThemePreview) return uiThemePreview;
   const admin = !cloud.viewer && typeof cloudReady === 'function' && cloudReady();
   if (!admin && validTheme(prefs.uiTheme)) return prefs.uiTheme;
-  if (validTheme(cloud.teamTheme)) return cloud.teamTheme;
-  return UI_DEFAULT;
+  const key = themeTeamKey();
+  if (!key) return UI_DEFAULT;
+  const team = cloud.teamTheme === undefined ? cachedTeamTheme(key) : cloud.teamTheme;
+  return validTheme(team) ? team : UI_DEFAULT;
 }
 
 function applyUiTheme() {
@@ -2142,15 +2171,13 @@ async function setUiTheme(t) {
   const admin = !cloud.viewer && cloudReady();
   if (admin) {
     const before = cloud.teamTheme;
-    cloud.teamTheme = t ? { p: t.p, a: t.a } : null;
-    applyUiTheme();
+    setTeamTheme(t);
     render();
     try {
       await cloud.fb.updateDoc(cloud.fb.doc(cloud.db, 'teams', cloud.teamId), { theme: cloud.teamTheme });
       showToast('已套用到整個球團');
     } catch (err) {
-      cloud.teamTheme = before;
-      applyUiTheme();
+      setTeamTheme(before);
       showToast(`沒有存到：${cloudErrorText(err)}`);
       render();
     }
@@ -2674,8 +2701,7 @@ async function onCloudUser(user) {
 async function attachTeam(id, data) {
   cloud.teamId = id;
   cloud.teamName = (data && data.name) || '';
-  cloud.teamTheme = data && validTheme(data.theme) ? data.theme : null;
-  applyUiTheme();
+  setTeamTheme(data && data.theme);
   cloud.shortCode = data && SHORT_CODE_RE.test(data.shortCode || '') ? data.shortCode : null;
   cloud.ownerUid = (data && data.adminUid) || null;
   cloud.adminUids = (data && Array.isArray(data.adminUids)) ? data.adminUids.slice() : [];
@@ -2751,8 +2777,7 @@ function watchAdminSync() {
     }
     cloud.teamName = d.name || '';
     if (!uiThemePreview && JSON.stringify(validTheme(d.theme) ? d.theme : null) !== JSON.stringify(cloud.teamTheme || null)) {
-      cloud.teamTheme = validTheme(d.theme) ? d.theme : null;
-      applyUiTheme();
+      setTeamTheme(d.theme);
     }
     if (SHORT_CODE_RE.test(d.shortCode || '')) cloud.shortCode = d.shortCode;
     cloud.ownerUid = d.adminUid || null;
@@ -3038,8 +3063,7 @@ function startViewer() {
       return;
     }
     cloud.teamName = snap.data().name || '';
-    cloud.teamTheme = validTheme(snap.data().theme) ? snap.data().theme : null;   // v16.0 球團配色
-    applyUiTheme();
+    setTeamTheme(snap.data().theme);   // v16.0 球團配色
     cloud.shortCode = SHORT_CODE_RE.test(snap.data().shortCode || '') ? snap.data().shortCode : null;
     cloud.ownerUid = snap.data().adminUid || null;
     cloud.adminUids = Array.isArray(snap.data().adminUids) ? snap.data().adminUids : [];
@@ -3359,7 +3383,7 @@ async function deleteTeam() {
     forgetJoinedTeam(cloud.teamId);
     cloud.teamId = null;
     cloud.teamName = '';
-    cloud.teamTheme = null;
+    cloud.teamTheme = undefined;
     applyUiTheme();
     cloud.ownerUid = null;
     cloud.adminUids = [];
@@ -7807,6 +7831,8 @@ function switchToTeam(id) {
     VIEW_EVENT = null;
     HOME_PARAM = false;
     cloud.viewer = true;
+    cloud.teamTheme = undefined;   // v16.2 新球團：先用記住的配色
+    applyUiTheme();
     cloud.viewerStatus = 'loading';
     state = createDefaultState();
     regulars = [];   // 觀看者不用這支手機的常用球員
@@ -7831,6 +7857,8 @@ function switchToHome() {
     VIEW_EVENT = null;
     HOME_PARAM = true;
     cloud.viewer = false;
+    cloud.teamTheme = undefined;   // v16.2 首頁不用球團配色
+    applyUiTheme();
     reloadLocalData();
     window.history.replaceState(null, '', `${appBase()}?home=1`);
     applyViewerManifest();
