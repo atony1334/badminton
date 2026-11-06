@@ -648,6 +648,11 @@
   .invite-link { word-break: break-all; text-align: center; font-size: 13px; color: var(--muted); margin: 10px 0 6px; user-select: all; -webkit-user-select: all; }
 
   /* v17.0 底部分頁：展開標籤（平常只有圖示，選中的那格變寬、變主色、出現文字） */
+  /* v17.1 分頁專用的彈簧：跟試作頁同一條，回彈比 --ease-open 明顯（約 16%），比較 Q */
+  :root { --ease-tab: cubic-bezier(0.34, 1.36, 0.64, 1); }
+  @supports (transition-timing-function: linear(0, 1)) {
+    :root { --ease-tab: linear(0, 0.009, 0.035 2.1%, 0.141, 0.281 6.7%, 0.723 12.9%, 0.938 16.7%, 1.017, 1.077, 1.121, 1.149 24.3%, 1.159, 1.163, 1.161, 1.154 29.9%, 1.129 32.8%, 1.051 39.6%, 1.017 43.1%, 0.991, 0.977 51%, 0.974 53.8%, 0.975 57.1%, 0.997 69.8%, 1.003 76.9%, 1.004 83.8%, 1); }
+  }
   .tabbar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
     display: flex; justify-content: center;
@@ -665,7 +670,7 @@
     flex: 1 1 0; min-width: 0; position: relative; display: flex; align-items: center; justify-content: center;
     height: 48px; padding: 0 8px; border-radius: 14px; background: transparent;
     font-size: 16px; font-weight: 700; color: var(--muted);
-    transition: flex-grow 0.45s var(--ease-open), background-color 0.25s ease, color 0.25s ease, scale 0.2s ease;
+    transition: flex-grow 0.5s var(--ease-tab), background-color 0.25s ease, color 0.25s ease, scale 0.2s ease;
     -webkit-tap-highlight-color: transparent;
   }
   .tabbar button.on { flex-grow: 2.2; background: var(--court-dark); color: #fff; }
@@ -673,7 +678,7 @@
   .tabbar button.on:active { scale: 0.96; }
   .tab-ico { flex: none; width: 22px; height: 22px; }
   .tab-lbl { max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0;
-    transition: max-width 0.45s var(--ease-open), opacity 0.2s ease, margin-left 0.3s ease; }
+    transition: max-width 0.5s var(--ease-tab), opacity 0.2s ease, margin-left 0.3s ease; }
   .tabbar button.on .tab-lbl { max-width: 4em; opacity: 1; margin-left: 6px; }
   :root[data-appearance="dark"] .tabbar-inner { box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent); }
   @media (prefers-reduced-motion: reduce) {
@@ -1626,7 +1631,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '17.0';
+const APP_VERSION = '17.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
