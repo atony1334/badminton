@@ -647,7 +647,7 @@
   .invite-qr-empty { color: #5B6B61; font-size: 14px; text-align: center; }
   .invite-link { word-break: break-all; text-align: center; font-size: 13px; color: var(--muted); margin: 10px 0 6px; user-select: all; -webkit-user-select: all; }
 
-  /* 底部分頁：分段切換樣式（灰綠軌道＋白色滑塊） */
+  /* v17.0 底部分頁：展開標籤（平常只有圖示，選中的那格變寬、變主色、出現文字） */
   .tabbar {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 5;
     display: flex; justify-content: center;
@@ -656,31 +656,30 @@
     padding: 8px 16px max(26px, calc(env(safe-area-inset-bottom) + 14px));
   }
   .tabbar-inner {
-    display: flex; width: 100%; max-width: var(--wrap-max); position: relative;
-    padding: 4px; border-radius: 14px; box-sizing: border-box;
-    background: color-mix(in srgb, var(--court-dark) 12%, var(--floor));
+    display: flex; gap: 6px; width: 100%; max-width: var(--wrap-max); position: relative;
+    padding: 6px; border-radius: 20px; box-sizing: border-box;
+    background: var(--surface);
+    box-shadow: 0 1px 0 color-mix(in srgb, var(--ink) 8%, transparent), 0 6px 18px rgba(20, 38, 28, 0.08);
   }
   .tabbar button {
-    flex: 1; position: relative; z-index: 1; background: transparent; border-radius: 10px; padding: 14px 4px;
-    font-size: 16px; font-weight: 500; color: var(--muted); transition: color 0.2s ease;
+    flex: 1 1 0; min-width: 0; position: relative; display: flex; align-items: center; justify-content: center;
+    height: 48px; padding: 0 8px; border-radius: 14px; background: transparent;
+    font-size: 16px; font-weight: 700; color: var(--muted);
+    transition: flex-grow 0.45s var(--ease-open), background-color 0.25s ease, color 0.25s ease, scale 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
   }
-  .tabbar button[aria-selected="true"] { color: var(--ink); font-weight: 700; }
-  .tabbar button { -webkit-tap-highlight-color: transparent; }
-  .tabbar button:not([aria-selected="true"]):active { opacity: 0.55; }
-  /* 按住目前這頁：滑塊微微縮小（iOS 分段控制的按壓感） */
-  .tabbar-inner:has(button[aria-selected="true"]:active) .tab-indicator { scale: 0.95; }
-  /* 白色滑塊：寬度 = (軌道 − 左右內距) ÷ 3，translateX 以自身寬度為單位移動 */
-  .tab-indicator {
-    position: absolute; top: 4px; bottom: 4px; left: 4px;
-    width: calc((100% - 8px) / 3); border-radius: 10px;
-    background: var(--surface); box-shadow: 0 3px 8px rgba(20, 38, 28, 0.12), 0 1px 1px rgba(20, 38, 28, 0.08);
-    transition: transform 0.36s cubic-bezier(0.32, 0.72, 0, 1), scale 0.2s ease;
+  .tabbar button.on { flex-grow: 2.2; background: var(--court-dark); color: #fff; }
+  .tabbar button:not(.on):active { opacity: 0.55; }
+  .tabbar button.on:active { scale: 0.96; }
+  .tab-ico { flex: none; width: 22px; height: 22px; }
+  .tab-lbl { max-width: 0; overflow: hidden; white-space: nowrap; opacity: 0;
+    transition: max-width 0.45s var(--ease-open), opacity 0.2s ease, margin-left 0.3s ease; }
+  .tabbar button.on .tab-lbl { max-width: 4em; opacity: 1; margin-left: 6px; }
+  :root[data-appearance="dark"] .tabbar-inner { box-shadow: 0 0 0 1px color-mix(in srgb, var(--ink) 10%, transparent); }
+  @media (prefers-reduced-motion: reduce) {
+    .tabbar button, .tab-lbl { transition-duration: 0.01s; }
   }
-  /* 夜間：軌道壓暗、滑塊提亮，才看得出選到哪一頁 */
-  :root[data-appearance="dark"] .tabbar-inner { background: #0B100D; }
-  :root[data-appearance="dark"] .tab-indicator { background: #2E3B33; box-shadow: none; }
   /* 在分頁列上左右滑動：指示條跟著手指，手指所在的分頁先亮起來 */
-  .tabbar.scrubbing .tab-indicator { transition: none; }
   .tabbar { touch-action: pan-y; }
   body.field-focus .tabbar, body.kb-open .tabbar { transform: translateY(130%); pointer-events: none; }
   .tab-body { touch-action: pan-y; will-change: transform; }
@@ -1451,7 +1450,7 @@
     .top .sub { font-size: 12px; }
     h2 { margin: 16px 0 8px; }
     .tabbar { padding-top: 4px; padding-bottom: calc(4px + env(safe-area-inset-bottom)); }
-    .tabbar button { padding: 6px 4px; font-size: 14px; }
+    .tabbar button { height: 40px; font-size: 14px; }
     .court { padding: 8px 10px; }
     .court-head { margin-bottom: 4px; }
     .court-hint { display: none; }
@@ -1627,7 +1626,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '16.2';
+const APP_VERSION = '17.0';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -9421,16 +9420,16 @@ const SWITCH_ANIM_MS = 300;   // 球員開關滑動時間（和 CSS 的 .switch-
 
 function renderTabBar() {
   const tabs = [
-    { key: 'courts', label: '場地' },
-    { key: 'players', label: '球員' },
-    { key: 'records', label: '紀錄' },
+    { key: 'courts', label: '場地', ico: '<rect x="3" y="5" width="18" height="14" rx="1.5"/><path d="M12 5v14M3 9.5h18M3 14.5h18M7 5v14M17 5v14"/>' },
+    { key: 'players', label: '球員', ico: '<circle cx="12" cy="8" r="3.6"/><path d="M5 20c.8-3.7 3.6-5.6 7-5.6s6.2 1.9 7 5.6"/>' },
+    { key: 'records', label: '紀錄', ico: '<path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/>' },
   ];
-  // 指示條先停在上一個分頁的位置，畫面更新後再滑到目前分頁（見 animateTabIndicator）
-  const from = TAB_ORDER.indexOf(ui.prevTab || ui.tab);
+  // v17.0 展開標籤：先用上一個分頁的樣子畫出來，畫面更新後再換到目前分頁，才看得到展開動畫（見 animateTabIndicator）
+  const shown = ui.prevTab || ui.tab;
   return `<nav class="tabbar" aria-label="分頁"><div class="tabbar-inner" role="tablist">
-    <div class="tab-indicator" style="transform: translateX(${from * 100}%)"></div>
-    ${tabs.map((t) => `<button role="tab" data-action="tab" data-tab="${t.key}" aria-selected="${ui.tab === t.key}">
-      ${t.label}</button>`).join('')}
+    ${tabs.map((t) => `<button role="tab" class="${shown === t.key ? 'on' : ''}" data-action="tab" data-tab="${t.key}" aria-selected="${ui.tab === t.key}">
+      <svg class="tab-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${t.ico}</svg>
+      <span class="tab-lbl">${t.label}</span></button>`).join('')}
   </div></nav>`;
 }
 
@@ -11065,11 +11064,18 @@ setInterval(() => {
 }, 20000);
 
 /* ===================== 分頁切換與滑動 ===================== */
-function animateTabIndicator() {
-  const bar = document.querySelector('.tab-indicator');
+function markActiveTab(tab) {
+  const bar = tabBarEl();
   if (!bar) return;
-  const to = TAB_ORDER.indexOf(ui.tab);
-  requestAnimationFrame(() => { bar.style.transform = `translateX(${to * 100}%)`; });
+  bar.querySelectorAll('button[role="tab"]').forEach((b) => b.classList.toggle('on', b.dataset.tab === tab));
+}
+
+function animateTabIndicator() {
+  const tab = ui.tab;
+  const bar = tabBarEl();
+  if (!bar || (bar.querySelector('button.on') || {}).dataset?.tab === tab) return;
+  // 等瀏覽器先畫出「上一個分頁」的樣子，下一格再換，寬度和顏色才會有過渡
+  requestAnimationFrame(() => requestAnimationFrame(() => markActiveTab(tab)));
 }
 
 function switchTab(nextTab) {
@@ -11104,11 +11110,8 @@ function tabIndexAt(x) {
   return { index: Math.floor(ratio * TAB_ORDER.length), ratio };
 }
 
-function placeScrubIndicator(ratio) {
-  const indicator = tabBarEl() && tabBarEl().querySelector('.tab-indicator');
-  // 指示條中心對齊手指，並限制在分頁列範圍內
-  const pos = Math.min(TAB_ORDER.length - 1, Math.max(0, ratio * TAB_ORDER.length - 0.5));
-  if (indicator) indicator.style.transform = `translateX(${pos * 100}%)`;
+function placeScrubIndicator() {
+  // v17.0 展開標籤沒有滑動指示條：手指滑到哪一格，那一格就展開（switchTabInPlace 已處理）
 }
 
 /**
@@ -11129,6 +11132,7 @@ function switchTabInPlace(nextTab) {
   tabBarEl().querySelectorAll('button[role="tab"]').forEach((b) => {
     b.setAttribute('aria-selected', String(b.dataset.tab === nextTab));
   });
+  markActiveTab(nextTab);
   window.scrollTo(0, 0);
 }
 
