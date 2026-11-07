@@ -689,8 +689,11 @@
   body.field-focus .tabbar, body.kb-open .tabbar { transform: translateY(130%); pointer-events: none; }
   .tab-body { touch-action: pan-y; will-change: transform; }
   @media (prefers-reduced-motion: no-preference) {
-    .tab-body.from-right { animation: tab-from-right 0.22s ease-out; }
-    .tab-body.from-left { animation: tab-from-left 0.22s ease-out; }
+    /* v18.2 換分頁：不再整頁左右滑，改成卡片一塊一塊浮上來（見 playTabEnter） */
+    .fx-item { animation: fx-pop 0.5s cubic-bezier(0.22, 1, 0.36, 1) both; animation-delay: calc(var(--fx-i, 0) * 55ms); }
+    .fx-blur .fx-item { animation-name: fx-pop-blur; }
+    @keyframes fx-pop { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
+    @keyframes fx-pop-blur { from { opacity: 0; transform: translateY(14px) scale(0.985); filter: blur(8px); } to { opacity: 1; transform: none; filter: blur(0); } }
     @keyframes tab-from-right { from { transform: translateX(40px); opacity: 0.3; } to { transform: none; opacity: 1; } }
     @keyframes tab-from-left { from { transform: translateX(-40px); opacity: 0.3; } to { transform: none; opacity: 1; } }
   }
@@ -1654,7 +1657,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '18.1';
+const APP_VERSION = '18.2';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -11213,6 +11216,78 @@ function animateTabIndicator() {
   requestAnimationFrame(() => requestAnimationFrame(() => markActiveTab(tab)));
 }
 
+/* ---------- v18.2 換分頁的進場動畫 ----------
+ * 卡片依序從下面浮上來；手機跑得動才加「模糊變清楚」：
+ * 一開始先試著開，每次播放時量一下畫面有沒有掉格，連續兩次明顯卡頓就自動關掉並記在手機上
+ */
+const FX_BLUR_KEY = 'badminton-fx-blur';
+const fxPerf = { strikes: 0, smooth: 0 };
+
+function fxBlurAllowed() {
+  if (reduceMotion()) return false;
+  const saved = storageGet(FX_BLUR_KEY);
+  if (saved === 'off') return false;
+  if (saved === 'on') return true;
+  const conn = navigator.connection;
+  if (conn && conn.saveData) return false;                                   // 省電／省流量模式
+  if (navigator.deviceMemory && navigator.deviceMemory < 3) return false;
+  return true;                                                               // 還不知道：先開，播放時再量
+}
+
+/** 播動畫時量每一格的間隔；掉格太多就記一次，連續兩次就關掉模糊 */
+function watchFxFrames(ms) {
+  const gaps = [];
+  let last = performance.now();
+  const end = last + ms;
+  const tick = (t) => {
+    gaps.push(t - last);
+    last = t;
+    if (t < end) { requestAnimationFrame(tick); return; }
+    if (gaps.length < 8) return;
+    const slow = gaps.filter((g) => g > 24).length / gaps.length;   // 低於約 40fps 的格數比例
+    if (slow > 0.2) {
+      fxPerf.smooth = 0;
+      fxPerf.strikes += 1;
+      if (fxPerf.strikes >= 2) storageSet(FX_BLUR_KEY, 'off');
+    } else {
+      fxPerf.strikes = 0;
+      fxPerf.smooth += 1;
+      if (fxPerf.smooth >= 3 && storageGet(FX_BLUR_KEY) !== 'on') storageSet(FX_BLUR_KEY, 'on');
+    }
+  };
+  requestAnimationFrame(tick);
+}
+
+function playTabEnter(body) {
+  if (!body || reduceMotion()) return;
+  // 要依序出現的「一塊」：場地頁拆成每張場地卡、場邊和下一場；其他頁是每個區塊，名單表格拆成每一列
+  const items = [];
+  [...body.children].forEach((el) => {
+    if (el.classList.contains('courts-layout')) {
+      el.querySelectorAll('.court-card, .court, .sideline, .turn-card, .queue-card').forEach((c) => {
+        if (!c.parentElement.closest('.court-card, .court, .sideline, .turn-card, .queue-card')) items.push(c);
+      });
+      if (!items.length) items.push(el);
+    } else if (el.matches('table')) {
+      el.querySelectorAll('tr').forEach((r) => items.push(r));
+    } else {
+      items.push(el);
+    }
+  });
+  const blur = fxBlurAllowed();
+  body.classList.toggle('fx-blur', blur);
+  items.forEach((el, i) => {
+    el.style.setProperty('--fx-i', Math.min(i, 10));
+    el.classList.add('fx-item');
+  });
+  const total = Math.min(items.length, 11) * 55 + 520;
+  if (blur) watchFxFrames(total);
+  setTimeout(() => {
+    items.forEach((el) => { el.classList.remove('fx-item'); el.style.removeProperty('--fx-i'); });
+    body.classList.remove('fx-blur');
+  }, total + 40);
+}
+
 function switchTab(nextTab) {
   if (!TAB_ORDER.includes(nextTab) || nextTab === ui.tab) return;
   const forward = TAB_ORDER.indexOf(nextTab) > TAB_ORDER.indexOf(ui.tab);
@@ -11221,6 +11296,7 @@ function switchTab(nextTab) {
   ui.tabAnim = forward ? 'from-right' : 'from-left';
   ui.editRoster = false;
   render();
+  playTabEnter(document.getElementById('tab-body'));
   // 動畫只套用在這次切換，之後的重畫不重播
   ui.tabAnim = null;
   ui.prevTab = null;
@@ -11263,7 +11339,7 @@ function switchTabInPlace(nextTab) {
   applyViewerLock();
   animateNewPlayers(false);
   body.className = `tab-body ${forward ? 'from-right' : 'from-left'}`;
-  void body.offsetWidth;   // 重新觸發進場動畫
+  playTabEnter(body);   // v18.2 卡片依序浮上來
   tabBarEl().querySelectorAll('button[role="tab"]').forEach((b) => {
     b.setAttribute('aria-selected', String(b.dataset.tab === nextTab));
   });
