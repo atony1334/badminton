@@ -500,6 +500,19 @@
   .boot-logo { width: 64px; height: 64px; border-radius: 50%; display: flex; align-items: center; justify-content: center;
     background: var(--court); color: var(--line); font-size: 28px; font-weight: 800; }
   .boot-dots { display: flex; gap: 8px; }
+  /* v18.3 切換畫面時的提示：「正在進入 幻影羽團」「回到首頁」「進入臨時開場」 */
+  .switch-veil { position: fixed; inset: 0; z-index: 9000; background: var(--floor); color: var(--ink);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px;
+    opacity: 0; transition: opacity 0.22s ease; pointer-events: auto; }
+  .switch-veil.on { opacity: 1; }
+  .switch-veil .sv-logo { width: 72px; height: 72px; border-radius: 22px; background: var(--court-dark); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 900;
+    box-shadow: 0 10px 30px color-mix(in srgb, var(--court-dark) 30%, transparent); }
+  .switch-veil.on .sv-logo { animation: sv-pop 0.5s var(--ease-open, ease-out); }
+  .switch-veil .sv-title { font-size: 14px; color: var(--muted); }
+  .switch-veil .sv-name { font-size: 22px; font-weight: 900; text-align: center; max-width: 80vw; overflow-wrap: anywhere; margin-top: -8px; }
+  @keyframes sv-pop { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .switch-veil.on .sv-logo { animation: none; } }
   .boot-dots span { width: 8px; height: 8px; border-radius: 50%; background: var(--court); opacity: 0.25; animation: boot-dot 1s ease-in-out infinite; }
   .boot-dots span:nth-child(2) { animation-delay: 0.15s; }
   .boot-dots span:nth-child(3) { animation-delay: 0.3s; }
@@ -1657,7 +1670,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '18.2';
+const APP_VERSION = '18.3';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -7816,6 +7829,75 @@ function appBase() {
   return `${window.location.origin}${window.location.pathname}`;
 }
 
+/* ---------- v18.3 切換畫面的提示 ----------
+ * 換球團、回首頁、進臨時開場時蓋一層全畫面提示，等新畫面準備好（球團資料讀到）再淡出。
+ * 要重新載入的（管理者手機）先把提示內容記在 sessionStorage，新頁面一開就接著顯示同一個提示。 */
+const SWITCH_VEIL_KEY = 'badminton-switching';
+const SWITCH_VEIL_MIN_MS = 450;
+const SWITCH_VEIL_MAX_MS = 2500;
+let switchVeilTimer = 0;
+
+function teamNameById(id) {
+  if (id && id === cloud.teamId && cloud.teamName) return cloud.teamName;
+  const t = readJoinedTeams().find((x) => x.id === id);
+  return (t && t.name) || '';
+}
+
+function showSwitchVeil(info) {
+  let veil = document.getElementById('switch-veil');
+  if (!veil) {
+    veil = document.createElement('div');
+    veil.id = 'switch-veil';
+    veil.className = 'switch-veil';
+    veil.setAttribute('role', 'status');
+    document.body.appendChild(veil);
+  }
+  const name = info.name || '';
+  veil.innerHTML = `<div class="sv-logo" aria-hidden="true">${escapeHtml(info.mark || Array.from(name)[0] || '羽')}</div>
+    <div class="sv-title">${escapeHtml(info.title || '')}</div>
+    ${name ? `<div class="sv-name">${escapeHtml(name)}</div>` : ''}
+    <div class="boot-dots" aria-hidden="true"><span></span><span></span><span></span></div>`;
+  veil.dataset.since = String(Date.now());
+  void veil.offsetWidth;
+  veil.classList.add('on');
+  clearTimeout(switchVeilTimer);
+  // 等新畫面準備好：球友看球團要等資料讀到（或出錯）；其他情況放一下就好。最久 2.5 秒
+  const check = () => {
+    const waited = Date.now() - Number(veil.dataset.since);
+    const ready = info.waitTeam ? cloud.viewerStatus !== 'loading' || (!cloud.viewer && cloud.phase !== 'loading') : true;
+    if ((ready && waited >= SWITCH_VEIL_MIN_MS) || waited >= SWITCH_VEIL_MAX_MS) { hideSwitchVeil(); return; }
+    switchVeilTimer = setTimeout(check, 80);
+  };
+  switchVeilTimer = setTimeout(check, 80);
+}
+
+function hideSwitchVeil() {
+  const veil = document.getElementById('switch-veil');
+  if (!veil) return;
+  veil.classList.remove('on');
+  setTimeout(() => { if (!veil.classList.contains('on')) veil.remove(); }, 260);
+}
+
+/** 要重新載入的換頁：先蓋提示，記下來給新頁面接著顯示 */
+function navigateWithVeil(url, info) {
+  try { sessionStorage.setItem(SWITCH_VEIL_KEY, JSON.stringify(info)); } catch (err) { /* 記不了就只顯示這一頁的 */ }
+  showSwitchVeil(info);
+  setTimeout(() => navigateTo(url), 120);
+}
+
+/** 新頁面一開：如果是從換頁過來的，接著顯示同一個提示 */
+function resumeSwitchVeil() {
+  try {
+    const raw = sessionStorage.getItem(SWITCH_VEIL_KEY);
+    if (!raw) return;
+    sessionStorage.removeItem(SWITCH_VEIL_KEY);
+    const info = JSON.parse(raw);
+    showSwitchVeil(Object.assign({}, info, { waitTeam: true }));
+    const veil = document.getElementById('switch-veil');
+    if (veil) { veil.style.transition = 'none'; veil.classList.add('on'); void veil.offsetWidth; veil.style.transition = ''; }
+  } catch (err) { /* 略過 */ }
+}
+
 function navigateTo(url) {
   window.location.replace(url);
 }
@@ -7852,9 +7934,11 @@ function swapView(update) {
 
 function switchToTeam(id) {
   if (!TEAM_ID_RE.test(String(id || ''))) return;
-  if (id === storageGet(CLOUD_TEAM_KEY)) { navigateTo(appBase()); return; }   // 自己管理的球團：回管理畫面
-  if (!canSwitchInPlace()) { saveJoinedTeam(id); navigateTo(`${appBase()}?team=${id}`); return; }
+  const veilInfo = { title: '正在進入', name: teamNameById(id) || '球團' };
+  if (id === storageGet(CLOUD_TEAM_KEY)) { navigateWithVeil(appBase(), { title: '回到管理畫面', name: teamNameById(id) || '我的球團' }); return; }   // 自己管理的球團：回管理畫面
+  if (!canSwitchInPlace()) { saveJoinedTeam(id); navigateWithVeil(`${appBase()}?team=${id}`, veilInfo); return; }
   flushSaves();   // 臨時開場的資料先存好
+  showSwitchVeil(Object.assign({ waitTeam: true }, veilInfo));
   swapView(() => {
     if (cloud.viewer) stopViewer();
     VIEW_TEAM = id;
@@ -7880,7 +7964,9 @@ function switchToTeam(id) {
 }
 
 function switchToHome() {
-  if (!canSwitchInPlace()) { navigateTo(`${appBase()}?home=1`); return; }
+  const veilInfo = { title: '回到首頁', name: '我的球團', mark: '羽' };
+  if (!canSwitchInPlace()) { navigateWithVeil(`${appBase()}?home=1`, veilInfo); return; }
+  showSwitchVeil(veilInfo);
   swapView(() => {
     if (cloud.viewer) stopViewer();
     VIEW_TEAM = null;
@@ -7916,10 +8002,11 @@ function goHome() {
 // 擁有者去首頁：先把還沒上傳的排場傳完再換頁
 async function goHomeAsAdmin() {
   flushSaves();
+  showSwitchVeil({ title: '回到首頁', name: '我的球團', mark: '羽' });
   if (cloud.uploadTimer || cloud.sync === 'pending') {
     try { await uploadLive(); } catch (err) { console.warn('換頁前上傳失敗:', err); }
   }
-  navigateTo(`${appBase()}?home=1`);
+  navigateWithVeil(`${appBase()}?home=1`, { title: '回到首頁', name: '我的球團', mark: '羽' });
 }
 
 async function leaveManaging() {
@@ -7934,7 +8021,7 @@ async function leaveManaging() {
     window.localStorage.removeItem(CLOUD_TEAM_KEY);
     window.localStorage.removeItem(STORAGE_KEYS.session);
   } catch (err) { /* 無法寫入就照樣換頁 */ }
-  navigateTo(`${appBase()}?home=1`);
+  navigateWithVeil(`${appBase()}?home=1`, { title: '回到首頁', name: '我的球團', mark: '羽' });
 }
 
 function leaveTeam() {
@@ -12860,7 +12947,9 @@ function handleAction(el) {
       storageSet(CLOUD_TEAM_KEY, VIEW_TEAM);
       goHome();
       return;
-    case 'home-local': ui.homeLocal = true; sessionChanged = false; break;
+    case 'home-local':
+      showSwitchVeil({ title: '進入', name: '臨時開場', mark: '臨' });   // v18.3
+      ui.homeLocal = true; sessionChanged = false; break;
     case 'home-forget': ui.forgetConfirm = el.dataset.id; sessionChanged = false; break;
     case 'forget-confirm':
       forgetJoinedTeam(ui.forgetConfirm);
@@ -13497,6 +13586,7 @@ document.addEventListener('touchcancel', backSwipeEnd);
 
 loadAll();
 render();
+resumeSwitchVeil();   // v18.3 換頁過來的接著顯示切換提示
 renderInstallBanner();
 initCloud();
 </script>
