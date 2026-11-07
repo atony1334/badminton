@@ -1657,7 +1657,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '18.4';
+const APP_VERSION = '18.5';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3212,22 +3212,24 @@ function renderViewerWaiting() {
     live: '管理者還沒開始排場，開始後這裡會自動更新',
   }[cloud.viewerStatus];
   // v11.5：有報名場次時，標題用球團名，「還沒開始排場」縮成副標，最上面放下一場的大卡片
-  const idle = ['empty', 'live'].includes(cloud.viewerStatus);
+  const loadingView = cloud.viewerStatus === 'loading' || viewerStillSettling();   // v18.5 讀齊了再畫
+  const idle = !loadingView && ['empty', 'live'].includes(cloud.viewerStatus);
   const hasEvents = idle && upcomingEvents().length > 0;
+  const teamTitle = teamNameById(VIEW_TEAM) || cloud.teamName;   // v18.5 讀取中也先顯示球團名，標題不會換字
   return `
     <header class="top">
       ${menuButton()}
       <div class="top-title">
-        <h1>${hasEvents && cloud.teamName ? escapeHtml(cloud.teamName) : '羽球輪轉排場'}</h1>
-        <p class="sub">${hasEvents ? '觀看模式・今天還沒開始排場' : `${cloud.teamName ? `${escapeHtml(cloud.teamName)}・` : ''}觀看模式`}</p>
+        <h1>${(hasEvents || loadingView) && teamTitle ? escapeHtml(teamTitle) : '羽球輪轉排場'}</h1>
+        <p class="sub">${hasEvents ? '觀看模式・今天還沒開始排場' : loadingView && teamTitle ? '觀看模式' : `${cloud.teamName ? `${escapeHtml(cloud.teamName)}・` : ''}觀看模式`}</p>
       </div>
     </header>
-    ${cloud.viewerStatus === 'loading'
+    ${loadingView
       ? `<div aria-busy="true"><div class="sk sk-court"></div><div class="sk sk-court"></div><div class="sk sk-bench"></div>
-         <p class="sk-note">${escapeHtml(text)}</p></div>`
+         <p class="sk-note">${escapeHtml(cloud.viewerStatus === 'loading' ? text : '正在讀取報名…')}</p></div>`
       : hasEvents ? '' : `<div class="viewer-wait">${escapeHtml(text)}</div>`}
-    ${cloud.viewerStatus === 'loading' ? '' : renderEventCards()}
-    ${['empty', 'live'].includes(cloud.viewerStatus) ? `
+    ${loadingView ? '' : renderEventCards()}
+    ${idle ? `
     <div class="wait-links">
       <button class="btn-ghost" data-action="drawer-go" data-target="${cloud.user ? 'account' : 'ranks'}">${icon('user')}${cloud.user ? '我的戰績' : '長期排行榜'}</button>
       <button class="btn-ghost" data-action="drawer-go" data-target="past">${icon('box')}歷史球局</button>
@@ -7851,8 +7853,30 @@ function resumeSwitchNote() {
     if (!raw) return;
     sessionStorage.removeItem(SWITCH_NOTE_KEY);
     announceSwitch(JSON.parse(raw));
+    if (cloud.viewer) { holdViewerUntilSettled(); render(); }
     if (!isLoadingView(ui.viewKey)) playViewEnter();
   } catch (err) { /* 略過 */ }
+}
+
+/* v18.5 換進球團時先別急著畫：報名場次和名單都讀到再一次浮出來，
+ * 不然會先出現「…/16」再跳成人數、卡片長高一截（看起來會跳一下）。最久等 2.5 秒。 */
+const VIEWER_SETTLE_MS = 2500;
+let viewerSettleUntil = 0;
+
+function holdViewerUntilSettled() {
+  viewerSettleUntil = Date.now() + VIEWER_SETTLE_MS;
+  setTimeout(() => { if (viewerSettleUntil) render(); }, VIEWER_SETTLE_MS + 30);
+}
+
+function viewerStillSettling() {
+  if (!viewerSettleUntil) return false;
+  const settling = cloud.viewer && Date.now() < viewerSettleUntil && (
+    cloud.viewerStatus === 'loading'
+    || (['empty', 'live'].includes(cloud.viewerStatus) && (
+      !signup.ready
+      || (!signup.listError && upcomingEvents().some((ev) => !signup.lists[ev.id])))));
+  if (!settling) viewerSettleUntil = 0;
+  return settling;
 }
 
 function isLoadingView(key) {
@@ -7907,6 +7931,7 @@ function switchToTeam(id) {
   if (!canSwitchInPlace()) { saveJoinedTeam(id); navigateWithNote(`${appBase()}?team=${id}`, note); return; }
   flushSaves();   // 臨時開場的資料先存好
   announceSwitch(note);
+  holdViewerUntilSettled();
   swapView(() => {
     if (cloud.viewer) stopViewer();
     VIEW_TEAM = id;
@@ -10841,7 +10866,7 @@ function render() {
   // 分頁列在 .page 外面：選單推開時 .page 會加 transform，放裡面會跟著內容捲走
   document.getElementById('tabbar-root').innerHTML = showMain ? renderTabBar() : '';
   // 換到不同的畫面（載入中 → 排場、首頁、設定…）時淡入；同一個畫面內的更新不播
-  const viewKey = showHome() ? 'home' : showEnded ? 'ended' : showMain ? 'main' : (cloud.viewer ? `viewer-${cloud.viewerStatus}` : 'setup');
+  const viewKey = showHome() ? 'home' : showEnded ? 'ended' : showMain ? 'main' : (cloud.viewer ? (viewerStillSettling() ? 'viewer-loading' : `viewer-${cloud.viewerStatus}`) : 'setup');
   const prevViewKey = ui.viewKey;
   const viewChanged = viewKey !== prevViewKey;
   // 剛打開 App、剛進球團：場上的人本來就在，不播上場動畫；按「開始」排出第一輪則要播
