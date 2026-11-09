@@ -1657,7 +1657,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '18.5';
+const APP_VERSION = '18.6';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -6432,12 +6432,25 @@ function lockPastView() {
  * 排行榜只讀這些精簡資料（每份只有幾 KB），再加上今天還沒封存的球局即時計算。
  */
 const RANK_MIN_RECORDED = 10;   // 勝率榜門檻：至少幾場有記勝負
+// v18.6 上榜門檻（所有排行榜）：至少出席幾次球局、總共打幾場
+const RANK_MIN_DAYS = 2;
+const RANK_MIN_GAMES = 10;
+const RANK_ENTRY_NOTE = `出席 ${RANK_MIN_DAYS} 次以上、共打 ${RANK_MIN_GAMES} 場以上才上榜`;
 const RANK_BOARDS = {
-  rate: { label: '勝率', note: `至少 ${RANK_MIN_RECORDED} 場有記勝負` },
-  wins: { label: '勝場', note: '有記勝負的場次' },
-  games: { label: '場數', note: '完成的場次' },
-  days: { label: '出席', note: '有上場的球局數' },
+  rate: { label: '勝率', note: `${RANK_ENTRY_NOTE}，且至少 ${RANK_MIN_RECORDED} 場有記勝負` },
+  wins: { label: '勝場', note: `有記勝負的場次・${RANK_ENTRY_NOTE}` },
+  games: { label: '場數', note: `完成的場次・${RANK_ENTRY_NOTE}` },
+  days: { label: '出席', note: `有上場的球局數・${RANK_ENTRY_NOTE}` },
 };
+
+/** 有沒有達到上榜門檻 */
+function rankEligible(p) {
+  return p.days >= RANK_MIN_DAYS && p.g >= RANK_MIN_GAMES;
+}
+
+function rankRateEligible(p) {
+  return rankEligible(p) && p.rec >= RANK_MIN_RECORDED;
+}
 const ranks = { status: 'idle', list: [], loadedAt: 0, error: '' };
 
 function sessionSummary(st) {
@@ -6607,7 +6620,7 @@ function aggregateRanks() {
 
 function boardRows(all, board) {
   const rate = (p) => (p.rec ? p.w / p.rec : 0);
-  const rows = board === 'rate' ? all.filter((p) => p.rec >= RANK_MIN_RECORDED) : all.slice();
+  const rows = all.filter(board === 'rate' ? rankRateEligible : rankEligible);
   const key = {
     rate: (a, b) => rate(b) - rate(a) || b.w - a.w,
     wins: (a, b) => b.w - a.w || rate(b) - rate(a),
@@ -6654,7 +6667,7 @@ function renderRanksTab() {
   }
   const all = aggregateRanks();
   // 還沒有人達到勝率榜門檻時（剛開始使用），預設改看場數榜，避免看起來像沒有紀錄
-  const rateReady = all.some((p) => p.rec >= RANK_MIN_RECORDED);
+  const rateReady = all.some(rankRateEligible);
   const board = RANK_BOARDS[ui.rankBoard] ? ui.rankBoard : (rateReady ? 'rate' : 'games');
   const rows = boardRows(all, board);
   const myself = myName();
@@ -6671,7 +6684,7 @@ function renderRanksTab() {
             <span class="rank-name">${escapeHtml(p.n)}${p.n === myself ? '<small>我</small>' : ''}</span>
             <span class="rank-value num">${boardValueText(p, board)}<small>${boardSubText(p, board)}</small></span>
           </button></li>`).join('')}</ol>`
-      : `<p class="sub">${board === 'rate' ? `還沒有人累積到 ${RANK_MIN_RECORDED} 場有記勝負` : '還沒有紀錄'}</p>`;
+      : `<p class="sub">${all.length ? `還沒有人達到上榜門檻（${escapeHtml(RANK_BOARDS[board].note)}）` : '還沒有紀錄'}</p>`;
 
   const pick = !myself && all.length && !(cloud.viewer && cloud.user)
     ? `<div class="me-pick">
@@ -6732,11 +6745,21 @@ function renderLongProfile(p, all, compact) {
         <div><b class="num">${rateText}</b><small>勝率</small></div>
       </div>
       <p class="sub long-places">勝率 ${place('rate')}・勝場 ${place('wins')}・場數 ${place('games')}・出席 ${place('days')}
-        ${p.rec < RANK_MIN_RECORDED ? `<br>再記 ${RANK_MIN_RECORDED - p.rec} 場勝負就能進勝率榜` : ''}</p>
+        ${rankEntryHint(p)}</p>
       ${relation ? `<h4 class="profile-h">關係</h4><ul class="profile-list">${relation}</ul>` : ''}
       ${most.length ? `<h4 class="profile-h">最常搭檔</h4><ul class="profile-list">
         ${most.map((r) => `<li><span>${escapeHtml(r.n)}</span><span>${r.g} 次・${record(r)}</span></li>`).join('')}</ul>` : ''}
     </div>`;
+}
+
+/** 還差多少才上榜：「再出席 1 次、再打 3 場就能上榜」 */
+function rankEntryHint(p) {
+  const need = [];
+  if (p.days < RANK_MIN_DAYS) need.push(`再出席 ${RANK_MIN_DAYS - p.days} 次`);
+  if (p.g < RANK_MIN_GAMES) need.push(`再打 ${RANK_MIN_GAMES - p.g} 場`);
+  if (need.length) return `<br>${need.join('、')}就能上榜`;
+  if (p.rec < RANK_MIN_RECORDED) return `<br>再記 ${RANK_MIN_RECORDED - p.rec} 場勝負就能進勝率榜`;
+  return '';
 }
 
 function renderMyStats(name) {
