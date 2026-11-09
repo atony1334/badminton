@@ -614,7 +614,10 @@
   .mg-sec:first-child { margin-top: 0; }
   .mg-h { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; font-size: 13px; font-weight: 800; color: var(--muted); letter-spacing: 0.04em; }
   /* 已確認的球友收進抽屜：grid 0fr → 1fr 展開，高度跟著內容 */
-  .fold-head { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-top: 8px; padding: 10px 0; background: none; border: 0; border-top: 1px solid var(--line); color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
+  .fold-head { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-top: 4px; padding: 12px 2px; background: none; border: 0; border-radius: 0; border-bottom: 1px solid var(--border); color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; text-align: left; }
+  .fold-head:active { opacity: 0.6; }
+  .fold-head + .fold .member-list { margin-top: 4px; }
+  .mg-sec > .set-actions { margin-top: 14px; }
   .fold-head .chev { width: 18px; height: 18px; transition: transform 0.3s var(--ease-open, ease); color: var(--muted); }
   .fold-head[aria-expanded="true"] .chev { transform: rotate(180deg); }
   .fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.34s var(--ease-open, ease); }
@@ -1674,7 +1677,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.2';
+const APP_VERSION = '19.3';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
