@@ -1657,7 +1657,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '18.6';
+const APP_VERSION = '18.7';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -6435,6 +6435,11 @@ const RANK_MIN_RECORDED = 10;   // 勝率榜門檻：至少幾場有記勝負
 // v18.6 上榜門檻（所有排行榜）：至少出席幾次球局、總共打幾場
 const RANK_MIN_DAYS = 2;
 const RANK_MIN_GAMES = 10;
+const RANK_TOP_SHOWN = 5;   // v18.7 球友的排行榜只列前幾名（同分同名次的一起列）；管理者看全部
+
+function rankShowsAll() {
+  return !cloud.viewer;   // 管理者手機
+}
 const RANK_ENTRY_NOTE = `出席 ${RANK_MIN_DAYS} 次以上、共打 ${RANK_MIN_GAMES} 場以上才上榜`;
 const RANK_BOARDS = {
   rate: { label: '勝率', note: `${RANK_ENTRY_NOTE}，且至少 ${RANK_MIN_RECORDED} 場有記勝負` },
@@ -6669,7 +6674,8 @@ function renderRanksTab() {
   // 還沒有人達到勝率榜門檻時（剛開始使用），預設改看場數榜，避免看起來像沒有紀錄
   const rateReady = all.some(rankRateEligible);
   const board = RANK_BOARDS[ui.rankBoard] ? ui.rankBoard : (rateReady ? 'rate' : 'games');
-  const rows = boardRows(all, board);
+  const fullRows = boardRows(all, board);
+  const rows = rankShowsAll() ? fullRows : fullRows.filter((p) => p.place <= RANK_TOP_SHOWN);   // 個人名次另外算，不受這裡影響
   const myself = myName();
   const me = myself && all.find((p) => p.n === myself);
   const sessions = rankSessions();
@@ -6708,7 +6714,7 @@ function renderRanksTab() {
       ${Object.entries(RANK_BOARDS).map(([key, b]) => `
         <button data-action="rank-board" data-value="${key}" aria-pressed="${board === key}">${b.label}</button>`).join('')}
     </div>
-    <p class="sub rank-note">${RANK_BOARDS[board].note}</p>
+    <p class="sub rank-note">${RANK_BOARDS[board].note}${rankShowsAll() ? (fullRows.length > RANK_TOP_SHOWN ? `・管理者看得到全部，球友只看到前 ${RANK_TOP_SHOWN} 名` : '') : `・列前 ${RANK_TOP_SHOWN} 名`}</p>
     ${list}`;
 }
 
@@ -6717,7 +6723,10 @@ function renderLongProfile(p, all, compact) {
   const rateText = p.rec ? `${Math.round((p.w / p.rec) * 100)}%` : '—';
   const place = (board) => {
     const row = boardRows(all, board).find((r) => r.n === p.n);
-    return row ? `第 ${row.place} 名` : '未上榜';
+    if (!row) return '未上榜';
+    // 球友看別人：前 5 名以外不顯示名次（自己的名次照常看得到）
+    if (!rankShowsAll() && p.n !== myName() && row.place > RANK_TOP_SHOWN) return `前 ${RANK_TOP_SHOWN} 名外`;
+    return `第 ${row.place} 名`;
   };
   const record = (r) => (r.rec ? `${r.w} 勝 ${r.rec - r.w} 敗` : '未記勝負');
   const partners = Object.values(p.partners);
