@@ -1661,7 +1661,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.0';
+const APP_VERSION = '19.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3357,7 +3357,7 @@ function copyInviteLink() {
 
 /* ---------- 設定頁：雲端同步區塊 ---------- */
 function renderCloudSettings() {
-  const wrap = (body) => `${settingsGroupHead('cloud', '雲端同步')}${body}${SETTINGS_GROUP_END}`;
+  const wrap = (body) => `${settingsGroupHead('cloud', cloudSectionTitle())}${body}${SETTINGS_GROUP_END}`;
   const err = cloud.error ? `<p class="cloud-error" role="alert">${escapeHtml(cloud.error)}</p>` : '';
   if (!cloudConfigured()) {
     return wrap('<p class="sub set-note">尚未設定 Firebase，目前是單機模式，資料只存在這支手機。</p>');
@@ -3412,6 +3412,7 @@ function renderCloudSettings() {
       <span id="cloud-sync-text">${escapeHtml(SYNC_LABEL[cloud.sync] || '已連線')}</span>
     </div>
     ${cloud.sync === 'error' ? err : ''}
+    <h5 class="member-h">通知</h5>
     <div class="row">
       <span class="label">上場通知</span>
       <div class="seg" role="group" aria-label="輪到球友上場時推播通知">
@@ -6003,6 +6004,11 @@ function icon(name) {
   return `<svg class="d-ico" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[name]}</svg>`;
 }
 
+/** v19.1 連上球團後叫「球團管理」（球團、通知、球友帳號、邀請）；還沒連上叫「雲端同步」 */
+function cloudSectionTitle() {
+  return cloudReady() ? '球團管理' : '雲端同步';
+}
+
 const SETTINGS_SECTIONS = {
   cloud: '雲端同步',
   play: '排場',
@@ -6084,9 +6090,8 @@ function renderDrawer() {
     : admin
     ? [
       [
-        item('cloud', 'cloud', cloudReady() ? '雲端同步・球友帳號' : '雲端同步', badge(pending)),
-        cloudReady() ? item('invite', 'qr', '邀請球友（QR Code）') : '',
-        cloudReady() ? `<button class="d-item" data-action="set-notify" data-value="${cloud.notifyEnabled ? 0 : 1}">${icon('bell')}<span>上場通知</span><span class="d-state ${cloud.notifyEnabled ? 'on' : ''}">${cloud.notifyEnabled ? '開' : '關'}</span></button>` : '',
+        // v19.1 邀請球友、上場通知都收進「球團管理」頁
+        item('cloud', 'cloud', cloudReady() ? '球團管理' : '雲端同步', badge(pending)),
       ],
       [
         item('play', 'court', '排場設定'),
@@ -6281,7 +6286,7 @@ function renderSettingsSection(key) {
     },
   }[key];
   return `
-    <h3>${SETTINGS_SECTIONS[key]}</h3>
+    <h3>${key === 'cloud' ? cloudSectionTitle() : SETTINGS_SECTIONS[key]}</h3>
     <div class="settings-only">${body ? body() : ''}</div>
     <button class="btn-primary btn-block" style="margin-top:14px" data-action="modal-close" data-sheet-close>完成</button>`;
 }
