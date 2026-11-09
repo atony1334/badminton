@@ -1661,7 +1661,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '18.8';
+const APP_VERSION = '19.0';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2519,6 +2519,7 @@ const cloud = {
   viewer: Boolean(VIEW_TEAM || PENDING_SHORT),
   shortCode: null,   // 這個球團的六碼短代碼（球團文件的 shortCode）
   notifyEnabled: true,   // 管理者可關閉「輪到你上場」通知（測試時用）；存在 live/current.notifyEnabled
+  remindHours: 3,        // v19.0 打球當天提醒：開打前幾小時（0 = 不提醒）；存在 teams/{id}.remindHours
   phase: 'off',          // off | loading | signed-out | no-team | ready | error
   sync: 'idle',          // idle | pending | synced | offline | error
   viewerStatus: 'loading',   // loading | live | empty | missing | error
@@ -2735,6 +2736,7 @@ async function onCloudUser(user) {
 async function attachTeam(id, data) {
   cloud.teamId = id;
   cloud.teamName = (data && data.name) || '';
+  cloud.remindHours = teamRemindHours(data);
   setTeamTheme(data && data.theme);
   cloud.shortCode = data && SHORT_CODE_RE.test(data.shortCode || '') ? data.shortCode : null;
   cloud.ownerUid = (data && data.adminUid) || null;
@@ -2810,6 +2812,7 @@ function watchAdminSync() {
       return;
     }
     cloud.teamName = d.name || '';
+    cloud.remindHours = teamRemindHours(d);
     if (!uiThemePreview && JSON.stringify(validTheme(d.theme) ? d.theme : null) !== JSON.stringify(cloud.teamTheme || null)) {
       setTeamTheme(d.theme);
     }
@@ -2939,6 +2942,40 @@ const SYNC_LABEL = {
   offline: '離線中，恢復連線後自動補傳',
   error: '同步失敗',
 };
+
+/* ---------- v19.0 打球當天提醒 ----------
+ * 雲端程式 remindEvents 每 10 分鐘檢查：開打前 N 小時提醒有報名的人（正取＋候補）時間和地點。
+ * 球團設定 teams/{id}.remindHours（0 = 不提醒，預設 3）；球友在「我的帳號」用 members.remindOn 自己開關。 */
+const REMIND_DEFAULT_HOURS = 3;
+const REMIND_HOUR_OPTIONS = [0, 1, 2, 3, 4, 6];
+
+function teamRemindHours(data) {
+  const h = data ? data.remindHours : undefined;
+  return REMIND_HOUR_OPTIONS.includes(h) ? h : REMIND_DEFAULT_HOURS;
+}
+
+async function setRemindHours(hours) {
+  if (!REMIND_HOUR_OPTIONS.includes(hours)) return;
+  const before = cloud.remindHours;
+  cloud.remindHours = hours;
+  render();
+  showToast(hours ? `打球當天會在開打前 ${hours} 小時提醒報名的人` : '已關閉打球當天提醒');
+  if (!cloudReady()) return;
+  try {
+    await cloud.fb.updateDoc(teamRef(cloud.teamId), { remindHours: hours });
+  } catch (err) {
+    cloud.remindHours = before;
+    showToast(cloudErrorText(err));
+    render();
+  }
+}
+
+/** 球友這邊：當天提醒有沒有開（沒設定過的跟著上場通知） */
+function remindActive(claim) {
+  if (!claim) return false;
+  if (claim.remindOn === false) return false;
+  return claim.remindOn === true || Boolean(claim.notifyOn);
+}
 
 // 開關「輪到你上場」通知：只改 live/current 的 notifyEnabled，排場內容不變，所以不會誤發通知
 async function setNotifyEnabled(on) {
@@ -3097,6 +3134,7 @@ function startViewer() {
       return;
     }
     cloud.teamName = snap.data().name || '';
+    cloud.remindHours = teamRemindHours(snap.data());   // v19.0
     setTeamTheme(snap.data().theme);   // v16.0 球團配色
     cloud.shortCode = SHORT_CODE_RE.test(snap.data().shortCode || '') ? snap.data().shortCode : null;
     cloud.ownerUid = snap.data().adminUid || null;
@@ -3143,7 +3181,7 @@ function stopViewer() {
   past.cache = {};
   pushState.seen = null;
   Object.assign(cloud, {
-    claim: null, teamName: '', ownerUid: null, adminUids: [], error: '', notifyEnabled: true,
+    claim: null, teamName: '', ownerUid: null, adminUids: [], error: '', notifyEnabled: true, remindHours: REMIND_DEFAULT_HOURS,
     viewerStatus: 'loading', viewerUpdatedAt: 0, viewerCheckedAt: 0,
   });
 }
@@ -3382,6 +3420,13 @@ function renderCloudSettings() {
       </div>
     </div>
     <p class="sub set-note" style="margin-top:-4px">測試排場時先關掉，球友就不會收到「輪到你上場」。</p>
+    <div class="row">
+      <span class="label">當天提醒</span>
+      <div class="seg" role="group" aria-label="打球當天提醒報名的人">
+        ${REMIND_HOUR_OPTIONS.map((h) => `<button data-action="set-remind-hours" data-value="${h}" aria-pressed="${cloud.remindHours === h}">${h ? `${h}h` : '關'}</button>`).join('')}
+      </div>
+    </div>
+    <p class="sub set-note" style="margin-top:-4px">${cloud.remindHours ? `開打前 ${cloud.remindHours} 小時，推播提醒有報名的人（正取＋候補）時間和地點；沒填時間的場次當天早上 9 點提醒。` : '不會送打球當天提醒。'}</p>
     <h5 class="member-h">球友帳號 <span class="member-badge" id="member-badge">${pendingMembers().length ? `${pendingMembers().length} 位待確認` : ''}</span></h5>
     ${renderMembersAdmin()}
     <div class="set-actions">
@@ -5773,7 +5818,13 @@ async function obtainPushToken() {
   return msgMod.getToken(messaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: reg });
 }
 
-async function enablePush() {
+const PUSH_KINDS = {
+  notifyOn: { on: '已開啟上場通知', off: '已關閉上場通知' },
+  remindOn: { on: '已開啟打球當天提醒', off: '已關閉打球當天提醒' },
+};
+
+/** kind：notifyOn（輪到你上場）或 remindOn（打球當天提醒，v19.0） */
+async function enablePush(kind = 'notifyOn') {
   const env = pushEnvironment();
   if (env !== 'ok') {
     showToast({
@@ -5794,9 +5845,11 @@ async function enablePush() {
     }
     const token = await obtainPushToken();
     const { updateDoc, arrayUnion, serverTimestamp } = cloud.fb;
-    await updateDoc(memberRef(), { fcmTokens: arrayUnion(token), notifyOn: true, tokenUpdatedAt: serverTimestamp() });
+    const patch = { fcmTokens: arrayUnion(token), [kind]: true, tokenUpdatedAt: serverTimestamp() };
+    // 開上場通知時，沒設定過的當天提醒保持原本的「跟著上場通知」；開當天提醒不影響上場通知
+    await updateDoc(memberRef(), patch);
     storageSet(PUSH_TOKEN_KEY, token);
-    showToast('已開啟上場通知');
+    showToast(PUSH_KINDS[kind].on);
   } catch (err) {
     console.warn('開啟通知失敗:', err);
     showToast(err && err.code === 'push/unsupported' ? '這個瀏覽器不支援推播通知' : `開啟通知失敗（${(err && (err.code || err.message)) || '未知'}）`);
@@ -5806,18 +5859,25 @@ async function enablePush() {
   }
 }
 
-async function disablePush() {
+async function disablePush(kind = 'notifyOn') {
   const { updateDoc, arrayRemove } = cloud.fb;
   const token = storageGet(PUSH_TOKEN_KEY);
-  const patch = token ? { notifyOn: false, fcmTokens: arrayRemove(token) } : { notifyOn: false };
+  const claim = cloud.claim || {};
+  const patch = { [kind]: false };
+  // 關上場通知時，把當天提醒目前的狀態寫死，免得「跟著上場通知」被一起關掉
+  if (kind === 'notifyOn' && claim.remindOn === undefined) patch.remindOn = remindActive(claim);
+  const otherOn = kind === 'notifyOn' ? patch.remindOn !== undefined ? patch.remindOn : remindActive(claim) : Boolean(claim.notifyOn);
+  // 兩種通知都關了：這支手機的推播憑證也拿掉
+  const dropToken = token && !otherOn;
+  if (dropToken) patch.fcmTokens = arrayRemove(token);
   await updateDoc(memberRef(), patch).catch((err) => showToast(cloudErrorText(err)));
-  storageSet(PUSH_TOKEN_KEY, null);
-  showToast('已關閉上場通知');
+  if (dropToken) storageSet(PUSH_TOKEN_KEY, null);
+  showToast(PUSH_KINDS[kind].off);
 }
 
 // 推播憑證偶爾會更新：每次打開頁面、已允許通知時，悄悄確認一次
 async function refreshPushToken() {
-  if (pushState.refreshed || !cloud.claim || !cloud.claim.notifyOn || pushEnvironment() !== 'ok') return;
+  if (pushState.refreshed || !cloud.claim || !(cloud.claim.notifyOn || remindActive(cloud.claim)) || pushEnvironment() !== 'ok') return;
   if (!('Notification' in window) || Notification.permission !== 'granted') return;
   pushState.refreshed = true;
   try {
@@ -5844,13 +5904,19 @@ function renderPushControl() {
     unsupported: '這個瀏覽器不支援推播通知，頁面開著時仍會跳出提醒。',
   }[env];
   const denied = env === 'ok' && 'Notification' in window && Notification.permission === 'denied';
-  return `<div class="push-row">
-      <span><b>輪到你上場通知</b><small>${on ? '已開啟，App 關著也會通知你' : '開啟後，輪到你時手機會跳出通知'}</small></span>
+  const remind = remindActive(cloud.claim);
+  const row = (kind, isOn, title, onText, offText) => `<div class="push-row">
+      <span><b>${title}</b><small>${isOn ? onText : offText}</small></span>
       ${env === 'ok' && !denied
-        ? `<button class="${on ? 'btn-ghost' : 'btn-primary'}" data-action="${on ? 'push-off' : 'push-on'}" ${pushState.busy ? 'disabled' : ''}>
-            ${pushState.busy ? '設定中…' : on ? '關閉' : '開啟'}</button>`
+        ? `<button class="${isOn ? 'btn-ghost' : 'btn-primary'}" data-action="${isOn ? 'push-off' : 'push-on'}" data-kind="${kind}" ${pushState.busy ? 'disabled' : ''}>
+            ${pushState.busy ? '設定中…' : isOn ? '關閉' : '開啟'}</button>`
         : ''}
-    </div>
+    </div>`;
+  const hours = cloud.remindHours;
+  return `${row('notifyOn', on, '輪到你上場通知', '已開啟，App 關著也會通知你', '開啟後，輪到你時手機會跳出通知')}
+    ${row('remindOn', remind, '打球當天提醒',
+      hours ? `已開啟，有報名的場次開打前 ${hours} 小時提醒你時間地點` : '已開啟（目前管理者沒有開當天提醒）',
+      hours ? `開啟後，有報名的場次開打前 ${hours} 小時提醒你時間地點` : '管理者開了當天提醒後才會收到')}
     ${hint ? `<p class="sub" style="margin:0">${hint}</p>` : ''}
     ${denied ? '<p class="cloud-error">通知權限被封鎖了，要到手機或瀏覽器的網站設定裡改成「允許」。</p>' : ''}`;
 }
@@ -12612,6 +12678,9 @@ function handleAction(el) {
     case 'set-notify':
       setNotifyEnabled(el.dataset.value === '1');
       return;
+    case 'set-remind-hours':
+      setRemindHours(Number(el.dataset.value));
+      return;
     case 'set-voice-auto':
       prefs.voice.auto = el.dataset.value === '1';
       savePrefs();
@@ -12933,8 +13002,8 @@ function handleAction(el) {
       claimPlayer(ui.claimName);
       return;
     case 'claim-cancel': cancelClaim(); return;
-    case 'push-on': enablePush(); return;
-    case 'push-off': disablePush(); return;
+    case 'push-on': enablePush(el.dataset.kind || 'notifyOn'); return;
+    case 'push-off': disablePush(el.dataset.kind || 'notifyOn'); return;
     case 'turn-dismiss': ui.turnAlert = null; sessionChanged = false; break;
     case 'member-approve': setMemberStatus(el.dataset.uid, true); return;
     case 'member-remove': setMemberStatus(el.dataset.uid, false); return;
