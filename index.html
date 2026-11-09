@@ -571,6 +571,10 @@
   .profile-seg { margin: 6px 0 10px; }
   .profile-seg button { min-width: 4.5em; }
   .profile-body { min-height: 60px; }
+  /* v18.8 今日／長期兩頁疊在同一格，高度取較高的那頁，切換時下面的排行榜不會跳 */
+  .profile-stack { display: grid; }
+  .profile-stack > .profile-body { grid-area: 1 / 1; min-width: 0; }
+  .profile-stack > .profile-body[aria-hidden="true"] { visibility: hidden; pointer-events: none; }
   .ranks-sheet h2:first-child { margin-top: 0; }
   .ranks-sheet .long-card, .ranks-sheet .rank-list, .ranks-sheet .me-pick, .ranks-sheet .account-card { border: 1px solid var(--floor); }
   .account-card {
@@ -1657,7 +1661,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '18.7';
+const APP_VERSION = '18.8';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -6771,6 +6775,12 @@ function rankEntryHint(p) {
   return '';
 }
 
+/** 今日、長期兩頁都畫出來疊在一起，只顯示選到的那頁（高度一致） */
+function renderProfileStack(name, view) {
+  const pane = (key, html) => `<div class="profile-body" ${view === key ? '' : 'aria-hidden="true" inert'}>${html}</div>`;
+  return `<div class="profile-stack">${pane('today', renderTodayProfileBody(name))}${pane('long', renderLongProfileBody(name))}</div>`;
+}
+
 function renderMyStats(name) {
   const playedToday = state.history.some((h) => h.teamA.includes(name) || h.teamB.includes(name));
   const view = ui.myView || (playedToday ? 'today' : 'long');
@@ -6778,7 +6788,7 @@ function renderMyStats(name) {
       <div class="long-head"><b>${escapeHtml(name)}</b>
         ${cloud.viewer && cloud.claim ? '' : '<button class="btn-ghost" data-action="me-clear">不是我</button>'}</div>
       ${profileViewSeg(view, 'my-view')}
-      <div class="profile-body">${view === 'today' ? renderTodayProfileBody(name) : renderLongProfileBody(name)}</div>
+      ${renderProfileStack(name, view)}
     </div>`;
 }
 
@@ -10020,7 +10030,7 @@ function renderPlayerModal() {
     <div class="pm-head">${avatarHtml(name, 'av-xl')}</div>
     ${cloud.viewer ? renderProfileReadOnly(name) : renderProfileFields(name)}
     ${isLocalMode() ? '' : profileViewSeg(view, 'profile-view')}
-    <div class="profile-body">${view === 'today' ? renderTodayProfileBody(name) : renderLongProfileBody(name)}</div>
+    ${renderProfileStack(name, view)}
     ${showMeSet && ui.rankProfile ? `<button class="btn-ghost btn-block" data-action="me-set" data-name="${escapeHtml(name)}">這是我（在這支手機記住）</button>` : ''}
     ${renderRenameBox(name)}
     ${ui.profileFrom === 'signup' ? '<button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">← 返回場次</button>'
