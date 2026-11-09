@@ -609,6 +609,19 @@
   .member-h { margin: 4px 0 0; font-size: 14px; }
   .member-badge { font-size: 12px; font-weight: 700; color: var(--on-tape); background: var(--tape); border-radius: 999px; padding: 0 7px; }
   .member-badge:empty { display: none; }
+  /* v19.2 球團管理分區：球團／通知／球友帳號 各一塊 */
+  .mg-sec { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-l); padding: 4px 14px 10px; margin-top: 12px; }
+  .mg-sec:first-child { margin-top: 0; }
+  .mg-h { display: flex; align-items: center; gap: 8px; margin: 10px 0 2px; font-size: 13px; font-weight: 800; color: var(--muted); letter-spacing: 0.04em; }
+  /* 已確認的球友收進抽屜：grid 0fr → 1fr 展開，高度跟著內容 */
+  .fold-head { display: flex; align-items: center; justify-content: space-between; width: 100%; margin-top: 8px; padding: 10px 0; background: none; border: 0; border-top: 1px solid var(--line); color: var(--ink); font: inherit; font-weight: 700; cursor: pointer; }
+  .fold-head .chev { width: 18px; height: 18px; transition: transform 0.3s var(--ease-open, ease); color: var(--muted); }
+  .fold-head[aria-expanded="true"] .chev { transform: rotate(180deg); }
+  .fold { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.34s var(--ease-open, ease); }
+  .fold.open { grid-template-rows: 1fr; }
+  .fold > .fold-in { overflow: hidden; min-height: 0; }
+  .fold:not(.open) > .fold-in { visibility: hidden; transition: visibility 0s 0.34s; }
+  @media (prefers-reduced-motion: reduce) { .fold, .fold-head .chev { transition: none; } }
   .member-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
   .member-row { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .member-info { display: flex; flex-direction: column; min-width: 0; }
@@ -1661,7 +1674,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.1';
+const APP_VERSION = '19.2';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3393,9 +3406,11 @@ function renderCloudSettings() {
       <button class="btn-ghost" data-action="cloud-logout">登出</button>`);
   }
   return wrap(`
+    <div class="mg-sec">
+    <h5 class="mg-h">球團</h5>
     ${ui.teamRename === null || ui.teamRename === undefined ? `
     <div class="row">
-      <span class="label">球團</span>
+      <span class="label">名稱</span>
       <span>${escapeHtml(cloud.teamName || '未命名')}${isTeamOwner() ? '' : '<span class="claim-badge ok coadmin-badge">共同管理者</span>'}</span>
       <button class="btn-ghost" data-action="team-rename-open">改名</button>
     </div>` : `
@@ -3412,7 +3427,9 @@ function renderCloudSettings() {
       <span id="cloud-sync-text">${escapeHtml(SYNC_LABEL[cloud.sync] || '已連線')}</span>
     </div>
     ${cloud.sync === 'error' ? err : ''}
-    <h5 class="member-h">通知</h5>
+    </div>
+    <div class="mg-sec">
+    <h5 class="mg-h">通知</h5>
     <div class="row">
       <span class="label">上場通知</span>
       <div class="seg" role="group" aria-label="輪到球友上場時推播通知">
@@ -3428,10 +3445,15 @@ function renderCloudSettings() {
       </div>
     </div>
     <p class="sub set-note" style="margin-top:-4px">${cloud.remindHours ? `開打前 ${cloud.remindHours} 小時，推播提醒有報名的人（正取＋候補）時間和地點；沒填時間的場次當天早上 9 點提醒。` : '不會送打球當天提醒。'}</p>
-    <h5 class="member-h">球友帳號 <span class="member-badge" id="member-badge">${pendingMembers().length ? `${pendingMembers().length} 位待確認` : ''}</span></h5>
+    </div>
+    <div class="mg-sec">
+    <h5 class="mg-h">球友帳號 <span class="member-badge" id="member-badge">${pendingMembers().length ? `${pendingMembers().length} 位待確認` : ''}</span></h5>
     ${renderMembersAdmin()}
     <div class="set-actions">
       <button class="btn-primary" data-action="cloud-invite">邀請球友（QR Code）</button>
+    </div>
+    </div>
+    <div class="set-actions">
       <button class="${ui.logoutArmed ? 'btn-danger' : 'btn-ghost'}" data-action="cloud-logout">
         ${ui.logoutArmed ? '再按一次確認登出' : `登出 ${escapeHtml(cloud.user.email || '')}`}</button>
     </div>
@@ -3775,7 +3797,14 @@ function renderMembersAdmin() {
   const approved = members.list.filter((m) => m.status === 'approved' && !m.renameTo);
   return `
     ${pending.length ? `<h5 class="member-h">待確認</h5><ul class="member-list">${pending.map(row).join('')}</ul>` : ''}
-    ${approved.length ? `<h5 class="member-h">已確認</h5><ul class="member-list">${approved.map(row).join('')}</ul>` : ''}`;
+    ${approved.length ? `
+      <button class="fold-head" data-action="members-fold" aria-expanded="${Boolean(ui.membersOpen)}" aria-controls="members-fold">
+        <span>已確認 ${approved.length} 位</span>
+        <svg class="chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+      <div class="fold ${ui.membersOpen ? 'open' : ''}" id="members-fold"><div class="fold-in">
+        <ul class="member-list">${approved.map(row).join('')}</ul>
+      </div></div>` : ''}`;
 }
 
 // 排行分頁最上面「我的戰績」的帳號區塊（觀看者）
@@ -12683,6 +12712,13 @@ function handleAction(el) {
     case 'set-notify':
       setNotifyEnabled(el.dataset.value === '1');
       return;
+    case 'members-fold': {   // v19.2 已確認球友的抽屜：直接改 DOM，才有展開動畫
+      ui.membersOpen = !ui.membersOpen;
+      el.setAttribute('aria-expanded', String(ui.membersOpen));
+      const fold = document.getElementById('members-fold');
+      if (fold) fold.classList.toggle('open', ui.membersOpen);
+      return;
+    }
     case 'set-remind-hours':
       setRemindHours(Number(el.dataset.value));
       return;
