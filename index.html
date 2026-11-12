@@ -1677,7 +1677,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.3';
+const APP_VERSION = '19.5';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3440,17 +3440,15 @@ function renderCloudSettings() {
         <button data-action="set-notify" data-value="0" aria-pressed="${!cloud.notifyEnabled}">關</button>
       </div>
     </div>
-    <p class="sub set-note" style="margin-top:-4px">測試排場時先關掉，球友就不會收到「輪到你上場」。</p>
-    <div class="row">
-      <span class="label">當天提醒</span>
+    <div class="row" style="margin-top:8px">
+      <span class="label">開打前提醒</span>
       <div class="seg" role="group" aria-label="打球當天提醒報名的人">
         ${REMIND_HOUR_OPTIONS.map((h) => `<button data-action="set-remind-hours" data-value="${h}" aria-pressed="${cloud.remindHours === h}">${h ? `${h}h` : '關'}</button>`).join('')}
       </div>
     </div>
-    <p class="sub set-note" style="margin-top:-4px">${cloud.remindHours ? `開打前 ${cloud.remindHours} 小時，推播提醒有報名的人（正取＋候補）時間和地點；沒填時間的場次當天早上 9 點提醒。` : '不會送打球當天提醒。'}</p>
     </div>
     <div class="mg-sec">
-    <h5 class="mg-h">球友帳號 <span class="member-badge" id="member-badge">${pendingMembers().length ? `${pendingMembers().length} 位待確認` : ''}</span></h5>
+    <h5 class="mg-h">球友帳號</h5>
     ${renderMembersAdmin()}
     <div class="set-actions">
       <button class="btn-primary" data-action="cloud-invite">邀請球友（QR Code）</button>
@@ -3637,7 +3635,7 @@ function watchMembers() {
     members.list = snap.docs.map((d) => Object.assign({ uid: d.id }, d.data()));
     if (ui.settings) renderModal();
     const chip = document.getElementById('member-badge');
-    if (chip) chip.textContent = pendingMembers().length ? `${pendingMembers().length} 位待確認` : '';
+    if (chip) chip.textContent = pendingMembers().length ? String(pendingMembers().length) : '';
   }, (err) => console.warn('讀取球友帳號失敗:', err));
 }
 
@@ -3771,7 +3769,7 @@ async function setMemberStatus(uid, approve) {
 
 function renderMembersAdmin() {
   if (!members.list.length) {
-    return '<p class="sub set-note">還沒有球友用 Google 登入認領。球友掃 QR Code 後，在「排行」分頁就能登入。</p>';
+    return '<p class="sub set-note">還沒有球友，按下方「邀請球友」讓他們掃 QR Code 加入。</p>';
   }
   const taken = {};
   members.list.filter((m) => m.status === 'approved').forEach((m) => { taken[m.name] = m.uid; });
@@ -3799,7 +3797,7 @@ function renderMembersAdmin() {
   const pending = pendingMembers();
   const approved = members.list.filter((m) => m.status === 'approved' && !m.renameTo);
   return `
-    ${pending.length ? `<h5 class="member-h">待確認</h5><ul class="member-list">${pending.map(row).join('')}</ul>` : ''}
+    ${pending.length ? `<h5 class="member-h">待確認 <span class="member-badge" id="member-badge">${pending.length}</span></h5><ul class="member-list">${pending.map(row).join('')}</ul>` : ''}
     ${approved.length ? `
       <button class="fold-head" data-action="members-fold" aria-expanded="${Boolean(ui.membersOpen)}" aria-controls="members-fold">
         <span>已確認 ${approved.length} 位</span>
