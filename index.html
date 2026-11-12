@@ -1677,7 +1677,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.5';
+const APP_VERSION = '19.7';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -7867,7 +7867,7 @@ function renderRegularPicker() {
 
   return `
     <div class="section-head">
-      <span class="label">常用球員（今天有來的點一下）</span>
+      <span class="label">常用球員</span>
       <span>
         ${ui.editRegulars ? '' : '<button class="btn-ghost" data-action="setup-select-all">全選</button>'}
         <button class="btn-ghost" data-action="regular-edit">${ui.editRegulars ? '完成' : '編輯'}</button>
@@ -7876,7 +7876,7 @@ function renderRegularPicker() {
     <div class="chips-scroll" data-keep-scroll="setup-regulars" style="margin:6px 0 ${ui.editRegulars ? 10 : 16}px">
       <div class="chips">${chips}</div>
     </div>
-    ${regulars.length > 12 ? `<p class="sub chips-count">共 ${regulars.length} 位・已選 ${ui.setupSelected.size} 位（名單可以上下滑動）</p>` : ''}
+    ${regulars.length > 12 ? `<p class="sub chips-count">共 ${regulars.length} 位・已選 ${ui.setupSelected.size} 位</p>` : ''}
     ${ui.editRegulars ? `<div class="ev-add reg-add">
       <input type="text" id="regular-add" placeholder="新增常用球員（可一次輸入多個，用逗號分隔）" value="${escapeHtml(ui.regularAdd || '')}">
       <button class="btn-outline" data-action="regular-add">新增</button>
@@ -7910,14 +7910,13 @@ function renderSetup() {
       ${menuButton()}
       <div class="top-title">
         <h1>${cloud.teamName && !isLocalMode() ? escapeHtml(cloud.teamName) : appTitle()}</h1>
-        <p class="sub">選出今天來的人，系統會依場數與配對紀錄自動輪轉。</p>
       </div>
     </header>
     ${renderStorageBanner()}
     ${renderTodaySignupPanel()}
     <div class="panel">
       ${renderRegularPicker()}
-      <label for="names" class="label">其他球員（換行或逗號分隔）</label>
+      <label for="names" class="label">其他球員</label>
       <textarea id="names" placeholder="小明&#10;阿華">${escapeHtml(ui.setupText)}</textarea>
       <label class="row" style="margin-top:8px;font-size:14px">
         <input type="checkbox" id="save-new" ${ui.setupSaveNew ? 'checked' : ''}>
@@ -7936,7 +7935,7 @@ function renderSetup() {
         </div>
       </div>
       <button class="btn-primary btn-block" style="margin-top:18px" data-action="start">
-        開始排場（<span id="setup-total" class="num">${total}</span> 人）
+        開始排場・<span id="setup-total" class="num">${total}</span> 人
       </button>
     </div>
     <div style="margin-top:20px;text-align:center">
