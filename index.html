@@ -1677,7 +1677,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.7';
+const APP_VERSION = '19.8';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -6434,7 +6434,7 @@ function renderPastSessionModal() {
       <h2>稱號</h2>${renderTitles()}
       <h2>戰績</h2>${renderStats()}
       <h2>關係圖</h2>${renderNetwork()}
-      <h2>每一場</h2>${renderHistory()}`;
+      <h2>每一場</h2>${renderHistory({ readOnly: true })}`;
   } finally {
     state = today;
   }
@@ -8792,7 +8792,11 @@ function renderStats() {
     <p class="sub" style="margin-top:6px">只計算有記錄勝負的場次；開新球局後重新計算。</p>`;
 }
 
-function renderHistory() {
+/**
+ * @param {{readOnly?: boolean}} [opts] readOnly：只看不能改（球友、或在看以前的球局）。
+ *   v19.8 以前的球局也畫出刪除／修改勝負按鈕，按下去改的卻是今天的資料，所以一律拿掉。
+ */
+function renderHistory({ readOnly = Boolean(cloud.viewer) } = {}) {
   if (!state.history.length) {
     return `${renderConsistencyBanner()}<p class="sub">打完第一場後，紀錄會出現在這裡。</p>`;
   }
@@ -8806,13 +8810,13 @@ function renderHistory() {
   const items = shown.map((h) => {
     const minutes = Math.max(1, playedMinutes(h));
     return `<li class="history-item">
-      <button class="history-delete ${ui.deleteArmedNo === h.no ? 'armed' : ''}"
+      ${readOnly ? '' : `<button class="history-delete ${ui.deleteArmedNo === h.no ? 'armed' : ''}"
         data-action="history-delete" data-no="${h.no}"
-        aria-label="刪除第 ${displayNo(h)} 場紀錄">${ui.deleteArmedNo === h.no ? '確認刪除' : '刪除'}</button>
+        aria-label="刪除第 ${displayNo(h)} 場紀錄">${ui.deleteArmedNo === h.no ? '確認刪除' : '刪除'}</button>`}
       <div class="meta num">#${displayNo(h)}・第 ${h.court} 場地・${MODE_LABEL[h.mode]}${h.isManual ? '・手動' : ''}・
         ${formatTime(h.clockStart || h.startedAt)}–${formatTime(h.endedAt)}（${minutes} 分）</div>
       <div class="teams">${renderHistoryTeams(h)}</div>
-      ${h.teamAIds ? `<button class="history-result" data-action="history-result" data-no="${h.no}">
+      ${h.teamAIds && !readOnly ? `<button class="history-result" data-action="history-result" data-no="${h.no}">
         ${h.winners ? '修改勝負' : '補記勝負'}</button>` : ''}
     </li>`;
   }).join('');
@@ -8834,13 +8838,13 @@ function renderHistory() {
     </div>
     ${filtered.length ? `<ul class="history">${items}</ul>` : '<p class="sub">這位球員還沒有完成的場次。</p>'}
     ${more}
-    <div style="margin-top:10px;text-align:right">
+    ${readOnly ? '' : `<div style="margin-top:10px;text-align:right">
       <button class="${ui.clearHistoryArmed ? 'btn-danger' : 'btn-ghost danger-text'}" data-action="history-clear">
         ${ui.clearHistoryArmed
           ? `再按一次，刪除全部 ${state.history.length} 場並回退場數與等待`
           : `全部刪除（${state.history.length} 場）`}
       </button>
-    </div>`;
+    </div>`}`;
 }
 
 /**
