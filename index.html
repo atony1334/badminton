@@ -1679,7 +1679,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.12';
+const APP_VERSION = '19.14';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -6543,7 +6543,7 @@ const RANK_MIN_RECORDED = 10;   // 勝率榜門檻：至少幾場有記勝負
 // v18.6 上榜門檻（所有排行榜）：至少出席幾次球局、總共打幾場
 const RANK_MIN_DAYS = 2;
 const RANK_MIN_GAMES = 10;
-const RANK_TOP_SHOWN = 5;   // v18.7 球友的排行榜只列前幾名（同分同名次的一起列）；管理者看全部
+const RANK_TOP_SHOWN = 10;   // v19.14 改成前 10 名（v18.7 原本 5） 球友的排行榜只列前幾名（同分同名次的一起列）；管理者看全部
 
 function rankShowsAll() {
   return !cloud.viewer;   // 管理者手機
@@ -6848,7 +6848,7 @@ function renderLongProfile(p, all, compact) {
   const place = (board) => {
     const row = boardRows(all, board).find((r) => r.n === p.n);
     if (!row) return '未上榜';
-    // 球友看別人：前 5 名以外不顯示名次（自己的名次照常看得到）
+    // 球友看別人：前 RANK_TOP_SHOWN 名以外不顯示名次（自己的名次照常看得到）
     if (!rankShowsAll() && p.n !== myName() && row.place > RANK_TOP_SHOWN) return `前 ${RANK_TOP_SHOWN} 名外`;
     return `第 ${row.place} 名`;
   };
@@ -8870,8 +8870,21 @@ function renderHistory({ readOnly = Boolean(cloud.viewer) } = {}) {
  * v10.0 今日已結束：排場畫面整個收起來，只留報名場次。
  * 管理者可以「開始排場」（開新球局），或「繼續今天的排場」；球友看到同一個畫面。
  */
+/** v19.13 結束的球局是哪一天（毫秒）：結束時間，舊資料用最後一場結束時間 */
+function endedDayTime() {
+  const last = state.history.reduce((t, h) => Math.max(t, h.endedAt || 0), 0);
+  return state.dayEndedAt || last || state.updatedAt || Date.now();
+}
+
+/** 已經過了打球那一天（隔天以後）：戰報收起來，球友到「歷史球局」看 */
+function endedDayPassed() {
+  return localDateKey(endedDayTime()) < localDateKey();
+}
+
 function renderEndedScreen() {
   const admin = !cloud.viewer;
+  const passed = endedDayPassed();
+  const endedDate = (() => { const d = new Date(endedDayTime()); return `${d.getMonth() + 1}/${d.getDate()}`; })();
   const count = state.history.length;
   const canSave = admin && cloudReady() && count > 0;
   const saveLine = !canSave ? ''
@@ -8889,24 +8902,24 @@ function renderEndedScreen() {
       ${menuButton()}
       <div class="top-title">
         <h1>${appTitle()}</h1>
-        <p class="sub">${cloud.teamName ? `${escapeHtml(cloud.teamName)}・` : ''}今日已結束</p>
+        <p class="sub">${cloud.teamName ? escapeHtml(cloud.teamName) : ''}${passed ? '' : `${cloud.teamName ? '・' : ''}今日已結束`}</p>
         ${admin ? syncChip() : ''}
       </div>
     </header>
-    <div class="day-ended ended-card">
+    ${passed && !(canSave && !state.archived) ? '' : `<div class="day-ended ended-card">
       <strong>${icon('flag')}今日打球已結束</strong>
       <p class="sub" style="margin:4px 0 0">共完成 ${count} 場${state.players.length ? `・${state.players.length} 人參加` : ''}</p>
       <div class="row">
         <button class="btn-tape" data-action="report-open">查看戰報</button>
         ${saveLine}
       </div>
-    </div>
+    </div>`}
     ${signupBlock}
     ${admin ? `
     <div class="ended-actions">
       ${startArmed ? `<p class="sub">${canSave && !state.archived ? '今天的紀錄還沒存入長期紀錄，開始後就找不回來了。' : '今天的場地和紀錄會清掉（已存的長期紀錄不受影響）。'}</p>` : ''}
       <button class="${startArmed ? 'btn-danger' : 'btn-primary'} btn-block" data-action="day-new">${startArmed ? '再按一次，開始新的排場' : '開始排場'}</button>
-      <button class="btn-ghost btn-block" data-action="day-resume">繼續今天的排場</button>
+      <button class="btn-ghost btn-block" data-action="day-resume">${passed ? `繼續 ${endedDate} 的排場` : '繼續今天的排場'}</button>
     </div>` : `
     <div class="wait-links">
       <button class="btn-ghost" data-action="drawer-go" data-target="ranks">${icon('user')}${cloud.user ? '我的戰績' : '長期排行榜'}</button>
@@ -8918,6 +8931,7 @@ function renderEndedScreen() {
 function resumeDay() {
   state.dayEnded = false;
   state.archived = false;   // 之後多打的場次要再存一次（存的時候覆蓋同一份）
+  state.dayEndedAt = null;
   state.updatedAt = Date.now();
   ui.tab = 'courts';
   ui.dayNewArmed = false;
@@ -11366,6 +11380,7 @@ async function shareReport() {
 function endDay(save) {
   state.courts.forEach((court, i) => { if (court.match) cancelMatch(i); });
   state.dayEnded = true;
+  state.dayEndedAt = Date.now();   // v19.13 用來判斷「已經過了那一天」
   state.updatedAt = Date.now();
   if (save) archiveSession('end-day');
 }
