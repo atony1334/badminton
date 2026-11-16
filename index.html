@@ -1679,7 +1679,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.16';
+const APP_VERSION = '19.17';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -10110,7 +10110,8 @@ function renderTodayProfileBody(name) {
   const easiest = decidedOpp.slice().sort((a, b) => b.wins / b.decided - a.wins / a.decided || b.decided - a.decided)[0];
   const hardest = decidedOpp.slice().sort((a, b) => a.wins / a.decided - b.wins / b.decided || b.decided - a.decided)[0];
 
-  const form = recorded.slice(-8).map((h) => (h.winners.includes(name)
+  const form = recorded.map(   // v19.17 列出全部有記勝負的場次（原本只有最後 8 場）
+    (h) => (h.winners.includes(name)
     ? '<span class="w">勝</span>' : '<span class="l">敗</span>')).join('');
   const titles = todayTitles().filter((t) => titleHolders(t).includes(name));
   const hp = player ? staminaOf(player) : null;
@@ -10132,7 +10133,7 @@ function renderTodayProfileBody(name) {
       <div><b class="num">${losses}</b><small>敗</small></div>
       <div><b class="num">${rate}</b><small>勝率</small></div>
     </div>
-    ${form ? `<h4 class="profile-h">最近戰況（由舊到新）</h4><div class="form-chips">${form}</div>` : ''}
+    ${form ? `<h4 class="profile-h">每場戰況</h4><div class="form-chips">${form}</div>` : ''}
     ${titles.length ? `<h4 class="profile-h">今日稱號</h4>
       <div class="chips" style="margin-bottom:12px">${titles.map((t) => `<span class="chip">${t.icon} ${t.title}</span>`).join('')}</div>` : ''}
     ${relation ? `<h4 class="profile-h">關係</h4><ul class="profile-list">${relation}</ul>` : ''}
