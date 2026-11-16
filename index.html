@@ -1679,7 +1679,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.14';
+const APP_VERSION = '19.16';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -6330,7 +6330,8 @@ function renderSettingsSection(key) {
  * 直接沿用「紀錄」分頁的畫面：畫的時候暫時把 state 換成那一天的資料，畫完就換回來。
  * 畫面上會改到今天資料的按鈕（刪除紀錄、改勝負、開個人頁…）一律拿掉，只能看。
  */
-const PAST_ALLOWED_ACTIONS = new Set(['network-mode', 'network-focus', 'history-toggle', 'modal-close', 'past-back', 'title-open']);
+// v19.15 加 player-open（「看個人頁」之前被拿掉 data-action，按了沒反應）
+const PAST_ALLOWED_ACTIONS = new Set(['network-mode', 'network-focus', 'history-toggle', 'modal-close', 'past-back', 'title-open', 'player-open']);
 const past = { cache: {}, loading: null, error: '' };
 
 function pastDateText(t) {
@@ -6530,7 +6531,11 @@ function lockPastView() {
     el.removeAttribute('data-action');
     el.classList.add('view-only');
   });
-  root.querySelectorAll('select').forEach((el) => { el.disabled = true; el.closest('.row, div') && (el.parentElement.hidden = true); });
+  root.querySelectorAll('select').forEach((el) => {
+    if (el.id === 'history-filter') return;   // v19.16 篩選球員只是換顯示，歷史球局也能用
+    el.disabled = true;
+    if (el.closest('.row, div')) el.parentElement.hidden = true;
+  });
 }
 
 /* ===================== 長期排行榜 ===================== */
@@ -10150,9 +10155,9 @@ function renderLongProfileBody(name) {
     ${renderLongProfile(p, all, false)}`;
 }
 
-function profileViewSeg(view, action) {
+function profileViewSeg(view, action, todayLabel = '今日') {
   return `<div class="seg profile-seg" data-swipe role="group" aria-label="戰績範圍">
-      <button data-action="${action}" data-value="today" aria-pressed="${view === 'today'}">今日</button>
+      <button data-action="${action}" data-value="today" aria-pressed="${view === 'today'}">${todayLabel}</button>
       <button data-action="${action}" data-value="long" aria-pressed="${view === 'long'}">長期</button>
     </div>`;
 }
@@ -10162,15 +10167,26 @@ function renderPlayerModal() {
   const name = ui.rankProfile || ui.profileName;
   const view = isLocalMode() ? 'today' : ui.profileView || (ui.rankProfile ? 'long' : 'today');
   const showMeSet = myName() !== name && !(cloud.viewer && cloud.user);
+  // v19.15 從歷史球局點進來：「這天」顯示那一天的戰績（原本誤用今天的資料，常常是「今天沒有出場紀錄」）
+  const pastDay = ui.profileFrom === 'past' && ui.pastId ? past.cache[ui.pastId] : null;
+  let stack = '';
+  const today = state;
+  try {
+    if (pastDay) state = pastDay;
+    stack = renderProfileStack(name, view);
+  } finally {
+    state = today;
+  }
   return `
     <h3>${escapeHtml(name)}${genderMark(name)}</h3>
     <div class="pm-head">${avatarHtml(name, 'av-xl')}</div>
     ${cloud.viewer ? renderProfileReadOnly(name) : renderProfileFields(name)}
-    ${isLocalMode() ? '' : profileViewSeg(view, 'profile-view')}
-    ${renderProfileStack(name, view)}
+    ${isLocalMode() ? '' : profileViewSeg(view, 'profile-view', pastDay ? '這天' : '今日')}
+    ${stack}
     ${showMeSet && ui.rankProfile ? `<button class="btn-ghost btn-block" data-action="me-set" data-name="${escapeHtml(name)}">這是我（在這支手機記住）</button>` : ''}
-    ${renderRenameBox(name)}
-    ${ui.profileFrom === 'signup' ? '<button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">← 返回場次</button>'
+    ${pastDay ? '' : renderRenameBox(name)}
+    ${pastDay ? '<button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">← 返回這天</button>'
+      : ui.profileFrom === 'signup' ? '<button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close">← 返回場次</button>'
       : `<button class="btn-primary btn-block" style="margin-top:8px" data-action="modal-close" ${ui.rankProfile && ui.ranksOpen ? '' : 'data-sheet-close'}>${ui.rankProfile && ui.ranksOpen ? '返回排行榜' : '關閉'}</button>`}`;
 }
 
@@ -10583,6 +10599,7 @@ const MODAL_PAGES = [
   ['copy', () => ui.copyText, () => renderCopyModal(), 4],
   ['report', () => ui.report, () => renderReportModal(), 1],
   ['signup-profile', () => ui.profileName && ui.profileFrom === 'signup', () => renderPlayerModal(), 3],   // v13.10 從場次點名字進來
+  ['past-profile', () => ui.profileName && ui.profileFrom === 'past', () => renderPlayerModal(), 3],   // v19.15 從歷史球局點名字
   ['profile', () => ui.profileName, () => renderPlayerModal(), 2],
   ['invite', () => ui.invite, () => renderInviteModal(), 2],
   ['wishes', () => ui.wishOpen, () => renderWishModal(), 1],   // v14.0 許願池
@@ -12688,6 +12705,7 @@ function handleAction(el) {
     case 'player-open':
       ui.profileName = el.dataset.name;
       ui.profileFrom = el.dataset.from || null;   // v13.10 從報名名單點進來：關閉時回到場次
+      if (!ui.profileFrom && ui.pastId && el.closest('#modal-root')) ui.profileFrom = 'past';   // v19.15 從歷史球局點進來
       ui.profileView = el.dataset.from === 'signup' && !isLocalMode() ? 'long' : null;
       sessionChanged = false;
       break;
@@ -12804,6 +12822,7 @@ function handleAction(el) {
       if (ui.avatarCrop) { ui.avatarCrop = null; sessionChanged = false; break; }
       if (ui.wishOpen) { closeWishes(); sessionChanged = false; break; }
       if (ui.profileName && ui.profileFrom === 'signup') { ui.profileName = null; ui.profileFrom = null; sessionChanged = false; break; }
+      if (ui.profileName && ui.profileFrom === 'past') { ui.profileName = null; ui.profileFrom = null; ui.profileView = null; sessionChanged = false; break; }   // v19.15 回到那一天
       if (ui.teamDelete) { if (!ui.teamDelete.busy) ui.teamDelete = null; sessionChanged = false; break; }
       if (ui.manual && ui.manual.restore) state = JSON.parse(ui.manual.restore);   // 改為手動但沒確認：還原原本的排場
       if (ui.copyText && ui.signupOpen) { ui.copyText = null; sessionChanged = false; break; }   // 報名訊息的手動複製視窗
