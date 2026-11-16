@@ -1679,7 +1679,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.10';
+const APP_VERSION = '19.11';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -6810,6 +6810,7 @@ function renderRanksTab() {
       </div>`
     : '';
 
+  // v19.11 兩頁疊在同一格（跟今日／長期一樣），高度取較高的那頁，切換時不會動來動去
   // v19.10 分成「個人」（今日／長期）和「排行榜」（勝率、勝場…）兩頁
   const loginLink = cloud.viewer && cloud.auth && !isPasswordUser() && (!cloud.user || !cloud.claim);
   const view = ui.ranksView || (myself || loginLink || pick ? 'me' : 'board');
@@ -6824,7 +6825,10 @@ function renderRanksTab() {
       <button data-action="ranks-view" data-value="me" aria-pressed="${view === 'me'}">個人</button>
       <button data-action="ranks-view" data-value="board" aria-pressed="${view === 'board'}">排行榜</button>
     </div>
-    <div class="rank-pane">${view === 'me' ? mePane : renderRankBoardPane(all, board, fullRows, sessions, list)}</div>`;
+    <div class="profile-stack rank-stack">
+      <div class="profile-body" ${view === 'me' ? '' : 'aria-hidden="true" inert'}>${mePane}</div>
+      <div class="profile-body" ${view === 'board' ? '' : 'aria-hidden="true" inert'}>${renderRankBoardPane(all, board, fullRows, sessions, list)}</div>
+    </div>`;
 }
 
 function renderRankBoardPane(all, board, fullRows, sessions, list) {
