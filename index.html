@@ -1679,7 +1679,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.11';
+const APP_VERSION = '19.12';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -6834,11 +6834,11 @@ function renderRanksTab() {
 function renderRankBoardPane(all, board, fullRows, sessions, list) {
   return `
     <p class="sub" style="margin-top:0">累計 ${sessions.length} 次球局、${sessions.reduce((n, s) => n + s.matchCount, 0)} 場比賽${sessions.length ? `・最近存入 ${(() => { const d = new Date(Math.max(...sessions.map((x) => x.date || 0))); return `${d.getMonth() + 1}/${d.getDate()}`; })()}` : ''}${ranks.status === 'error' ? `・<span class="cloud-error" style="display:inline">${escapeHtml(ranks.error)}</span>` : ''}</p>
-    <div class="seg rank-seg" data-swipe role="group" aria-label="排行榜種類">
+    <!-- v19.12 拿掉門檻說明那一行（沒人上榜時名單區仍會寫門檻） -->
+    <div class="seg rank-seg" data-swipe role="group" aria-label="排行榜種類" style="margin-bottom:12px">
       ${Object.entries(RANK_BOARDS).map(([key, b]) => `
         <button data-action="rank-board" data-value="${key}" aria-pressed="${board === key}">${b.label}</button>`).join('')}
     </div>
-    <p class="sub rank-note">${RANK_BOARDS[board].note}${rankShowsAll() ? (fullRows.length > RANK_TOP_SHOWN ? `・管理者看得到全部，球友只看到前 ${RANK_TOP_SHOWN} 名` : '') : `・列前 ${RANK_TOP_SHOWN} 名`}</p>
     ${list}`;
 }
 
