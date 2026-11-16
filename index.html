@@ -632,6 +632,8 @@
   .member-btns { display: flex; gap: 6px; flex-shrink: 0; }
   .member-btns button, .member-row > .btn-ghost { padding: 6px 10px; font-size: 13px; }
   .rank-note { margin: 6px 0 8px; font-size: 13px; }
+  .rank-top-seg { width: 100%; margin: 4px 0 14px; }
+  .rank-top-seg button { flex: 1; }
   .rank-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--radius-l); overflow: hidden; }
   .rank-list li + li { border-top: 1px solid var(--floor); }
   .rank-row {
@@ -1677,7 +1679,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.9';
+const APP_VERSION = '19.10';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2522,7 +2524,7 @@ const VIEWER_ACTIONS = new Set([
   'quick-signup', 'pf-goto-account', 'ui-theme', 'ui-theme-follow', 'ui-theme-save', 'ui-theme-del',
   'wish-submit', 'wish-like', 'wish-anon', 'wish-sort', 'wish-delete',
   'wish-reply-open', 'cmt-anon', 'cmt-submit', 'cmt-delete',
-  'rank-board', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
+  'rank-board', 'ranks-view', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'invite-copy-code', 'invite-copy', 'invite-share', 'cloud-invite', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
   'signup-view', 'signup-month', 'signup-day', 'pf-set', 'grade-pick', 'pf-edit', 'avatar-remove', 'crop-save', 'crop-cancel',
@@ -6277,6 +6279,7 @@ function drawerGo(target) {
       openSignupList();
     } else if (target === 'ranks') {
       ui.ranksOpen = true;
+      ui.ranksView = null;   // v19.10 每次打開：有自己的戰績就先看「個人」
     } else if (target === 'wish') {
       openWishes();
     } else if (target === 'leave') {
@@ -6807,14 +6810,26 @@ function renderRanksTab() {
       </div>`
     : '';
 
-  return `
-    <h2>我的戰績</h2>
-    ${cloud.viewer && cloud.auth && !isPasswordUser() && (!cloud.user || !cloud.claim)
+  // v19.10 分成「個人」（今日／長期）和「排行榜」（勝率、勝場…）兩頁
+  const loginLink = cloud.viewer && cloud.auth && !isPasswordUser() && (!cloud.user || !cloud.claim);
+  const view = ui.ranksView || (myself || loginLink || pick ? 'me' : 'board');
+  const mePane = `
+    ${loginLink
       ? `<button class="btn-ghost me-login-link" data-action="drawer-go" data-target="account">${cloud.user ? '還沒認領球員，去認領 ›' : '登入看自己的戰績 ›'}</button>`
       : ''}
-    ${myself ? renderMyStats(myself) : pick || (cloud.viewer && cloud.user ? '' : '<p class="sub">還沒有紀錄</p>')}
-    <h2>長期排行榜</h2>
-    <p class="sub" style="margin-top:-4px">累計 ${sessions.length} 次球局、${sessions.reduce((n, s) => n + s.matchCount, 0)} 場比賽${sessions.length ? `・最近存入 ${(() => { const d = new Date(Math.max(...sessions.map((x) => x.date || 0))); return `${d.getMonth() + 1}/${d.getDate()}`; })()}` : ''}${ranks.status === 'error' ? `・<span class="cloud-error" style="display:inline">${escapeHtml(ranks.error)}</span>` : ''}</p>
+    ${myself ? renderMyStats(myself) : pick || (cloud.viewer && cloud.user ? '' : '<p class="sub">還沒有紀錄</p>')}`;
+  return `
+    <h3>戰績</h3>
+    <div class="seg rank-top-seg" data-swipe role="group" aria-label="個人或排行榜">
+      <button data-action="ranks-view" data-value="me" aria-pressed="${view === 'me'}">個人</button>
+      <button data-action="ranks-view" data-value="board" aria-pressed="${view === 'board'}">排行榜</button>
+    </div>
+    <div class="rank-pane">${view === 'me' ? mePane : renderRankBoardPane(all, board, fullRows, sessions, list)}</div>`;
+}
+
+function renderRankBoardPane(all, board, fullRows, sessions, list) {
+  return `
+    <p class="sub" style="margin-top:0">累計 ${sessions.length} 次球局、${sessions.reduce((n, s) => n + s.matchCount, 0)} 場比賽${sessions.length ? `・最近存入 ${(() => { const d = new Date(Math.max(...sessions.map((x) => x.date || 0))); return `${d.getMonth() + 1}/${d.getDate()}`; })()}` : ''}${ranks.status === 'error' ? `・<span class="cloud-error" style="display:inline">${escapeHtml(ranks.error)}</span>` : ''}</p>
     <div class="seg rank-seg" data-swipe role="group" aria-label="排行榜種類">
       ${Object.entries(RANK_BOARDS).map(([key, b]) => `
         <button data-action="rank-board" data-value="${key}" aria-pressed="${board === key}">${b.label}</button>`).join('')}
@@ -13053,6 +13068,7 @@ function handleAction(el) {
     case 'member-approve': setMemberStatus(el.dataset.uid, true); return;
     case 'member-remove': setMemberStatus(el.dataset.uid, false); return;
     case 'rank-board': ui.rankBoard = el.dataset.value; sessionChanged = false; modalOnly = true; break;
+    case 'ranks-view': ui.ranksView = el.dataset.value; sessionChanged = false; modalOnly = true; break;   // v19.10
     case 'rank-open': ui.rankProfile = el.dataset.name; ui.profileView = null; sessionChanged = false; modalOnly = true; break;
     case 'me-set':
       prefs.me = el.dataset.name;
