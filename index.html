@@ -1677,7 +1677,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.8';
+const APP_VERSION = '19.9';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -3289,7 +3289,7 @@ function renderViewerWaiting() {
     ${loadingView ? '' : renderEventCards()}
     ${idle ? `
     <div class="wait-links">
-      <button class="btn-ghost" data-action="drawer-go" data-target="${cloud.user ? 'account' : 'ranks'}">${icon('user')}${cloud.user ? '我的戰績' : '長期排行榜'}</button>
+      <button class="btn-ghost" data-action="drawer-go" data-target="ranks">${icon('user')}${cloud.user ? '我的戰績' : '長期排行榜'}</button>
       <button class="btn-ghost" data-action="drawer-go" data-target="past">${icon('box')}歷史球局</button>
     </div>` : ''}`;
 }
@@ -8890,7 +8890,7 @@ function renderEndedScreen() {
       <button class="btn-ghost btn-block" data-action="day-resume">繼續今天的排場</button>
     </div>` : `
     <div class="wait-links">
-      <button class="btn-ghost" data-action="drawer-go" data-target="${cloud.user ? 'account' : 'ranks'}">${icon('user')}${cloud.user ? '我的戰績' : '長期排行榜'}</button>
+      <button class="btn-ghost" data-action="drawer-go" data-target="ranks">${icon('user')}${cloud.user ? '我的戰績' : '長期排行榜'}</button>
       <button class="btn-ghost" data-action="drawer-go" data-target="past">${icon('box')}歷史球局</button>
     </div>`}`;
 }
