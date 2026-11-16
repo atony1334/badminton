@@ -633,6 +633,9 @@
   .member-btns button, .member-row > .btn-ghost { padding: 6px 10px; font-size: 13px; }
   .rank-note { margin: 6px 0 8px; font-size: 13px; }
   .rank-top-seg { width: 100%; margin: 4px 0 14px; }
+  .cal-all { margin: 0 0 10px; }
+  .cal-all-done { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; }
+  .cal-all-done svg { width: 16px; height: 16px; }
   .rank-top-seg button { flex: 1; }
   .rank-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--radius-l); overflow: hidden; }
   .rank-list li + li { border-top: 1px solid var(--floor); }
@@ -1679,7 +1682,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.17';
+const APP_VERSION = '19.18';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2524,7 +2527,7 @@ const VIEWER_ACTIONS = new Set([
   'quick-signup', 'pf-goto-account', 'ui-theme', 'ui-theme-follow', 'ui-theme-save', 'ui-theme-del',
   'wish-submit', 'wish-like', 'wish-anon', 'wish-sort', 'wish-delete',
   'wish-reply-open', 'cmt-anon', 'cmt-submit', 'cmt-delete',
-  'rank-board', 'ranks-view', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
+  'rank-board', 'ranks-view', 'rank-open', 'cal-all', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'invite-copy-code', 'invite-copy', 'invite-share', 'cloud-invite', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
   'signup-view', 'signup-month', 'signup-day', 'pf-set', 'grade-pick', 'pf-edit', 'avatar-remove', 'crop-save', 'crop-cancel',
@@ -5021,13 +5024,124 @@ function renderCalPanel(ev) {
         <span><b>報名成功！</b>要加入 Google 日曆嗎？</span>
         <button class="icon-btn" data-action="cal-close" aria-label="不用了">✕</button>
       </div>
-      <a class="btn-primary cal-link" href="${escapeHtml(google)}" target="_blank" rel="noopener" data-cal-done="1">${icon('calendar')}加入 Google 日曆</a>
+      <a class="btn-primary cal-link" href="${escapeHtml(google)}" target="_blank" rel="noopener" data-cal-done="1" data-cal-key="${escapeHtml(calKey(ev))}">${icon('calendar')}加入 Google 日曆</a>
     </div>`;
 }
 
 function renderCalButton(ev, label = '加入行事曆') {
   const google = googleCalUrl(ev);
-  return google ? `<a class="btn-outline" href="${escapeHtml(google)}" target="_blank" rel="noopener">${icon('calendar')}${label}</a>` : '';
+  return google ? `<a class="btn-outline" href="${escapeHtml(google)}" target="_blank" rel="noopener" data-cal-key="${escapeHtml(calKey(ev))}">${icon('calendar')}${label}</a>` : '';
+}
+
+/* ---------- v19.18 一鍵加入行事曆（.ics） ----------
+ * Google 日曆的網址一次只能加一場，所以改下載 .ics：iPhone 會跳「加入全部」。
+ * 避免重複：這支手機記下加過的場次（badminton-cal-added），一鍵加入只放還沒加過的；
+ * 單場「加入行事曆」按過也算。場次改了日期或開始時間會當成新的（舊的那筆要自己刪）。
+ * 每筆都有固定 UID，行事曆 App 認得是同一場時會更新而不是新增。 */
+const CAL_ADDED_KEY = 'badminton-cal-added';
+const CAL_ADDED_KEEP_MS = 120 * 86400000;   // 記錄留 120 天就清掉
+
+function calKey(ev) {
+  return `${currentTeamId() || ''}|${ev.id}|${ev.date || ''}|${ev.start || ''}`;
+}
+
+function readCalAdded() {
+  const map = storageGet(CAL_ADDED_KEY);
+  return map && typeof map === 'object' ? map : {};
+}
+
+function markCalAdded(keys) {
+  const now = Date.now();
+  const map = readCalAdded();
+  Object.keys(map).forEach((k) => { if (now - map[k] > CAL_ADDED_KEEP_MS) delete map[k]; });
+  keys.forEach((k) => { map[k] = now; });
+  storageSet(CAL_ADDED_KEY, map);
+}
+
+/** 我報名（正取或候補）、還沒開打的場次 */
+function mySignedEvents() {
+  if (!cloud.viewer || !cloud.user || !signup.ready) return [];
+  return upcomingEvents().filter((ev) => signup.lists[ev.id] && myPlace(ev));
+}
+
+function calPendingEvents() {
+  const added = readCalAdded();
+  return mySignedEvents().filter((ev) => !added[calKey(ev)] && eventTimes(ev));
+}
+
+/** iCalendar 文字：逗號、分號、反斜線、換行要跳脫；每行超過 75 bytes 要折行 */
+function icsText(v) {
+  return String(v || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
+}
+
+function icsFold(line) {
+  const bytes = new TextEncoder();
+  if (bytes.encode(line).length <= 75) return line;
+  const out = [];
+  let cur = '';
+  Array.from(line).forEach((ch) => {
+    if (bytes.encode(cur + ch).length > (out.length ? 74 : 75)) { out.push(cur); cur = ''; }
+    cur += ch;
+  });
+  out.push(cur);
+  return out.join('\r\n ');
+}
+
+function buildIcs(events) {
+  const stamp = calUtcStamp(Date.now());
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//badminton-rotation//zh-TW', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  events.forEach((ev) => {
+    const t = eventTimes(ev);
+    lines.push('BEGIN:VEVENT',
+      `UID:${currentTeamId() || 'local'}-${ev.id}@badminton-rotation`,
+      `DTSTAMP:${stamp}`,
+      ...(t.allDay
+        ? [`DTSTART;VALUE=DATE:${calDayStamp(t.y, t.m, t.d)}`, `DTEND;VALUE=DATE:${calDayStamp(t.y, t.m, t.d + 1)}`]
+        : [`DTSTART:${calUtcStamp(t.start)}`, `DTEND:${calUtcStamp(t.end)}`]),
+      `SUMMARY:${icsText(calTitle(ev))}`,
+      calLocation(ev) ? `LOCATION:${icsText(calLocation(ev))}` : '',
+      `DESCRIPTION:${icsText(calDetails(ev))}`,
+      'END:VEVENT');
+  });
+  lines.push('END:VCALENDAR');
+  return lines.filter(Boolean).map(icsFold).join('\r\n');
+}
+
+function addAllToCalendar() {
+  const events = calPendingEvents();
+  if (!events.length) { showToast('報名的場次都已經加過了'); return; }
+  const ics = buildIcs(events);
+  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  try {
+    if (ios) {
+      // iPhone：直接打開 .ics，Safari 會顯示行事曆預覽和「加入全部」
+      window.location.href = `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`;
+    } else {
+      const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `羽球場次-${localDateKey()}.ics`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    }
+  } catch (err) {
+    showToast('無法打開行事曆檔');
+    return;
+  }
+  markCalAdded(events.map(calKey));
+  showToast(`已送出 ${events.length} 場到行事曆`);
+  render();
+}
+
+function renderCalAllButton() {
+  const mine = mySignedEvents();
+  if (!mine.length) return '';
+  const pending = calPendingEvents();
+  return pending.length
+    ? `<button class="btn-outline btn-block cal-all" data-action="cal-all">${icon('calendar')}報名的場次加入行事曆・${pending.length} 場</button>`
+    : `<p class="sub cal-all-done">${icon('calendar')}報名的場次都已加入行事曆</p>`;
 }
 
 /* ---------- 月曆 ---------- */
@@ -5354,7 +5468,7 @@ function renderEventHero(ev) {
     </button>
     <div class="hero-acts">
       ${open ? `<a class="hero-btn" data-action="ext" href="${escapeHtml(open)}" target="_blank" rel="noopener">導航</a>` : ''}
-      ${cal ? `<a class="hero-btn" data-action="ext" href="${escapeHtml(cal)}" target="_blank" rel="noopener">加入行事曆</a>`
+      ${cal ? `<a class="hero-btn" data-action="ext" href="${escapeHtml(cal)}" target="_blank" rel="noopener" data-cal-key="${escapeHtml(calKey(ev))}">加入行事曆</a>`
         : quickSignupButton(ev, ranked, place, 'hero-btn hero-quick')
           || `<button class="hero-btn" data-action="signup-event" data-id="${escapeHtml(ev.id)}">${place || cloud.viewer ? (tone === 'closed' ? '看名單' : '去報名') : '看報名名單'}</button>`}
     </div>
@@ -5389,7 +5503,7 @@ function renderSignupListModal() {
       <button data-action="signup-view" data-value="list" aria-pressed="${view === 'list'}">列表</button>
       <button data-action="signup-view" data-value="calendar" aria-pressed="${view === 'calendar'}">月曆</button>
     </div>
-    ${admin ? '<button class="btn-primary btn-block" data-action="event-new">＋ 開新場次</button>' : ''}
+    ${admin ? '<button class="btn-primary btn-block" data-action="event-new">＋ 開新場次</button>' : renderCalAllButton()}
     ${view === 'calendar' ? (signup.ready ? renderSignupCalendar() : '<p class="sub">讀取中…</p>') : `
     <div class="ev-cards">${body}</div>
     ${past.length ? `<h4 class="profile-h">已經過去的場次</h4><div class="ev-cards past">${past.map(renderEventCard).join('')}</div>` : ''}`}
@@ -5417,7 +5531,7 @@ function renderSignupMine(ev, ranked) {
       ${place.main ? '' : '<p class="ev-me-note">前面有人取消就會自動遞補，並通知你。</p>'}
       ${ui.calFor === ev.id ? renderCalPanel(ev) : ''}
       <div class="ev-me-btns">
-        ${ui.calFor === ev.id || !cal ? '' : `<a class="ev-me-btn" data-action="ext" href="${escapeHtml(cal)}" target="_blank" rel="noopener">加入行事曆</a>`}
+        ${ui.calFor === ev.id || !cal ? '' : `<a class="ev-me-btn" data-action="ext" href="${escapeHtml(cal)}" target="_blank" rel="noopener" data-cal-key="${escapeHtml(calKey(ev))}">加入行事曆</a>`}
         <button class="ev-me-btn ${armed ? 'armed' : 'cancel'}" data-action="signup-cancel" data-id="${escapeHtml(place.entry.id)}">
           ${armed ? '確定取消？' : '取消報名'}</button>
       </div>
@@ -12776,6 +12890,7 @@ function handleAction(el) {
       if (fold) fold.classList.toggle('open', ui.membersOpen);
       return;
     }
+    case 'cal-all': addAllToCalendar(); return;   // v19.18
     case 'set-remind-hours':
       setRemindHours(Number(el.dataset.value));
       return;
@@ -13259,6 +13374,8 @@ function handleAction(el) {
 }
 
 document.addEventListener('click', (event) => {
+  const calLink = event.target.closest('[data-cal-key]');   // v19.18 單場加過也記下來，一鍵加入不會重複
+  if (calLink) markCalAdded([calLink.dataset.calKey]);
   if (event.target.closest('[data-cal-done]')) {   // 已經去加 Google 日曆了，收起詢問
     setTimeout(() => { ui.calFor = null; renderModal(); }, 300);
     return;
