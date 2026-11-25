@@ -681,9 +681,21 @@
   .rank-value { text-align: right; font-weight: 700; font-size: 16px; }
   .rank-value small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
   .long-card { background: var(--surface); border-radius: var(--radius-l); padding: 14px; }
-  .day-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; margin-bottom: 4px; scrollbar-width: none; }
-  .day-chips::-webkit-scrollbar { display: none; }
-  .day-chips .chip { flex: 0 0 auto; padding: 6px 14px; font-size: 14px; }
+  /* v22.5 日期選擇：看起來像一張小卡，真正的下拉選單透明蓋在上面（手機會跳原生滾輪） */
+  .day-pick { position: relative; display: flex; align-items: center; gap: 12px; margin: 0 0 12px; padding: 10px 14px 10px 10px;
+    border-radius: 14px; background: var(--soft-green); color: var(--on-soft-green, var(--court-dark)); cursor: pointer;
+    transition: transform 0.15s ease; }
+  .day-pick:active { transform: scale(0.98); }
+  .day-pick-ico { width: 36px; height: 36px; border-radius: 10px; background: var(--court-dark); color: #fff;
+    display: inline-flex; align-items: center; justify-content: center; flex: 0 0 36px; }
+  .day-pick-ico svg { width: 18px; height: 18px; }
+  .day-pick-text { display: flex; flex-direction: column; line-height: 1.2; flex: 1; min-width: 0; }
+  .day-pick-text small { font-size: 12px; opacity: 0.7; }
+  .day-pick-text b { font-size: 17px; }
+  .day-pick-count { font-size: 12px; opacity: 0.7; }
+  .day-pick-chev { width: 20px; height: 20px; flex: 0 0 20px; }
+  .day-pick select { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; font-size: 16px; }
+  .day-pick:focus-within { outline: 2px solid var(--court-dark); outline-offset: 2px; }
   .long-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 17px; }
   .long-head .btn-ghost { padding: 4px 8px; font-size: 13px; }
   .long-places { margin: 10px 0 0; font-size: 13px; }
@@ -1707,7 +1719,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '22.3';
+const APP_VERSION = '22.5';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2547,7 +2559,6 @@ const SESSION_BEFORE_CLOUD_KEY = 'badminton-session-before-cloud';   // 被雲�
 // 觀看者可以用的操作：只看、切換分頁、調整自己手機的外觀與語音
 const VIEWER_ACTIONS = new Set([
   'inbox-open', 'inbox-go',   // v22.0 通知中心
-  'my-day',   // v22.3 我的戰績選日期
   'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
   'title-open', 'title-pop-close', 'player-open', 'roster-sort', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
@@ -3886,6 +3897,15 @@ function renderRankPrivacy(name) {
       <input type="checkbox" data-rank-privacy="win" ${winRankHidden(name) ? '' : 'checked'}>
     </label>`;
 }
+
+// v22.4 我的戰績選日期（下拉選單）
+document.addEventListener('change', (e) => {
+  const sel = e.target && e.target.closest && e.target.closest('select[data-my-day]');
+  if (!sel) return;
+  ui.myDay = sel.value;
+  pastDayLoad.error = '';
+  renderModal();
+});
 
 // 用 change 事件（不用 data-action：觀看者畫面會把不在白名單的 data-action 藏起來）
 document.addEventListener('change', (e) => {
@@ -7050,7 +7070,7 @@ function myDayOptions(name) {
       const d = new Date(s.date || 0);
       // 今天的球局已經存入長期紀錄：用「今天」那一格就好，不重複
       if (out.length && out[0].id === 'today' && localDateKey(s.date) === todayKey) return;
-      out.push({ id: s.sessionId, label: `${d.getMonth() + 1}/${d.getDate()}` });
+      out.push({ id: s.sessionId, label: `${d.getMonth() + 1}/${d.getDate()}（${'日一二三四五六'[d.getDay()]}）` });
     });
   return out;
 }
@@ -7072,9 +7092,16 @@ async function loadPastDay(id) {
 
 /** 單日那一頁：上面一排日期，下面是那一天的戰績 */
 function renderMyDayBody(name, options, dayId) {
+  // v22.4 改成下拉選單（日期多了也不會擠）
   const chips = options.length > 1 || (options[0] && options[0].id !== 'today')
-    ? `<div class="day-chips" role="group" aria-label="選日期">${options.map((o) => `
-        <button class="chip ${o.id === dayId ? 'on' : ''}" data-action="my-day" data-value="${escapeHtml(o.id)}" aria-pressed="${o.id === dayId}">${o.label}</button>`).join('')}</div>`
+    ? `<label class="day-pick">
+        <span class="day-pick-ico" aria-hidden="true">${icon('calendar')}</span>
+        <span class="day-pick-text"><small>日期</small><b>${escapeHtml((options.find((o) => o.id === dayId) || options[0]).label)}</b></span>
+        <span class="day-pick-count">${options.length} 天</span>
+        <svg class="day-pick-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        <select data-my-day aria-label="選日期">${options.map((o) => `
+          <option value="${escapeHtml(o.id)}" ${o.id === dayId ? 'selected' : ''}>${o.label}</option>`).join('')}</select>
+      </label>`
     : '';
   if (!dayId || dayId === 'today') return chips + renderTodayProfileBody(name);
   const day = past.cache[dayId];
@@ -13161,7 +13188,7 @@ function handleAction(el) {
       break;
     case 'profile-view': ui.profileView = el.dataset.value; sessionChanged = false; modalOnly = true; break;
     case 'my-view': ui.myView = el.dataset.value; sessionChanged = false; modalOnly = true; break;
-    case 'my-day': ui.myDay = el.dataset.value; pastDayLoad.error = ''; sessionChanged = false; modalOnly = true; break;   // v22.3
+
     case 'network-mode': ui.networkMode = el.dataset.value; sessionChanged = false; if (ui.pastId) modalOnly = true; break;
     case 'network-focus':
       ui.networkFocus = ui.networkFocus === el.dataset.name ? null : el.dataset.name;
