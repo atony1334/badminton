@@ -633,9 +633,13 @@
   .member-btns button, .member-row > .btn-ghost { padding: 6px 10px; font-size: 13px; }
   .rank-note { margin: 6px 0 8px; font-size: 13px; }
   .rank-top-seg { width: 100%; margin: 4px 0 14px; }
-  .cal-all { margin: 0 0 10px; }
-  .cal-all-done { display: flex; align-items: center; gap: 6px; margin: 0 0 10px; font-size: 13px; }
-  .cal-all-done svg { width: 16px; height: 16px; }
+  .rank-priv-row { display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-top: 1px solid var(--border); }
+  .rank-priv-row:first-of-type { border-top: 0; }
+  .cal-sub { margin: 0 0 12px; padding: 12px 14px; border-radius: var(--radius-card, 16px); background: var(--surface); border: 1px solid var(--border); }
+  .cal-sub-h { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+  .cal-sub-h svg { width: 18px; height: 18px; }
+  .cal-sub-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .cal-sub-btns a { text-align: center; justify-content: center; }
   .rank-top-seg button { flex: 1; }
   .rank-list { list-style: none; margin: 0; padding: 0; background: var(--surface); border-radius: var(--radius-l); overflow: hidden; }
   .rank-list li + li { border-top: 1px solid var(--floor); }
@@ -1682,7 +1686,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '19.18';
+const APP_VERSION = '21.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2527,7 +2531,7 @@ const VIEWER_ACTIONS = new Set([
   'quick-signup', 'pf-goto-account', 'ui-theme', 'ui-theme-follow', 'ui-theme-save', 'ui-theme-del',
   'wish-submit', 'wish-like', 'wish-anon', 'wish-sort', 'wish-delete',
   'wish-reply-open', 'cmt-anon', 'cmt-submit', 'cmt-delete',
-  'rank-board', 'ranks-view', 'rank-open', 'cal-all', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
+  'rank-board', 'ranks-view', 'rank-open', 'me-set', 'me-clear', 'profile-view', 'my-view', 'past-open', 'past-back',
   'invite-copy-code', 'invite-copy', 'invite-share', 'cloud-invite', 'manage-team', 'install-go', 'install-close', 'google-login', 'google-logout', 'google-logout-confirm', 'claim-submit', 'claim-cancel', 'push-on', 'push-off', 'turn-dismiss',
   'signup-event', 'signup-back', 'signup-submit', 'signup-cancel', 'guest-submit', 'map-toggle', 'cal-close',
   'signup-view', 'signup-month', 'signup-day', 'pf-set', 'grade-pick', 'pf-edit', 'avatar-remove', 'crop-save', 'crop-cancel',
@@ -2758,6 +2762,7 @@ async function attachTeam(id, data) {
   cloud.teamId = id;
   cloud.teamName = (data && data.name) || '';
   cloud.remindHours = teamRemindHours(data);
+  cloud.wishLastAt = stampMillis(data && data.wishLastAt);
   setTeamTheme(data && data.theme);
   cloud.shortCode = data && SHORT_CODE_RE.test(data.shortCode || '') ? data.shortCode : null;
   cloud.ownerUid = (data && data.adminUid) || null;
@@ -2787,6 +2792,7 @@ async function attachTeam(id, data) {
   }
   cloud.phase = 'ready';
   render();
+  openFromNotification();   // v20.0 點許願池通知進來：直接打開許願池
   scheduleCloudUpload(true);
   backfillSessionStats();
   ensureShortCode();   // v13.0：還沒有短代碼就建一組
@@ -2834,6 +2840,7 @@ function watchAdminSync() {
     }
     cloud.teamName = d.name || '';
     cloud.remindHours = teamRemindHours(d);
+    cloud.wishLastAt = stampMillis(d.wishLastAt);   // v20.0 雲端程式在有新願望／留言時更新
     if (!uiThemePreview && JSON.stringify(validTheme(d.theme) ? d.theme : null) !== JSON.stringify(cloud.teamTheme || null)) {
       setTeamTheme(d.theme);
     }
@@ -3451,6 +3458,13 @@ function renderCloudSettings() {
         ${REMIND_HOUR_OPTIONS.map((h) => `<button data-action="set-remind-hours" data-value="${h}" aria-pressed="${cloud.remindHours === h}">${h ? `${h}h` : '關'}</button>`).join('')}
       </div>
     </div>
+    <div class="row" style="margin-top:8px">
+      <span class="label">許願池通知</span>
+      <div class="seg" role="group" aria-label="有新願望、新留言時通知這支手機">
+        <button data-action="admin-wish-push" data-value="1" aria-pressed="${adminWishPushOn()}" ${pushState.busy ? 'disabled' : ''}>開</button>
+        <button data-action="admin-wish-push" data-value="0" aria-pressed="${!adminWishPushOn()}" ${pushState.busy ? 'disabled' : ''}>關</button>
+      </div>
+    </div>
     </div>
     <div class="mg-sec">
     <h5 class="mg-h">球友帳號</h5>
@@ -3842,6 +3856,34 @@ function renderHomeAccount() {
   </div>`;
 }
 
+/** v21.1 我的帳號：長期排行榜要不要列入我（每個榜獨立開關） */
+function renderRankPrivacy(name) {
+  const pf = profiles.map[name] || {};
+  const hidden = Array.isArray(pf.rankHide) ? pf.rankHide : [];
+  return `<h5 class="member-h" style="margin-top:0">列入長期排行榜</h5>
+    ${Object.entries(RANK_HIDE_LABELS).map(([key, label]) => `
+      <label class="rank-priv-row">
+        <span>${label}</span>
+        <input type="checkbox" data-rank-privacy="${key}" ${hidden.includes(key) ? '' : 'checked'}>
+      </label>`).join('')}`;
+}
+
+// 用 change 事件（不用 data-action：觀看者畫面會把不在白名單的 data-action 藏起來）
+document.addEventListener('change', (e) => {
+  const box = e.target && e.target.closest && e.target.closest('[data-rank-privacy]');
+  if (box) toggleRankPrivacy(box.dataset.rankPrivacy, box.checked);
+});
+
+async function toggleRankPrivacy(board, include) {
+  const name = cloud.claim && cloud.claim.status === 'approved' ? cloud.claim.name : null;
+  if (!name || !RANK_HIDE_LABELS[board]) return;
+  const pf = profiles.map[name] || {};
+  const set = new Set(Array.isArray(pf.rankHide) ? pf.rankHide : []);
+  if (include) set.delete(board); else set.add(board);
+  await saveProfile(name, { rankHide: Object.keys(RANK_HIDE_LABELS).filter((k) => set.has(k)) }, { skipAccount: true });
+  showToast(include ? `會列入${RANK_HIDE_LABELS[board]}榜` : `不列入${RANK_HIDE_LABELS[board]}榜`);
+}
+
 function renderAccountCard(all) {
   if (!cloud.viewer && googleUser()) return renderHomeAccount();
   if (!cloud.viewer || !cloud.auth) return '';
@@ -3905,6 +3947,7 @@ function renderAccountCard(all) {
         ${pf.gender ? '' : '<p class="acct-desc sub">性別也還沒填。</p>'}
       </div>` : ''}
     ${approved ? `<div class="acct-card acct-push">${renderPushControl()}</div>` : ''}
+    ${approved ? `<div class="acct-card acct-pad">${renderRankPrivacy(me)}</div>` : ''}
     <div class="acct-card acct-list">
       <button class="acct-row" data-action="claim-cancel">${approved ? '解除認領' : '取消認領'}<span aria-hidden="true">›</span></button>
       <button class="acct-row danger-text" data-action="google-logout">登出</button>
@@ -4008,7 +4051,8 @@ function profileFields(pf) {
 async function writeMyProfile(pf) {
   if (!googleUser()) return;
   const { doc, setDoc, serverTimestamp } = cloud.fb;
-  await setDoc(doc(cloud.db, 'users', cloud.user.uid), Object.assign(profileFields(pf), { updatedAt: serverTimestamp() }));
+  const keep = myProfile.data && myProfile.data.calToken ? { calToken: myProfile.data.calToken } : {};   // v21.0 別把訂閱行事曆的金鑰洗掉
+  await setDoc(doc(cloud.db, 'users', cloud.user.uid), Object.assign(profileFields(pf), keep, { updatedAt: serverTimestamp() }));
 }
 
 /** 打開球團時：帳號有填的欄位蓋過球團裡的；帳號還是空的，就先用球團裡的當帳號資料 */
@@ -4109,6 +4153,7 @@ async function saveProfile(name, patch, opts = {}) {
       grade: Number(next.grade) || 0,
       level: Number(next.grade) ? 0 : Number(next.level) || 0,   // 選了新級數就不再留舊的四段
       ...(next.avatar ? { avatar: next.avatar } : {}),           // v13.1 頭貼（只有本人能改，規則會擋管理者）
+      ...(Array.isArray(next.rankHide) && next.rankHide.length ? { rankHide: next.rankHide } : {}),   // v21.1 不列入的排行榜（只有本人能改）
       updatedAt: serverTimestamp(),
       by: cloud.user ? cloud.user.uid : '',
     });
@@ -5024,125 +5069,62 @@ function renderCalPanel(ev) {
         <span><b>報名成功！</b>要加入 Google 日曆嗎？</span>
         <button class="icon-btn" data-action="cal-close" aria-label="不用了">✕</button>
       </div>
-      <a class="btn-primary cal-link" href="${escapeHtml(google)}" target="_blank" rel="noopener" data-cal-done="1" data-cal-key="${escapeHtml(calKey(ev))}">${icon('calendar')}加入 Google 日曆</a>
+      <a class="btn-primary cal-link" href="${escapeHtml(google)}" target="_blank" rel="noopener" data-cal-done="1">${icon('calendar')}加入 Google 日曆</a>
     </div>`;
 }
 
 function renderCalButton(ev, label = '加入行事曆') {
   const google = googleCalUrl(ev);
-  return google ? `<a class="btn-outline" href="${escapeHtml(google)}" target="_blank" rel="noopener" data-cal-key="${escapeHtml(calKey(ev))}">${icon('calendar')}${label}</a>` : '';
+  return google ? `<a class="btn-outline" href="${escapeHtml(google)}" target="_blank" rel="noopener">${icon('calendar')}${label}</a>` : '';
 }
 
-/* ---------- v19.18 一鍵加入行事曆（.ics） ----------
- * Google 日曆的網址一次只能加一場，所以改下載 .ics：iPhone 會跳「加入全部」。
- * 避免重複：這支手機記下加過的場次（badminton-cal-added），一鍵加入只放還沒加過的；
- * 單場「加入行事曆」按過也算。場次改了日期或開始時間會當成新的（舊的那筆要自己刪）。
- * 每筆都有固定 UID，行事曆 App 認得是同一場時會更新而不是新增。 */
-const CAL_ADDED_KEY = 'badminton-cal-added';
-const CAL_ADDED_KEEP_MS = 120 * 86400000;   // 記錄留 120 天就清掉
+/* ---------- v21.0 訂閱我的羽球行事曆（不用下載） ----------
+ * 雲端程式 calendarFeed 依網址產生「我報名的場次」行事曆（.ics 內容，正取／候補寫在標題），
+ * iPhone 用 webcal:// 訂閱、Google 日曆用 ?cid= 加入；之後報名、取消、改時間都自動同步，不會重複。
+ * 網址帶金鑰 users/{uid}.calToken（隨機 24 字，本人才能讀寫），別人猜不到你的網址。 */
+const CAL_FEED_HOST = 'asia-east1-badmintonfriend-f8e4d.cloudfunctions.net/calendarFeed';
+const calFeed = { busy: false };
 
-function calKey(ev) {
-  return `${currentTeamId() || ''}|${ev.id}|${ev.date || ''}|${ev.start || ''}`;
+function calFeedPath() {
+  const token = myProfile.data && myProfile.data.calToken;
+  const team = currentTeamId();
+  if (!token || !team || !cloud.user) return '';
+  return `${CAL_FEED_HOST}?t=${encodeURIComponent(team)}&u=${encodeURIComponent(cloud.user.uid)}&k=${encodeURIComponent(token)}`;
 }
 
-function readCalAdded() {
-  const map = storageGet(CAL_ADDED_KEY);
-  return map && typeof map === 'object' ? map : {};
-}
-
-function markCalAdded(keys) {
-  const now = Date.now();
-  const map = readCalAdded();
-  Object.keys(map).forEach((k) => { if (now - map[k] > CAL_ADDED_KEEP_MS) delete map[k]; });
-  keys.forEach((k) => { map[k] = now; });
-  storageSet(CAL_ADDED_KEY, map);
-}
-
-/** 我報名（正取或候補）、還沒開打的場次 */
-function mySignedEvents() {
-  if (!cloud.viewer || !cloud.user || !signup.ready) return [];
-  return upcomingEvents().filter((ev) => signup.lists[ev.id] && myPlace(ev));
-}
-
-function calPendingEvents() {
-  const added = readCalAdded();
-  return mySignedEvents().filter((ev) => !added[calKey(ev)] && eventTimes(ev));
-}
-
-/** iCalendar 文字：逗號、分號、反斜線、換行要跳脫；每行超過 75 bytes 要折行 */
-function icsText(v) {
-  return String(v || '').replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/,/g, '\\,').replace(/\r?\n/g, '\\n');
-}
-
-function icsFold(line) {
-  const bytes = new TextEncoder();
-  if (bytes.encode(line).length <= 75) return line;
-  const out = [];
-  let cur = '';
-  Array.from(line).forEach((ch) => {
-    if (bytes.encode(cur + ch).length > (out.length ? 74 : 75)) { out.push(cur); cur = ''; }
-    cur += ch;
-  });
-  out.push(cur);
-  return out.join('\r\n ');
-}
-
-function buildIcs(events) {
-  const stamp = calUtcStamp(Date.now());
-  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//badminton-rotation//zh-TW', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
-  events.forEach((ev) => {
-    const t = eventTimes(ev);
-    lines.push('BEGIN:VEVENT',
-      `UID:${currentTeamId() || 'local'}-${ev.id}@badminton-rotation`,
-      `DTSTAMP:${stamp}`,
-      ...(t.allDay
-        ? [`DTSTART;VALUE=DATE:${calDayStamp(t.y, t.m, t.d)}`, `DTEND;VALUE=DATE:${calDayStamp(t.y, t.m, t.d + 1)}`]
-        : [`DTSTART:${calUtcStamp(t.start)}`, `DTEND:${calUtcStamp(t.end)}`]),
-      `SUMMARY:${icsText(calTitle(ev))}`,
-      calLocation(ev) ? `LOCATION:${icsText(calLocation(ev))}` : '',
-      `DESCRIPTION:${icsText(calDetails(ev))}`,
-      'END:VEVENT');
-  });
-  lines.push('END:VCALENDAR');
-  return lines.filter(Boolean).map(icsFold).join('\r\n');
-}
-
-function addAllToCalendar() {
-  const events = calPendingEvents();
-  if (!events.length) { showToast('報名的場次都已經加過了'); return; }
-  const ics = buildIcs(events);
-  const ios = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+async function ensureCalToken() {
+  if (calFeed.busy || !googleUser() || !myProfile.loaded || (myProfile.data && myProfile.data.calToken)) return;
+  calFeed.busy = true;
   try {
-    if (ios) {
-      // iPhone：直接打開 .ics，Safari 會顯示行事曆預覽和「加入全部」
-      window.location.href = `data:text/calendar;charset=utf-8,${encodeURIComponent(ics)}`;
-    } else {
-      const url = URL.createObjectURL(new Blob([ics], { type: 'text/calendar;charset=utf-8' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `羽球場次-${localDateKey()}.ics`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-    }
+    const bytes = crypto.getRandomValues(new Uint8Array(18));
+    const token = Array.from(bytes, (b) => 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789'[b % 56]).join('');
+    const { doc, setDoc, serverTimestamp } = cloud.fb;
+    await setDoc(doc(cloud.db, 'users', cloud.user.uid), { calToken: token, updatedAt: serverTimestamp() }, { merge: true });
   } catch (err) {
-    showToast('無法打開行事曆檔');
-    return;
+    console.warn('建立行事曆金鑰失敗:', err);
+  } finally {
+    calFeed.busy = false;
   }
-  markCalAdded(events.map(calKey));
-  showToast(`已送出 ${events.length} 場到行事曆`);
-  render();
 }
 
-function renderCalAllButton() {
-  const mine = mySignedEvents();
-  if (!mine.length) return '';
-  const pending = calPendingEvents();
-  return pending.length
-    ? `<button class="btn-outline btn-block cal-all" data-action="cal-all">${icon('calendar')}報名的場次加入行事曆・${pending.length} 場</button>`
-    : `<p class="sub cal-all-done">${icon('calendar')}報名的場次都已加入行事曆</p>`;
+function renderCalSubscribe() {
+  if (!cloud.viewer || !googleUser()) return '';
+  const path = calFeedPath();
+  if (!path) {
+    ensureCalToken();   // 快照回來會重畫
+    return '';
+  }
+  const webcal = `webcal://${path}`;
+  const google = `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcal)}`;
+  return `<div class="cal-sub">
+      <span class="cal-sub-h">${icon('calendar')}<b>訂閱我的羽球行事曆</b></span>
+      <div class="cal-sub-btns">
+        <a class="btn-outline" data-action="ext" href="${escapeHtml(webcal)}">iPhone 行事曆</a>
+        <a class="btn-outline" data-action="ext" href="${escapeHtml(google)}" target="_blank" rel="noopener">Google 日曆</a>
+      </div>
+    </div>`;
 }
+
 
 /* ---------- 月曆 ---------- */
 const WEEKDAYS = '日一二三四五六';
@@ -5468,7 +5450,7 @@ function renderEventHero(ev) {
     </button>
     <div class="hero-acts">
       ${open ? `<a class="hero-btn" data-action="ext" href="${escapeHtml(open)}" target="_blank" rel="noopener">導航</a>` : ''}
-      ${cal ? `<a class="hero-btn" data-action="ext" href="${escapeHtml(cal)}" target="_blank" rel="noopener" data-cal-key="${escapeHtml(calKey(ev))}">加入行事曆</a>`
+      ${cal ? `<a class="hero-btn" data-action="ext" href="${escapeHtml(cal)}" target="_blank" rel="noopener">加入行事曆</a>`
         : quickSignupButton(ev, ranked, place, 'hero-btn hero-quick')
           || `<button class="hero-btn" data-action="signup-event" data-id="${escapeHtml(ev.id)}">${place || cloud.viewer ? (tone === 'closed' ? '看名單' : '去報名') : '看報名名單'}</button>`}
     </div>
@@ -5503,7 +5485,7 @@ function renderSignupListModal() {
       <button data-action="signup-view" data-value="list" aria-pressed="${view === 'list'}">列表</button>
       <button data-action="signup-view" data-value="calendar" aria-pressed="${view === 'calendar'}">月曆</button>
     </div>
-    ${admin ? '<button class="btn-primary btn-block" data-action="event-new">＋ 開新場次</button>' : renderCalAllButton()}
+    ${admin ? '<button class="btn-primary btn-block" data-action="event-new">＋ 開新場次</button>' : renderCalSubscribe()}
     ${view === 'calendar' ? (signup.ready ? renderSignupCalendar() : '<p class="sub">讀取中…</p>') : `
     <div class="ev-cards">${body}</div>
     ${past.length ? `<h4 class="profile-h">已經過去的場次</h4><div class="ev-cards past">${past.map(renderEventCard).join('')}</div>` : ''}`}
@@ -5531,7 +5513,7 @@ function renderSignupMine(ev, ranked) {
       ${place.main ? '' : '<p class="ev-me-note">前面有人取消就會自動遞補，並通知你。</p>'}
       ${ui.calFor === ev.id ? renderCalPanel(ev) : ''}
       <div class="ev-me-btns">
-        ${ui.calFor === ev.id || !cal ? '' : `<a class="ev-me-btn" data-action="ext" href="${escapeHtml(cal)}" target="_blank" rel="noopener" data-cal-key="${escapeHtml(calKey(ev))}">加入行事曆</a>`}
+        ${ui.calFor === ev.id || !cal ? '' : `<a class="ev-me-btn" data-action="ext" href="${escapeHtml(cal)}" target="_blank" rel="noopener">加入行事曆</a>`}
         <button class="ev-me-btn ${armed ? 'armed' : 'cancel'}" data-action="signup-cancel" data-id="${escapeHtml(place.entry.id)}">
           ${armed ? '確定取消？' : '取消報名'}</button>
       </div>
@@ -6244,7 +6226,7 @@ function renderDrawer() {
         item('voice', 'speaker', '語音唸名'),
         item('look', 'palette', '畫面'),
       ],
-      cloudReady() ? [item('signup', 'calendar', '報名場次', badge(openSignupCount())), item('wish', 'wish', '許願池')] : [],
+      cloudReady() ? [item('signup', 'calendar', '報名場次', badge(openSignupCount())), item('wish', 'wish', '許願池', wishUnseen() ? '<span class="d-badge">新</span>' : '')] : [],
       [item('ranks', 'trophy', '長期排行榜・戰績'), item('past', 'box', '歷史球局')],
       [
         state.players.length && !state.dayEnded ? item('end-day', 'flag', '結束今日打球') : '',
@@ -6850,9 +6832,18 @@ function aggregateRanks() {
   return Object.values(totals);
 }
 
+/* v21.1 球友自己選哪些排行榜不要列入（許願池）：profiles.rankHide = ['rate', 'wins', ...]
+ * 個人戰績照常顯示，只是不出現在那個榜上（其他人名次往前補）。 */
+const RANK_HIDE_LABELS = { rate: '勝率', wins: '勝場', games: '場數', days: '出席' };
+
+function rankHiddenFor(name, board) {
+  const pf = profiles.map[name];
+  return Boolean(pf && Array.isArray(pf.rankHide) && pf.rankHide.includes(board));
+}
+
 function boardRows(all, board) {
   const rate = (p) => (p.rec ? p.w / p.rec : 0);
-  const rows = all.filter(board === 'rate' ? rankRateEligible : rankEligible);
+  const rows = all.filter(board === 'rate' ? rankRateEligible : rankEligible).filter((p) => !rankHiddenFor(p.n, board));
   const key = {
     rate: (a, b) => rate(b) - rate(a) || b.w - a.w,
     wins: (a, b) => b.w - a.w || rate(b) - rate(a),
@@ -6965,6 +6956,7 @@ function renderRankBoardPane(all, board, fullRows, sessions, list) {
 function renderLongProfile(p, all, compact) {
   const rateText = p.rec ? `${Math.round((p.w / p.rec) * 100)}%` : '—';
   const place = (board) => {
+    if (rankHiddenFor(p.n, board)) return '不列入';   // v21.1 本人選擇不列入這個榜
     const row = boardRows(all, board).find((r) => r.n === p.n);
     if (!row) return '未上榜';
     // 球友看別人：前 RANK_TOP_SHOWN 名以外不顯示名次（自己的名次照常看得到）
@@ -9847,7 +9839,7 @@ function renderTabBody() {
 
 function menuButton() {
   return `<button class="menu-btn" data-action="drawer-open" aria-label="打開選單">${icon('menu')}
-    ${!cloud.viewer && pendingMembers().length ? '<span class="menu-dot" aria-hidden="true"></span>' : ''}</button>`;
+    ${!cloud.viewer && (pendingMembers().length || wishUnseen()) ? '<span class="menu-dot" aria-hidden="true"></span>' : ''}</button>`;
 }
 
 function renderMain() {
@@ -10340,7 +10332,95 @@ function wishRef(id) {
   return cloud.fb.doc(cloud.db, 'teams', signupTeamId(), 'wishes', id);
 }
 
+/* ---------- v20.0 許願池通知管理者 ----------
+ * 雲端程式（notifyWishCreated／notifyWishComment）在有人許願、留言時：
+ *   1. 推播給開了「許願池通知」的管理者手機（teams/{id}/adminDevices/{uid}.fcmTokens）
+ *   2. 更新球團文件 wishLastAt → 管理者選單的「許願池」和左上選單鈕出現紅點
+ * 管理者打開許願池就記下「看過了」（這支手機，badminton-wish-seen）。 */
+const WISH_SEEN_KEY = 'badminton-wish-seen';
+const ADMIN_WISH_PUSH_KEY = 'badminton-admin-wish-push';   // 這支手機有沒有開（存球團 id）
+
+function stampMillis(v) {
+  if (!v) return 0;
+  if (typeof v === 'number') return v;
+  if (typeof v.toMillis === 'function') return v.toMillis();
+  return typeof v.seconds === 'number' ? v.seconds * 1000 : 0;
+}
+
+function wishUnseen() {
+  if (cloud.viewer || !cloudReady() || !cloud.wishLastAt) return false;
+  const seen = (storageGet(WISH_SEEN_KEY) || {})[cloud.teamId] || 0;
+  return cloud.wishLastAt > seen;
+}
+
+function markWishesSeen() {
+  if (cloud.viewer || !cloud.teamId) return;
+  const map = storageGet(WISH_SEEN_KEY) || {};
+  map[cloud.teamId] = Math.max(Date.now(), cloud.wishLastAt || 0);
+  storageSet(WISH_SEEN_KEY, map);
+}
+
+function adminWishPushOn() {
+  return storageGet(ADMIN_WISH_PUSH_KEY) === cloud.teamId;
+}
+
+function adminDeviceRef() {
+  return cloud.fb.doc(cloud.db, 'teams', cloud.teamId, 'adminDevices', cloud.user.uid);
+}
+
+async function setAdminWishPush(on) {
+  if (!cloudReady() || !cloud.user) return;
+  const { setDoc, updateDoc, arrayUnion, arrayRemove, serverTimestamp } = cloud.fb;
+  if (!on) {
+    const token = storageGet(PUSH_TOKEN_KEY);
+    storageSet(ADMIN_WISH_PUSH_KEY, null);
+    render();
+    if (token) await updateDoc(adminDeviceRef(), { fcmTokens: arrayRemove(token), updatedAt: serverTimestamp() }).catch(() => {});
+    showToast('這支手機不再收到許願池通知');
+    return;
+  }
+  const env = pushEnvironment();
+  if (env !== 'ok') {
+    showToast({
+      inapp: '請先按右上角「⋯」選「用瀏覽器開啟」',
+      'ios-browser': 'iPhone 要先「加入主畫面」，從主畫面打開後才能開啟通知',
+      unsupported: '這個瀏覽器不支援推播通知',
+    }[env]);
+    return;
+  }
+  pushState.busy = true;
+  render();
+  try {
+    const permission = await Notification.requestPermission();   // 一定要在按下的當下詢問（iPhone 規定）
+    if (permission !== 'granted') { showToast('通知被拒絕了，要到手機設定裡允許這個網站的通知'); return; }
+    const token = await obtainPushToken();
+    await setDoc(adminDeviceRef(), { fcmTokens: arrayUnion(token), updatedAt: serverTimestamp() }, { merge: true });
+    storageSet(PUSH_TOKEN_KEY, token);
+    storageSet(ADMIN_WISH_PUSH_KEY, cloud.teamId);
+    showToast('有新願望、新留言會通知這支手機');
+  } catch (err) {
+    console.warn('開啟許願池通知失敗:', err);
+    showToast(`開啟通知失敗（${(err && (err.code || err.message)) || '未知'}）`);
+  } finally {
+    pushState.busy = false;
+    render();
+  }
+}
+
+/** 網址帶 ?open=wishes（許願池通知）：管理者就緒後打開許願池，並把參數拿掉 */
+function openFromNotification() {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('open') !== 'wishes') return;
+  params.delete('open');
+  const qs = params.toString();
+  history.replaceState(null, '', `${window.location.pathname}${qs ? `?${qs}` : ''}`);
+  if (wishRole() !== 'admin') return;
+  openWishes();
+  render();
+}
+
 function openWishes() {
+  markWishesSeen();   // v20.0 清掉紅點
   ui.wishOpen = true;
   ui.wishArmed = null;
   ui.wishEdit = null;
@@ -12890,7 +12970,7 @@ function handleAction(el) {
       if (fold) fold.classList.toggle('open', ui.membersOpen);
       return;
     }
-    case 'cal-all': addAllToCalendar(); return;   // v19.18
+    case 'admin-wish-push': setAdminWishPush(el.dataset.value === '1'); return;   // v20.0
     case 'set-remind-hours':
       setRemindHours(Number(el.dataset.value));
       return;
@@ -13374,8 +13454,6 @@ function handleAction(el) {
 }
 
 document.addEventListener('click', (event) => {
-  const calLink = event.target.closest('[data-cal-key]');   // v19.18 單場加過也記下來，一鍵加入不會重複
-  if (calLink) markCalAdded([calLink.dataset.calKey]);
   if (event.target.closest('[data-cal-done]')) {   // 已經去加 Google 日曆了，收起詢問
     setTimeout(() => { ui.calFor = null; renderModal(); }, 300);
     return;
