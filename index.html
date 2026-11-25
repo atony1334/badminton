@@ -681,6 +681,9 @@
   .rank-value { text-align: right; font-weight: 700; font-size: 16px; }
   .rank-value small { display: block; font-size: 12px; font-weight: 400; color: var(--muted); }
   .long-card { background: var(--surface); border-radius: var(--radius-l); padding: 14px; }
+  .day-chips { display: flex; gap: 6px; overflow-x: auto; padding: 2px 0 10px; margin-bottom: 4px; scrollbar-width: none; }
+  .day-chips::-webkit-scrollbar { display: none; }
+  .day-chips .chip { flex: 0 0 auto; padding: 6px 14px; font-size: 14px; }
   .long-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 17px; }
   .long-head .btn-ghost { padding: 4px 8px; font-size: 13px; }
   .long-places { margin: 10px 0 0; font-size: 13px; }
@@ -1704,7 +1707,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '22.1';
+const APP_VERSION = '22.3';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2544,6 +2547,7 @@ const SESSION_BEFORE_CLOUD_KEY = 'badminton-session-before-cloud';   // 被雲�
 // 觀看者可以用的操作：只看、切換分頁、調整自己手機的外觀與語音
 const VIEWER_ACTIONS = new Set([
   'inbox-open', 'inbox-go',   // v22.0 通知中心
+  'my-day',   // v22.3 我的戰績選日期
   'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
   'title-open', 'title-pop-close', 'player-open', 'roster-sort', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
@@ -3877,14 +3881,10 @@ function renderHomeAccount() {
 
 /** v21.1 我的帳號：長期排行榜要不要列入我（每個榜獨立開關） */
 function renderRankPrivacy(name) {
-  const pf = profiles.map[name] || {};
-  const hidden = Array.isArray(pf.rankHide) ? pf.rankHide : [];
-  return `<h5 class="member-h" style="margin-top:0">列入長期排行榜</h5>
-    ${Object.entries(RANK_HIDE_LABELS).map(([key, label]) => `
-      <label class="rank-priv-row">
-        <span>${label}</span>
-        <input type="checkbox" data-rank-privacy="${key}" ${hidden.includes(key) ? '' : 'checked'}>
-      </label>`).join('')}`;
+  return `<label class="rank-priv-row">
+      <span><b>列入勝負排名</b><small class="sub" style="display:block">長期勝率榜、勝場榜和今日戰績</small></span>
+      <input type="checkbox" data-rank-privacy="win" ${winRankHidden(name) ? '' : 'checked'}>
+    </label>`;
 }
 
 // 用 change 事件（不用 data-action：觀看者畫面會把不在白名單的 data-action 藏起來）
@@ -3895,12 +3895,9 @@ document.addEventListener('change', (e) => {
 
 async function toggleRankPrivacy(board, include) {
   const name = cloud.claim && cloud.claim.status === 'approved' ? cloud.claim.name : null;
-  if (!name || !RANK_HIDE_LABELS[board]) return;
-  const pf = profiles.map[name] || {};
-  const set = new Set(Array.isArray(pf.rankHide) ? pf.rankHide : []);
-  if (include) set.delete(board); else set.add(board);
-  await saveProfile(name, { rankHide: Object.keys(RANK_HIDE_LABELS).filter((k) => set.has(k)) }, { skipAccount: true });
-  showToast(include ? `會列入${RANK_HIDE_LABELS[board]}榜` : `不列入${RANK_HIDE_LABELS[board]}榜`);
+  if (!name) return;
+  await saveProfile(name, { rankHide: include ? [] : ['rate', 'wins'] }, { skipAccount: true });
+  showToast(include ? '會列入勝負排名' : '不列入勝負排名，場數照常顯示');
 }
 
 function renderAccountCard(all) {
@@ -6853,11 +6850,16 @@ function aggregateRanks() {
 
 /* v21.1 球友自己選哪些排行榜不要列入（許願池）：profiles.rankHide = ['rate', 'wins', ...]
  * 個人戰績照常顯示，只是不出現在那個榜上（其他人名次往前補）。 */
-const RANK_HIDE_LABELS = { rate: '勝率', wins: '勝場', games: '場數', days: '出席' };
+
+// v22.2 簡化成一個開關「列入勝負排名」：關掉＝長期的勝率榜、勝場榜，和當天的今日戰績都不排名；
+// 場數、出席一律照常列入（想看到總場數）。舊資料 rankHide 只要有 rate 或 wins 就算關掉。
+function winRankHidden(name) {
+  const pf = profiles.map[name];
+  return Boolean(pf && Array.isArray(pf.rankHide) && (pf.rankHide.includes('rate') || pf.rankHide.includes('wins')));
+}
 
 function rankHiddenFor(name, board) {
-  const pf = profiles.map[name];
-  return Boolean(pf && Array.isArray(pf.rankHide) && pf.rankHide.includes(board));
+  return (board === 'rate' || board === 'wins') && winRankHidden(name);
 }
 
 function boardRows(all, board) {
@@ -7031,14 +7033,76 @@ function renderProfileStack(name, view) {
   return `<div class="profile-stack">${pane('today', renderTodayProfileBody(name))}${pane('long', renderLongProfileBody(name))}</div>`;
 }
 
+/* v22.3 我的戰績「單日」可以選日期：今天（有打的話）＋存入長期紀錄、我有出場的那幾天 */
+const pastDayLoad = { loading: null, error: '' };
+let profileDayPast = false;   // 正在畫以前某一天的戰績：不顯示「等待中・體力」，稱號標題改「當天稱號」
+
+function myDayOptions(name) {
+  const played = (h) => h.teamA.includes(name) || h.teamB.includes(name);
+  const out = [];
+  const todayKey = localDateKey();
+  const today = !state.dayEndedAt || localDateKey(state.dayEndedAt) === todayKey;
+  if (state.history.some(played) && (today || !state.archived)) out.push({ id: 'today', label: '今天' });
+  ranks.list
+    .filter((s) => s.players && s.players.some((p) => p.n === name))
+    .sort((a, b) => (b.date || 0) - (a.date || 0))
+    .forEach((s) => {
+      const d = new Date(s.date || 0);
+      // 今天的球局已經存入長期紀錄：用「今天」那一格就好，不重複
+      if (out.length && out[0].id === 'today' && localDateKey(s.date) === todayKey) return;
+      out.push({ id: s.sessionId, label: `${d.getMonth() + 1}/${d.getDate()}` });
+    });
+  return out;
+}
+
+async function loadPastDay(id) {
+  if (past.cache[id] || pastDayLoad.loading === id) return;
+  pastDayLoad.loading = id;
+  pastDayLoad.error = '';
+  try {
+    const snap = await cloud.fb.getDoc(cloud.fb.doc(cloud.db, 'teams', rankTeamId(), 'sessions', id));
+    if (!snap.exists()) throw Object.assign(new Error('missing'), { code: 'not-found' });
+    past.cache[id] = normalizeState(JSON.parse(snap.data().stateJson));
+  } catch (err) {
+    pastDayLoad.error = err.code === 'not-found' ? '找不到這一天的紀錄' : cloudErrorText(err);
+  }
+  pastDayLoad.loading = null;
+  render();
+}
+
+/** 單日那一頁：上面一排日期，下面是那一天的戰績 */
+function renderMyDayBody(name, options, dayId) {
+  const chips = options.length > 1 || (options[0] && options[0].id !== 'today')
+    ? `<div class="day-chips" role="group" aria-label="選日期">${options.map((o) => `
+        <button class="chip ${o.id === dayId ? 'on' : ''}" data-action="my-day" data-value="${escapeHtml(o.id)}" aria-pressed="${o.id === dayId}">${o.label}</button>`).join('')}</div>`
+    : '';
+  if (!dayId || dayId === 'today') return chips + renderTodayProfileBody(name);
+  const day = past.cache[dayId];
+  if (!day) {
+    if (!pastDayLoad.error) setTimeout(() => loadPastDay(dayId), 0);
+    return `${chips}<p class="sub" style="margin:8px 0">${pastDayLoad.error ? escapeHtml(pastDayLoad.error) : '載入中…'}</p>`;
+  }
+  const today = state;
+  try {
+    state = day;
+    profileDayPast = true;
+    return chips + renderTodayProfileBody(name);
+  } finally {
+    state = today;
+    profileDayPast = false;
+  }
+}
+
 function renderMyStats(name) {
-  const playedToday = state.history.some((h) => h.teamA.includes(name) || h.teamB.includes(name));
-  const view = ui.myView || (playedToday ? 'today' : 'long');
+  const options = myDayOptions(name);
+  const dayId = options.some((o) => o.id === ui.myDay) ? ui.myDay : (options[0] && options[0].id);
+  const view = ui.myView || (dayId === 'today' ? 'today' : 'long');
+  const pane = (key, html) => `<div class="profile-body" ${view === key ? '' : 'aria-hidden="true" inert'}>${html}</div>`;
   return `<div class="long-card">
       <div class="long-head"><b>${escapeHtml(name)}</b>
         ${cloud.viewer && cloud.claim ? '' : '<button class="btn-ghost" data-action="me-clear">不是我</button>'}</div>
-      ${profileViewSeg(view, 'my-view')}
-      ${renderProfileStack(name, view)}
+      ${profileViewSeg(view, 'my-view', '單日')}
+      <div class="profile-stack">${pane('today', options.length ? renderMyDayBody(name, options, dayId) : renderTodayProfileBody(name))}${pane('long', renderLongProfileBody(name))}</div>
     </div>`;
 }
 
@@ -8927,17 +8991,42 @@ function renderHistoryTeams(h) {
     upset ? `<span class="upset-tag">爆冷！賽前 ${Math.round(winnerP * 100)}%</span>` : ''}`;
 }
 
+/**
+ * v22.2 今日戰績：每人場數（全部完成的場次）＋勝敗（只算有記勝負的）。
+ * 依勝率排名；選擇不列入勝負排名的人放最後，只顯示場數。
+ */
+function dailyRows() {
+  const rows = {};
+  state.history.slice().reverse().forEach((h) => h.teamA.concat(h.teamB).forEach((n) => {
+    const r = rows[n] || (rows[n] = { name: n, games: 0, wins: 0, losses: 0, hidden: winRankHidden(n) });
+    r.games += 1;
+    if (h.winners) {
+      if (h.winners.includes(n)) r.wins += 1;
+      else r.losses += 1;
+    }
+  }));
+  const rate = (r) => (r.wins + r.losses ? r.wins / (r.wins + r.losses) : -1);
+  return Object.values(rows).sort((a, b) => (a.hidden - b.hidden)
+    || (a.hidden ? b.games - a.games : rate(b) - rate(a) || b.wins - a.wins || b.games - a.games));
+}
+
 function renderStats() {
-  const rows = todayStats();
-  if (!rows.length) return '<p class="sub">結束比賽時選出勝方，這裡會顯示今天的戰績。</p>';
+  const rows = dailyRows();
+  if (!rows.length) return '<p class="sub">打完第一場後，這裡會顯示今天的戰績。</p>';
+  const dash = '<span class="sub">—</span>';
   return `<table class="stats">
-    <thead><tr><th>球員</th><th>勝</th><th>敗</th><th>勝率</th></tr></thead>
-    <tbody>${rows.map((r) => `<tr>
+    <thead><tr><th>球員</th><th>場數</th><th>勝</th><th>敗</th><th>勝率</th></tr></thead>
+    <tbody>${rows.map((r) => {
+      const decided = r.wins + r.losses;
+      const show = !r.hidden && decided;
+      return `<tr>
       <td>${escapeHtml(r.name)}</td>
-      <td class="num">${r.wins}</td>
-      <td class="num">${r.games - r.wins}</td>
-      <td class="num rate">${Math.round((r.wins / r.games) * 100)}%</td>
-    </tr>`).join('')}</tbody></table>
+      <td class="num">${r.games}</td>
+      <td class="num">${show ? r.wins : dash}</td>
+      <td class="num">${show ? r.losses : dash}</td>
+      <td class="num rate">${show ? `${Math.round((r.wins / decided) * 100)}%` : dash}</td>
+    </tr>`;
+    }).join('')}</tbody></table>
     <p class="sub" style="margin-top:6px">只計算有記錄勝負的場次；開新球局後重新計算。</p>`;
 }
 
@@ -10402,8 +10491,8 @@ function renderTodayProfileBody(name) {
   ].join('');
 
   return `
-    <p class="sub" style="margin:0">${!player ? '今天已離場' : !player.active ? '休息中' : (onCourtIds().has(player.id) ? '場上' : '等待中')}
-      ${hp !== null ? `・體力 ${hp}` : ''}</p>
+    ${profileDayPast ? '' : `<p class="sub" style="margin:0">${!player ? '今天已離場' : !player.active ? '休息中' : (onCourtIds().has(player.id) ? '場上' : '等待中')}
+      ${hp !== null ? `・體力 ${hp}` : ''}</p>`}
     <div class="profile-stats">
       <div><b class="num">${chrono.length}</b><small>完成場數</small></div>
       <div><b class="num">${wins}</b><small>勝</small></div>
@@ -10411,7 +10500,7 @@ function renderTodayProfileBody(name) {
       <div><b class="num">${rate}</b><small>勝率</small></div>
     </div>
     ${form ? `<h4 class="profile-h">每場戰況</h4><div class="form-chips">${form}</div>` : ''}
-    ${titles.length ? `<h4 class="profile-h">今日稱號</h4>
+    ${titles.length ? `<h4 class="profile-h">${profileDayPast ? '當天稱號' : '今日稱號'}</h4>
       <div class="chips" style="margin-bottom:12px">${titles.map((t) => `<span class="chip">${t.icon} ${t.title}</span>`).join('')}</div>` : ''}
     ${relation ? `<h4 class="profile-h">關係</h4><ul class="profile-list">${relation}</ul>` : ''}
     <h4 class="profile-h">最常搭檔</h4>
@@ -10450,10 +10539,11 @@ function renderPlayerModal() {
   let stack = '';
   const today = state;
   try {
-    if (pastDay) state = pastDay;
+    if (pastDay) { state = pastDay; profileDayPast = true; }
     stack = renderProfileStack(name, view);
   } finally {
     state = today;
+    profileDayPast = false;
   }
   return `
     <h3>${escapeHtml(name)}${genderMark(name)}</h3>
@@ -11546,21 +11636,8 @@ function reportData() {
   const last = ends.length ? Math.max(...ends) : Date.now();
   const minutes = Math.max(0, Math.round((last - first) / 60000));
 
-  // 每人戰績：完成場數來自全部紀錄，勝敗只計有記勝負的場次
-  const rows = {};
-  chrono.forEach((h) => h.teamA.concat(h.teamB).forEach((n) => {
-    const r = rows[n] || (rows[n] = { name: n, games: 0, wins: 0, losses: 0 });
-    r.games += 1;
-    if (h.winners) {
-      if (h.winners.includes(n)) r.wins += 1;
-      else r.losses += 1;
-    }
-  }));
-  const list = Object.values(rows).sort((a, b) => {
-    const ra = a.wins + a.losses ? a.wins / (a.wins + a.losses) : -1;
-    const rb = b.wins + b.losses ? b.wins / (b.wins + b.losses) : -1;
-    return rb - ra || b.wins - a.wins || b.games - a.games;
-  });
+  // 每人戰績：完成場數來自全部紀錄，勝敗只計有記勝負的場次；不列入勝負排名的放最後（v22.2）
+  const list = dailyRows();
 
   const d = new Date(first);
   const week = '日一二三四五六'[d.getDay()];
@@ -11712,9 +11789,9 @@ function buildReportCanvas() {
       ctx.fillStyle = C.stripe;
       ctx.fillRect(REPORT_PAD, y, innerW, rowH);
     }
-    const decided = r.wins + r.losses;
+    const decided = r.hidden ? 0 : r.wins + r.losses;
     const rate = decided ? `${Math.round((r.wins / decided) * 100)}%` : '—';
-    drawRow([String(i + 1), r.name, String(r.games), decided ? String(r.wins) : '—', decided ? String(r.losses) : '—', rate], y + 14);
+    drawRow([r.hidden ? '—' : String(i + 1), r.name, String(r.games), decided ? String(r.wins) : '—', decided ? String(r.losses) : '—', rate], y + 14);
     y += rowH;
   });
   y += 40;
@@ -13084,6 +13161,7 @@ function handleAction(el) {
       break;
     case 'profile-view': ui.profileView = el.dataset.value; sessionChanged = false; modalOnly = true; break;
     case 'my-view': ui.myView = el.dataset.value; sessionChanged = false; modalOnly = true; break;
+    case 'my-day': ui.myDay = el.dataset.value; pastDayLoad.error = ''; sessionChanged = false; modalOnly = true; break;   // v22.3
     case 'network-mode': ui.networkMode = el.dataset.value; sessionChanged = false; if (ui.pastId) modalOnly = true; break;
     case 'network-focus':
       ui.networkFocus = ui.networkFocus === el.dataset.name ? null : el.dataset.name;
