@@ -84,6 +84,24 @@
     display: inline-flex; align-items: center; justify-content: center; background: transparent; color: var(--ink);
   }
   .menu-btn .d-ico { width: 26px; height: 26px; }
+  .bell-btn { position: absolute; top: 2px; right: 0; width: 44px; height: 44px; display: inline-flex; align-items: center; justify-content: center; background: none; border: 0; color: var(--ink); padding: 0; }
+  .bell-btn svg { width: 24px; height: 24px; }
+  .top { position: relative; }
+  .top:not(:has(.top-actions)) > .top-title { padding-right: 44px; }
+  .top-actions .bell-btn { position: relative; top: 0; right: 0; border: 0; padding: 0; }
+  .inbox-list { list-style: none; margin: 0; padding: 0; }
+  .inbox-item { display: flex; align-items: flex-start; gap: 6px; border-bottom: 1px solid var(--border); }
+  .inbox-row { flex: 1; display: flex; gap: 12px; align-items: flex-start; padding: 12px 2px; background: none; border: 0; border-radius: 0; text-align: left; color: var(--ink); font: inherit; }
+  .inbox-ico { flex: 0 0 34px; height: 34px; border-radius: 50%; background: var(--soft-green); color: var(--on-soft-green, var(--court-dark)); display: inline-flex; align-items: center; justify-content: center; }
+  .inbox-ico svg { width: 18px; height: 18px; }
+  .inbox-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .inbox-text span { color: var(--muted); overflow-wrap: anywhere; white-space: pre-wrap; }
+  .inbox-text small { color: var(--muted); font-size: 12px; }
+  .inbox-item:not(.unread) .inbox-text b { font-weight: 600; }
+  .inbox-item.unread .inbox-text b::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #E5484D; margin-right: 6px; vertical-align: middle; }
+  .inbox-del { margin-top: 12px; white-space: nowrap; }
+  .announce-box { display: grid; gap: 8px; margin-bottom: 8px; }
+  .announce-box textarea { width: 100%; box-sizing: border-box; }
   .menu-dot { position: absolute; top: 7px; right: 6px; width: 9px; height: 9px; border-radius: 50%; background: #E5484D; }
   .d-ico { width: 22px; height: 22px; flex-shrink: 0; }
   /* 側邊選單：選單在底下，整個畫面往右推開並變成圓角卡片（跟 Claude App 一樣） */
@@ -1686,7 +1704,7 @@ const COURT_THEMES = {
   night: { label: '夜光', swatch: '#1C2640' },
 };
 // 版本規則：小修改只加後面的數字且不進位（3.9 → 3.10 → 3.11）；大更新才進位最前面的數字（4.0）
-const APP_VERSION = '21.1';
+const APP_VERSION = '22.1';
 
 // 雲端同步：把 Firebase 主控台「專案設定 → 一般 → 你的應用程式」裡的 firebaseConfig 整段貼在這裡。
 // 保持 null 就是單機模式（資料只存在這支手機），其他功能完全不受影響。
@@ -2525,6 +2543,7 @@ const CLOUD_TEAM_KEY = 'badminton-cloud-team';
 const SESSION_BEFORE_CLOUD_KEY = 'badminton-session-before-cloud';   // 被雲端資料取代前的本機排場
 // 觀看者可以用的操作：只看、切換分頁、調整自己手機的外觀與語音
 const VIEWER_ACTIONS = new Set([
+  'inbox-open', 'inbox-go',   // v22.0 通知中心
   'tab', 'settings-open', 'modal-close', 'set-group-toggle', 'drawer-open', 'drawer-close', 'drawer-go', 'set-appearance', 'set-theme', 'set-awake',
   'title-open', 'title-pop-close', 'player-open', 'roster-sort', 'network-mode', 'network-focus',
   'history-toggle', 'copy-lineup', 'report-open', 'report-share', 'force-update',
@@ -9837,16 +9856,167 @@ function renderTabBody() {
   return { courts: renderCourtsTab, players: renderPlayersTab, records: renderRecordsTab }[ui.tab]();
 }
 
-function menuButton() {
+/* ---------- v22.0 通知中心 ----------
+ * 頁首右上角鈴鐺，點開是通知清單，有沒看過的就亮紅點（這支手機記看到哪裡：badminton-inbox-seen）。
+ * 三種來源合在一起、依時間排序：
+ *   1. APP_NEWS：新功能上線（寫在程式裡，每次改版問 An 要不要加一則）
+ *   2. teams/{id}/announcements：管理者自己發的公告（大家都看得到）
+ *   3. users/{uid}/inbox：給我個人的（雲端程式寫入）
+ *        球友：候補轉正取（promoted）、管理者回覆我的許願（wish-reply）
+ *        管理者：許願池新願望／新留言（wish）
+ * 推播照原本各自的開關送，通知中心只是在 App 裡留一份紀錄。 */
+const APP_NEWS = [
+  // { id: 'v22.0', date: '2026-11-25', title: '…', body: '…' },   最新的放最上面
+];
+const INBOX_SEEN_KEY = 'badminton-inbox-seen';
+const INBOX_LIMIT = 50;
+const ANNOUNCE_MAX = 300;
+const inbox = { uid: null, unsub: null, items: [], teamId: null, annUnsub: null, ann: [] };
+
+function inboxSeenKey() {
+  return `${(cloud.user && cloud.user.uid) || 'anon'}|${currentTeamId() || ''}`;
+}
+
+function ensureInboxWatch() {
+  if (!cloud.fb || !cloud.db) return;
+  const { collection, query, orderBy, limit, onSnapshot } = cloud.fb;
+  const uid = cloud.user ? cloud.user.uid : null;
+  if (inbox.uid !== uid) {
+    if (inbox.unsub) inbox.unsub();
+    Object.assign(inbox, { uid, unsub: null, items: [] });
+    if (uid) {
+      inbox.unsub = onSnapshot(query(collection(cloud.db, 'users', uid, 'inbox'), orderBy('at', 'desc'), limit(INBOX_LIMIT)), (snap) => {
+        inbox.items = snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+        render();
+      }, (err) => console.warn('讀取通知失敗:', err));
+    }
+  }
+  const teamId = currentTeamId() || null;
+  if (inbox.teamId !== teamId) {
+    if (inbox.annUnsub) inbox.annUnsub();
+    Object.assign(inbox, { teamId, annUnsub: null, ann: [] });
+    if (teamId) {
+      inbox.annUnsub = onSnapshot(query(collection(cloud.db, 'teams', teamId, 'announcements'), orderBy('at', 'desc'), limit(20)), (snap) => {
+        inbox.ann = snap.docs.map((d) => Object.assign({ id: d.id }, d.data()));
+        render();
+      }, (err) => console.warn('讀取公告失敗:', err));
+    }
+  }
+}
+
+/** 合併成一份清單：{key, kind, at, title, body, teamId?, eventId?, wishId?, annId?} */
+function inboxEntries() {
+  const team = currentTeamId();
+  const news = APP_NEWS.map((n) => ({ key: `news-${n.id}`, kind: 'news', at: Date.parse(`${n.date}T12:00:00+08:00`), title: n.title, body: n.body }));
+  const ann = inbox.ann.map((a) => ({ key: `ann-${a.id}`, kind: 'announce', at: stampMillis(a.at) || Date.now(), title: '球團公告', body: a.text, annId: a.id }));
+  const mine = inbox.items
+    .filter((it) => !it.teamId || !team || it.teamId === team)
+    .map((it) => ({ key: `me-${it.id}`, kind: it.kind, at: stampMillis(it.at) || Date.now(), title: it.title, body: it.body, eventId: it.eventId, wishId: it.wishId, teamId: it.teamId }));
+  return news.concat(ann, mine).sort((a, b) => b.at - a.at);
+}
+
+function inboxUnread() {
+  const seen = (storageGet(INBOX_SEEN_KEY) || {})[inboxSeenKey()] || 0;
+  return inboxEntries().filter((e) => e.at > seen).length;
+}
+
+function markInboxSeen() {
+  const map = storageGet(INBOX_SEEN_KEY) || {};
+  const newest = inboxEntries().reduce((t, e) => Math.max(t, e.at), 0);
+  map[inboxSeenKey()] = Math.max(Date.now(), newest);
+  storageSet(INBOX_SEEN_KEY, map);
+}
+
+function bellButton() {
+  const n = inboxUnread();
+  return `<button class="bell-btn" data-action="inbox-open" aria-label="通知${n ? `，${n} 則未讀` : ''}">${icon('bell')}${n ? '<span class="menu-dot" aria-hidden="true"></span>' : ''}</button>`;
+}
+
+// v22.1 用線條圖示（不用 emoji，畫面比較乾淨）；標題開頭的 emoji 也拿掉
+const INBOX_ICON = { news: 'gear', announce: 'note', promoted: 'calendar', 'wish-reply': 'wish', wish: 'wish' };
+
+function stripLeadingEmoji(text) {
+  return String(text || '').replace(/^(?:[\p{Extended_Pictographic}\uFE0F\u200D]+\s*)+/u, '');
+}
+
+function inboxTimeText(t) {
+  const d = new Date(t);
+  const diff = Date.now() - t;
+  if (diff < 3600000) return `${Math.max(1, Math.round(diff / 60000))} 分鐘前`;
+  if (diff < 86400000 && d.getDate() === new Date().getDate()) return `今天 ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+  return `${d.getMonth() + 1}/${d.getDate()}`;
+}
+
+function renderInboxModal() {
+  const admin = !cloud.viewer && cloudReady();
+  const seen = ui.inboxSeenAt || 0;
+  const list = inboxEntries();
+  const row = (e) => {
+    const go = e.kind === 'promoted' && e.eventId ? `data-action="inbox-go" data-event="${escapeHtml(e.eventId)}"`
+      : (e.kind === 'wish' || e.kind === 'wish-reply') ? 'data-action="inbox-go" data-wish="1"' : '';
+    return `<li class="inbox-item ${e.at > seen ? 'unread' : ''}">
+      <${go ? 'button' : 'div'} class="inbox-row" ${go}>
+        <span class="inbox-ico" aria-hidden="true">${icon(INBOX_ICON[e.kind] || 'bell')}</span>
+        <span class="inbox-text"><b>${escapeHtml(stripLeadingEmoji(e.title))}</b>${e.body ? `<span>${escapeHtml(e.body)}</span>` : ''}<small>${inboxTimeText(e.at)}</small></span>
+      </${go ? 'button' : 'div'}>
+      ${admin && e.annId ? `<button class="link-btn danger-text inbox-del" data-action="announce-delete" data-id="${escapeHtml(e.annId)}">${ui.annDeleteArmed === e.annId ? '確認刪除' : '刪除'}</button>` : ''}
+    </li>`;
+  };
+  return `
+    <h3>通知</h3>
+    ${admin ? `<div class="announce-box">
+      <textarea id="announce-text" maxlength="${ANNOUNCE_MAX}" rows="2" placeholder="發公告給球團的人">${escapeHtml(ui.annDraft || '')}</textarea>
+      <button class="btn-primary" data-action="announce-send">發布公告</button>
+    </div>` : ''}
+    ${list.length ? `<ul class="inbox-list">${list.map(row).join('')}</ul>` : '<p class="sub">還沒有通知</p>'}`;
+}
+
+function openInbox() {
+  const map = storageGet(INBOX_SEEN_KEY) || {};
+  ui.inboxSeenAt = map[inboxSeenKey()] || 0;   // 這次打開時哪些算新的（列表裡標粗）
+  ui.inboxOpen = true;
+  markInboxSeen();
+}
+
+async function sendAnnouncement() {
+  const box = document.getElementById('announce-text');
+  const text = (box ? box.value : ui.annDraft || '').trim();
+  if (!text) { showToast('先寫公告內容'); return; }
+  if (!cloudReady()) return;
+  const { collection, addDoc, serverTimestamp } = cloud.fb;
+  try {
+    await addDoc(collection(cloud.db, 'teams', cloud.teamId, 'announcements'), { text: text.slice(0, ANNOUNCE_MAX), at: serverTimestamp(), by: cloud.user.uid });
+    ui.annDraft = '';
+    showToast('公告已發布');
+    markInboxSeen();
+  } catch (err) {
+    showToast(`沒有發出去：${cloudErrorText(err)}`);
+  }
+  render();
+}
+
+async function deleteAnnouncement(id) {
+  if (ui.annDeleteArmed !== id) { ui.annDeleteArmed = id; render(); return; }
+  ui.annDeleteArmed = null;
+  try {
+    await cloud.fb.deleteDoc(cloud.fb.doc(cloud.db, 'teams', cloud.teamId, 'announcements', id));
+  } catch (err) {
+    showToast(`刪除失敗：${cloudErrorText(err)}`);
+  }
+  render();
+}
+
+function menuButton(withBell = true) {
   return `<button class="menu-btn" data-action="drawer-open" aria-label="打開選單">${icon('menu')}
-    ${!cloud.viewer && (pendingMembers().length || wishUnseen()) ? '<span class="menu-dot" aria-hidden="true"></span>' : ''}</button>`;
+    ${!cloud.viewer && (pendingMembers().length || wishUnseen()) ? '<span class="menu-dot" aria-hidden="true"></span>' : ''}</button>
+    ${withBell ? bellButton() : ''}`;
 }
 
 function renderMain() {
   const body = renderTabBody();
   return `
     <header class="top">
-      ${menuButton()}
+      ${menuButton(false)}
       <div class="top-title">
         <h1>${cloud.teamName && !isLocalMode() ? escapeHtml(cloud.teamName) : appTitle()}</h1>
         <p class="sub num">${cloud.viewer ? `<span class="live-dot" aria-hidden="true"></span>觀看中・<span id="viewer-stamp">${viewerStampText()}</span><br>` : ''}${state.players.filter((p) => p.active).length} 人在場館，已完成 ${state.history.length} 場</p>
@@ -9858,6 +10028,7 @@ function renderMain() {
                aria-label="${prefs.voice.enabled ? '關閉' : '開啟'}語音唸名">${prefs.voice.enabled ? SPEAKER_SVG : SPEAKER_OFF_SVG}</button>`
           : ''}
         <button class="btn-copy" data-action="copy-lineup" aria-label="複製排場" title="複製排場">${icon('copy')}</button>
+        ${bellButton()}
       </div>
     </header>
     ${renderStorageBanner()}
@@ -10798,6 +10969,7 @@ const MODAL_PAGES = [
   ['profile', () => ui.profileName, () => renderPlayerModal(), 2],
   ['invite', () => ui.invite, () => renderInviteModal(), 2],
   ['wishes', () => ui.wishOpen, () => renderWishModal(), 1],   // v14.0 許願池
+  ['inbox', () => ui.inboxOpen, () => renderInboxModal(), 1],   // v22.0 通知中心
   ['signup-form', () => ui.signupForm, () => renderEventFormModal(), 3],
   ['signup-event', () => ui.signupId, () => renderSignupEventModal(), 2],
   ['signup-list', () => ui.signupOpen, () => renderSignupListModal(), 1],
@@ -11236,7 +11408,13 @@ function animateNewPlayers(reset) {
 }
 
 let uiThemeApplied = false;
+// v22.0 公告草稿：打字時記下來，重畫不會被清掉
+document.addEventListener('input', (e) => {
+  if (e.target && e.target.id === 'announce-text') ui.annDraft = e.target.value;
+});
+
 function render() {
+  try { ensureInboxWatch(); } catch (err) { /* 雲端還沒準備好 */ }
   if (!uiThemeApplied) { uiThemeApplied = true; applyUiTheme(); }   // v16.0 第一次畫面時套用自己手機的配色
   ensureMyProfileWatch();
   syncMyProfileToTeam();
@@ -13017,6 +13195,7 @@ function handleAction(el) {
       if (ui.scanConfirm) { ui.scanConfirm = null; sessionChanged = false; break; }
       if (ui.avatarCrop) { ui.avatarCrop = null; sessionChanged = false; break; }
       if (ui.wishOpen) { closeWishes(); sessionChanged = false; break; }
+      if (ui.inboxOpen) { ui.inboxOpen = false; ui.annDeleteArmed = null; sessionChanged = false; break; }
       if (ui.profileName && ui.profileFrom === 'signup') { ui.profileName = null; ui.profileFrom = null; sessionChanged = false; break; }
       if (ui.profileName && ui.profileFrom === 'past') { ui.profileName = null; ui.profileFrom = null; ui.profileView = null; sessionChanged = false; break; }   // v19.15 回到那一天
       if (ui.teamDelete) { if (!ui.teamDelete.busy) ui.teamDelete = null; sessionChanged = false; break; }
@@ -13107,6 +13286,15 @@ function handleAction(el) {
       drawerGo(el.dataset.target);
       return;
     case 'signup-event': openSignupEvent(el.dataset.id); sessionChanged = false; modalOnly = true; break;
+    case 'inbox-open': openInbox(); sessionChanged = false; break;   // v22.0
+    case 'inbox-go':
+      ui.inboxOpen = false;
+      if (el.dataset.event) openSignupEvent(el.dataset.event);
+      else if (el.dataset.wish && wishRole()) openWishes();
+      sessionChanged = false;
+      break;
+    case 'announce-send': sendAnnouncement(); return;
+    case 'announce-delete': deleteAnnouncement(el.dataset.id); return;
     case 'quick-signup': {   // v14.2 列表上直接報名，不用先點進場次
       const ev = signup.events.find((e) => e.id === el.dataset.id);
       if (!ev) return;
